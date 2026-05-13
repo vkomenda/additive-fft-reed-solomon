@@ -251,29 +251,19 @@ mod tests {
 
     // Assumption: k_msg == t_parity, hence n == 2 * t_parity
     fn generate_lch_codeword(bases: &BasesLut11d, t_parity: usize) -> Vec<Gf2p8_11d> {
-        let t_log = t_parity.trailing_zeros() as u8;
-        let n = 2 * t_parity;
-        let mut data = vec![Gf2p8_11d::zero(); n];
+        let mut message = vec![Gf2p8_11d::zero(); t_parity];
+        let mut parity = vec![Gf2p8_11d::zero(); t_parity];
 
-        // Fill message part with test data
-        for i in t_parity..n {
-            data[i] = Gf2p8_11d::from(i as u8);
+        for i in 0..t_parity {
+            message[i] = Gf2p8_11d::from((t_parity + i) as u8);
         }
 
-        // Compute parity (v0) using LNH Eq 68
-        let mut v_prime_0 = vec![Gf2p8_11d::zero(); t_parity];
-        v_prime_0.copy_from_slice(&data[t_parity..]);
+        bases.encode_systematic_scalar(&message, &mut parity);
 
-        // IFFT at omega_T
-        let omega_t = bases.get_subspace_point_lut(t_parity as u8);
-        bases.ifft_scalar(&mut v_prime_0, t_log, omega_t);
-
-        // FFT at omega_0
-        bases.fft_scalar(&mut v_prime_0, t_log, Gf2p8_11d::zero());
-
-        // Copy into parity slots
-        data[..t_parity].copy_from_slice(&v_prime_0);
-        data
+        let mut codeword = vec![Gf2p8_11d::zero(); 2 * t_parity];
+        codeword[..t_parity].copy_from_slice(&parity);
+        codeword[t_parity..].copy_from_slice(&message);
+        codeword
     }
 
     // #[test]
@@ -591,5 +581,10 @@ mod tests {
             bases.recompute_data_from_parity(&mut received);
             assert_eq!(received, original);
         }
+    }
+
+    #[test]
+    fn degree_of_basis_poly() {
+        let bases = BasesLut11d::new();
     }
 }

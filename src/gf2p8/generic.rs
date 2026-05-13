@@ -432,6 +432,14 @@ pub trait CantorBasis<G: Gf2p8>:
 
         masks.into_iter().map(|m| (m >> 1) as u8)
     }
+
+    /// Generate the monomial coefficients of the standard form of a ring basis polynomial X_i,
+    /// for 0 <= i < 256.
+    fn gen_ring_basis_poly_coeffs(&self, i: u8) -> [G; FIELD_SIZE] {
+        // Select the subspace poly terms s_k
+        for j in 0..8 {}
+        todo!()
+    }
 }
 
 /// Precomputed lookup table group operations.
@@ -508,7 +516,14 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         result
     }
 
-    /// Algorithm 1 in LCH paper.
+    /// Algorithm 1 in LNH paper.
+    ///
+    /// The input coefficients `coeff` represent a polynomial in the basis X. That is,
+    /// a polynomial $\Sum_{i=0}^{2^k - 1} d_i X_i(x)$, for $d_i$ in `coeff`.
+    ///
+    /// The function outputs, in `coeff`, the evaluations of the input polynomial at points
+    /// $\omega_i + \beta$ where $\omega_i$ are the points of the subspace $V_k$,
+    /// for $0 \le i < 2^k$.
     fn fft_scalar(&self, coeffs: &mut [G], k: u8, beta: G) {
         if k == 0 {
             return;
@@ -544,7 +559,7 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         self.fft_scalar(&mut coeffs[half..], k - 1, next_beta);
     }
 
-    /// Algorithm 2 in LCH paper.
+    /// Algorithm 2 in LNH paper.
     fn ifft_scalar(&self, evals: &mut [G], k: u8, beta: G) {
         if k == 0 {
             return;
@@ -916,7 +931,15 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         res
     }
 
+    fn poly_add_inplace(&self, a: &mut [G], b: &[G]) {
+        for (ai, bi) in a.iter_mut().zip(b.iter()) {
+            *ai = ai.add(*bi);
+        }
+    }
+
     /// Polynomial multiplication in the basis X.
+    ///
+    /// As defined in Appendix A of the LNH paper.
     fn poly_mul_lnh(&self, a: &[G; FIELD_SIZE], b: &[G; FIELD_SIZE]) -> [G; FIELD_SIZE] {
         let deg_a = a.degree();
         let deg_b = b.degree();
@@ -925,8 +948,8 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         }
 
         // Determine the smallest power-of-2 size n >= deg_a + deg_b + 1
-        let n_log = (deg_a + deg_b + 1).next_power_of_two().trailing_zeros() as u8;
-        let n = 1 << n_log;
+        let n = (deg_a + deg_b + 1).next_power_of_two();
+        let n_log = n.trailing_zeros() as u8;
 
         let mut va = *a;
         let mut vb = *b;
@@ -1119,6 +1142,26 @@ pub trait Codec<G: Gf2p8Lut>: CantorBasisLut<G> + LchBasisLut<G> {
         let beta = self.get_subspace_point_lut(num_parity as u8);
         self.ifft_sharded(parity_shards, log_num_parity, beta);
         self.fft_sharded(parity_shards, log_num_parity, G::zero());
+    }
+
+    fn encode_systematic_scalar(&self, message: &[G], parity: &mut [G]) {
+        let t_parity = parity.len();
+        let t_log = t_parity.trailing_zeros() as u8;
+        let k_msg = message.len();
+
+        // Compute parity image (v0') using LNH Eq 68
+        parity.fill(G::zero());
+        let mut workspace = [G::zero(); FIELD_SIZE / 2];
+
+        for i in 0..k_msg / t_parity {
+            workspace[..t_parity].copy_from_slice(&message[i * t_parity..(i + 1) * t_parity]);
+            let omega = self.get_subspace_point_lut(((i + 1) * t_parity) as u8);
+            self.ifft_scalar(&mut workspace[..t_parity], t_log, omega);
+            self.poly_add_inplace(parity, &workspace[..t_parity]);
+        }
+
+        // Compute parity (v0)
+        self.fft_scalar(parity, t_log, G::zero());
     }
 
     /// Syndrome calculation (scalar).
