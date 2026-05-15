@@ -704,6 +704,29 @@ mod tests {
 
         let result = bases.poly_mul_lnh(&a, &b);
 
-        assert_eq!(result.degree(), DEGREE_A + DEGREE_B);
+        assert_eq!(result.degree().unwrap(), DEGREE_A + DEGREE_B);
+    }
+
+    #[test]
+    fn poly_div_lnh_by_constant_scales_coefficients() {
+        let bases = BasesLut11d::new();
+        let c: Gf2p8_11d = 0x53.into();
+        let c_inv = c.inv_lut();
+
+        let mut a = [0.into(); FIELD_SIZE];
+        a[0] = 0xef.into();
+        a[3] = 0xcd.into();
+        a[7] = 0xab.into();
+
+        let mut b = [0.into(); FIELD_SIZE];
+        b[0] = c;
+
+        let (q, r) = bases.poly_div_lnh(&a, &b).unwrap();
+
+        assert_eq!(r, [0.into(); FIELD_SIZE]);
+
+        for i in 0..FIELD_SIZE {
+            assert_eq!(q[i], a[i].mul_lut(c_inv));
+        }
     }
 }

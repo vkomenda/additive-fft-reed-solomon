@@ -636,6 +636,7 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         }
     }
 
+    /*
     /// Performs A = Q * B + R in Basis X.
     fn poly_div_rem<I, O>(&self, dividend: I, divisor: I, mut quotient: O, mut remainder: O, k: u8)
     where
@@ -673,6 +674,7 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
             self.poly_fused_mul_add(remainder.as_mut(), divisor.as_ref(), q_coeff, deg_diff, k);
         }
     }
+    */
 
     fn init_eea_modulus(
         &self,
@@ -752,6 +754,7 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         }
     }
 
+    /*
     /// Step 2 of decoding: key equation solver via extended Euclidean algorithm.
     /// Solves: z_0(x) = s(x)λ(x) + q(x)s_t(x)
     ///
@@ -805,18 +808,19 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         // Result: r1 is remainder, u1 is numerator q(x), v1 is locator lambda(x)
         (u1, v1)
     }
+    */
 
     fn solve_key_equation(
         &self,
         syndrome: &[G; FIELD_SIZE],
         t_log: u8,
-    ) -> ([G; FIELD_SIZE], [G; FIELD_SIZE]) {
+    ) -> Option<([G; FIELD_SIZE], [G; FIELD_SIZE])> {
         let mut st = [G::zero(); FIELD_SIZE];
         self.init_subspace_poly_coeffs(&mut st, t_log);
-        let (qt, rt) = self.poly_div_lnh(&st, syndrome);
+        let (qt, rt) = self.poly_div_lnh(&st, syndrome)?;
         let (u1, v1, z1) = self.solve_eea(syndrome, &rt, t_log);
         let lambda = self.poly_add(&u1, &self.poly_mul_lnh(&v1, &qt));
-        (v1, lambda)
+        Some((z1, lambda))
     }
 
     fn solve_eea(
@@ -841,8 +845,10 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         let mut v1 = [G::zero(); FIELD_SIZE];
         v1[0] = G::one();
 
-        while z1.degree() >= target_deg {
-            let (q, remainder) = self.poly_div_lnh(&z0, &z1);
+        while z1.degree().is_some_and(|d| d >= target_deg) {
+            let (q, remainder) = self
+                .poly_div_lnh(&z0, &z1)
+                .expect("z1 is non-zero thanks to while condition");
 
             // Update r: r = r0 - q * r1
             z0 = z1;
@@ -862,7 +868,7 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         }
 
         // LNH page 9:
-        // u1 = u auxiliary, v1 = v auxiliary, r1 = z error evaluator
+        // u1 = u auxiliary, v1 = v auxiliary, z1 = z error evaluator
         (u1, v1, z1)
     }
 
@@ -886,12 +892,24 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
 
     /// Division in the monomial basis.
     /// s_t(x) = q_t(x) * s(x) + r_t(x)
-    fn poly_div_mon(&self, a: &[G], b: &[G]) -> ([G; FIELD_SIZE], [G; FIELD_SIZE]) {
+    fn poly_div_mon(&self, a: &[G], b: &[G]) -> Option<([G; FIELD_SIZE], [G; FIELD_SIZE])> {
         let a_deg = a.degree();
+        if a_deg.is_none() {
+            return Some(([G::zero(); FIELD_SIZE], [G::zero(); FIELD_SIZE]));
+        }
+        let a_deg = a_deg.unwrap();
+
         let mut r = [G::zero(); FIELD_SIZE];
         r.copy_from_slice(a);
         let mut q = [G::zero(); FIELD_SIZE];
         let b_deg = b.degree();
+
+        // Division by 0
+        if b_deg.is_none() {
+            return None;
+        }
+        let b_deg = b_deg.unwrap();
+
         let b_lc_inv = b[b_deg].inv_lut();
 
         for i in (b_deg..a_deg + 1).rev() {
@@ -901,7 +919,7 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
                 r[i - b_deg + j] = r[i - b_deg + j].add(factor.mul(b[j]));
             }
         }
-        (q, r)
+        Some((q, r))
     }
 
     /// Polynomial multiplication in the monomial basis.
@@ -942,10 +960,17 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
     /// As defined in Appendix A of the LNH paper.
     fn poly_mul_lnh(&self, a: &[G; FIELD_SIZE], b: &[G; FIELD_SIZE]) -> [G; FIELD_SIZE] {
         let deg_a = a.degree();
-        let deg_b = b.degree();
-        if (deg_a == 0 && a[0] == G::zero()) || (deg_b == 0 && b[0] == G::zero()) {
+
+        if deg_a.is_none() {
             return [G::zero(); FIELD_SIZE];
         }
+        let deg_a = deg_a.unwrap();
+
+        let deg_b = b.degree();
+        if deg_b.is_none() {
+            return [G::zero(); FIELD_SIZE];
+        }
+        let deg_b = deg_b.unwrap();
 
         // Determine the smallest power-of-2 size n >= deg_a + deg_b + 1
         let n = (deg_a + deg_b + 1).next_power_of_two();
@@ -973,16 +998,20 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         &self,
         a: &[G; FIELD_SIZE],
         b: &[G; FIELD_SIZE],
-    ) -> ([G; FIELD_SIZE], [G; FIELD_SIZE]) {
+    ) -> Option<([G; FIELD_SIZE], [G; FIELD_SIZE])> {
+        let b_deg = b.degree()?;
+
         let mut r = *a;
         let mut q = [G::zero(); FIELD_SIZE];
 
-        let b_deg = b.degree();
         let b_lc_inv = b[b_deg].inv_lut();
 
-        // Standard synthetic division, but with basis-aware subtraction
-        while r.degree() >= b_deg {
-            let r_deg = r.degree();
+        // Standard synthetic division, but with basis-aware multiplication
+        while let Some(r_deg) = r.degree() {
+            if r_deg < b_deg {
+                break;
+            }
+
             let deg_diff = r_deg - b_deg;
 
             // Calculate leading coefficient of the quotient
@@ -993,19 +1022,14 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
             let mut term_to_sub = [G::zero(); FIELD_SIZE];
             term_to_sub[deg_diff] = factor;
 
-            // This is the basis-aware multiplication
+            // Basis-aware multiplication
             let product = self.poly_mul_lnh(&term_to_sub, b);
 
             // Update the remainder
             r = self.poly_add(&r, &product);
-
-            // Safety break if degree doesn't decrease (should not happen in GF2)
-            if r.degree() >= r_deg && r[r_deg] != G::zero() {
-                break;
-            }
         }
 
-        (q, r)
+        Some((q, r))
     }
 }
 
@@ -1302,7 +1326,13 @@ pub trait Codec<G: Gf2p8Lut>: CantorBasisLut<G> + LchBasisLut<G> {
         }
 
         // Step 2: Solve the key equation (EEA)
-        let (q_coeffs, lambda_coeffs) = self.solve_key_equation(&syndrome, t_log);
+        let (q_coeffs, lambda_coeffs) =
+            if let Some((q, lambda)) = self.solve_key_equation(&syndrome, t_log) {
+                (q, lambda)
+            } else {
+                // TODO: more expressive return type
+                return false;
+            };
 
         println!(
             "t_parity={t_parity}, syndrome={:?}, q_coeffs={:?}, lambda_coeffs={:?}",
@@ -1312,6 +1342,11 @@ pub trait Codec<G: Gf2p8Lut>: CantorBasisLut<G> + LchBasisLut<G> {
         );
 
         let deg_lambda = lambda_coeffs.degree();
+        if deg_lambda.is_none() {
+            // No detected errors
+            return true;
+        }
+        let deg_lambda = deg_lambda.unwrap();
 
         // Step 3: Find error locations (roots)
         let mut error_indices = Vec::with_capacity(deg_lambda);
@@ -1361,19 +1396,21 @@ pub trait Codec<G: Gf2p8Lut>: CantorBasisLut<G> + LchBasisLut<G> {
 impl<G: Gf2p8Lut, T: CantorBasisLut<G> + LchBasisLut<G>> Codec<G> for T {}
 
 pub trait PolyOps<G: Gf2p8Lut>: AsRef<[G]> {
-    fn degree(&self) -> usize {
+    fn degree(&self) -> Option<usize> {
         self.as_ref()
             .iter()
             .enumerate()
             .rev()
             .find(|(_, c)| **c != G::zero())
             .map(|(i, _)| i)
-            .unwrap_or(0)
     }
 
     fn leading_coeff(&self) -> G {
         let coeffs = self.as_ref();
-        coeffs.get(self.degree()).copied().unwrap_or(G::zero())
+        coeffs
+            .get(self.degree().unwrap_or(0))
+            .copied()
+            .unwrap_or(G::zero())
     }
 }
 
