@@ -64,7 +64,7 @@ mod tests {
         encode, fft_recursive,
         gf2p8::{
             CantorBasis, CantorBasis11d, Gf2p8,
-            generic::{Codec, deriv_poly, deriv_poly_iterative},
+            generic::{Codec, FIELD_SIZE, PolyOps, deriv_poly, deriv_poly_iterative},
         },
         ifft_recursive, reconstruct_systematic,
     };
@@ -584,7 +584,126 @@ mod tests {
     }
 
     #[test]
-    fn degree_of_basis_poly() {
+    fn poly_mul_lnh_by_zero() {
         let bases = BasesLut11d::new();
+        let zero = [0u8.into(); FIELD_SIZE];
+
+        let mut a = [0u8.into(); FIELD_SIZE];
+        a[0] = 0x53.into();
+        a[1] = 0xca.into();
+        a[3] = 1.into();
+
+        assert_eq!(bases.poly_mul_lnh(&a, &zero), zero);
+        assert_eq!(bases.poly_mul_lnh(&zero, &a), zero);
+    }
+
+    #[test]
+    fn poly_mul_lnh_by_one() {
+        let bases = BasesLut11d::new();
+        let mut one = [0u8.into(); FIELD_SIZE];
+        one[0] = 1.into();
+
+        let mut a = [0u8.into(); FIELD_SIZE];
+        a[0] = 0xab.into();
+        a[2] = 0x3f.into();
+        a[7] = 0x11.into();
+
+        assert_eq!(bases.poly_mul_lnh(&a, &one), a);
+        assert_eq!(bases.poly_mul_lnh(&one, &a), a);
+    }
+
+    #[test]
+    fn poly_mul_lnh_const_by_const() {
+        let bases = BasesLut11d::new();
+        let mut a = [0u8.into(); FIELD_SIZE];
+        let a0 = 0x53.into();
+        a[0] = a0;
+
+        let mut b = [0u8.into(); FIELD_SIZE];
+        let b0 = 0xca.into();
+        b[0] = b0;
+
+        let result = bases.poly_mul_lnh(&a, &b);
+        assert_eq!(result[0], a0.mul_lut(b0));
+        assert_eq!(result[1..], [0u8.into(); FIELD_SIZE - 1]);
+    }
+
+    #[test]
+    fn poly_mul_lnh_commutes() {
+        let bases = BasesLut11d::new();
+        let mut a = [0u8.into(); FIELD_SIZE];
+        a[0] = 1.into();
+        a[1] = 0xff.into();
+
+        let mut b = [0u8.into(); FIELD_SIZE];
+        b[0] = 0x57.into();
+        b[2] = 0x83.into();
+        b[5] = 0x2a.into();
+
+        assert_eq!(bases.poly_mul_lnh(&a, &b), bases.poly_mul_lnh(&b, &a));
+    }
+
+    #[test]
+    fn poly_mul_lnh_associative() {
+        let bases = BasesLut11d::new();
+
+        let mut a = [0.into(); FIELD_SIZE];
+        a[0] = 3.into();
+        a[1] = 9.into();
+
+        let mut b = [0.into(); FIELD_SIZE];
+        b[0] = 0xe5.into();
+        b[3] = 0x7c.into();
+
+        let mut c = [0.into(); FIELD_SIZE];
+        c[0] = 0xaa.into();
+        c[1] = 0x55.into();
+
+        let ab_c = bases.poly_mul_lnh(&bases.poly_mul_lnh(&a, &b), &c);
+        let a_bc = bases.poly_mul_lnh(&a, &bases.poly_mul_lnh(&b, &c));
+        assert_eq!(ab_c, a_bc);
+    }
+
+    #[test]
+    fn poly_mul_lnh_distributive_over_addition() {
+        let bases = BasesLut11d::new();
+
+        let mut a = [0.into(); FIELD_SIZE];
+        a[0] = 0x11.into();
+        a[2] = 0x22.into();
+
+        let mut b = [0.into(); FIELD_SIZE];
+        b[1] = 0x33.into();
+        b[3] = 0x44.into();
+
+        let mut c = [0.into(); FIELD_SIZE];
+        c[0] = 0x55.into();
+        c[2] = 0x66.into();
+
+        let b_plus_c = bases.poly_add(&b, &c);
+
+        let lhs = bases.poly_mul_lnh(&a, &b_plus_c);
+        let rhs = bases.poly_add(&bases.poly_mul_lnh(&a, &b), &bases.poly_mul_lnh(&a, &c));
+
+        println!("lhs = {lhs:?}, rhs = {rhs:?}");
+        assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn poly_mul_lnh_sum_of_degrees() {
+        const DEGREE_A: usize = 3;
+        const DEGREE_B: usize = 5;
+
+        let bases = BasesLut11d::new();
+
+        let mut a = [0.into(); FIELD_SIZE];
+        a[DEGREE_A] = 1.into();
+
+        let mut b = [0.into(); FIELD_SIZE];
+        b[DEGREE_B] = 1.into();
+
+        let result = bases.poly_mul_lnh(&a, &b);
+
+        assert_eq!(result.degree(), DEGREE_A + DEGREE_B);
     }
 }
