@@ -810,7 +810,7 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
     }
     */
 
-    fn solve_key_equation(
+    fn solve_key_equation_eea(
         &self,
         syndrome: &[G; FIELD_SIZE],
         t_log: u8,
@@ -818,12 +818,13 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         let mut st = [G::zero(); FIELD_SIZE];
         self.init_subspace_poly_coeffs(&mut st, t_log);
         let (qt, rt) = self.poly_div_lnh(&st, syndrome)?;
-        let (u1, v1, _z1) = self.solve_eea(syndrome, &rt, t_log);
+        let (u1, v1, _z1) = self.eea(syndrome, &rt, t_log);
         let lambda = self.poly_add(&u1, &self.poly_mul_lnh(&v1, &qt));
         Some((v1, lambda))
     }
 
-    fn solve_eea(
+    /// Extended Euclidean Algorithm.
+    fn eea(
         &self,
         a: &[G], // syndrome
         b: &[G], // remainder r_t(x) from the initial division
@@ -1030,6 +1031,208 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         }
 
         Some((q, r))
+    }
+
+    /// Split p at 2^k: lo = p[0..2^k), hi = p[2^k..) shifted down.
+    fn poly_split_at(&self, p: &[G; FIELD_SIZE], k: u8) -> ([G; FIELD_SIZE], [G; FIELD_SIZE]) {
+        let pivot = 1usize << k;
+        let mut lo = [G::zero(); FIELD_SIZE];
+        let mut hi = [G::zero(); FIELD_SIZE];
+        lo[..pivot].copy_from_slice(&p[..pivot]);
+        for i in pivot..FIELD_SIZE {
+            hi[i - pivot] = p[i];
+        }
+        (lo, hi)
+    }
+
+    /// Multiply p by s_k = X_{2^k} by shifting coefficients up by 2^k.
+    ///
+    /// Valid only when every nonzero coefficient of p sits at an index
+    /// where bit k is 0 — always satisfied by the HGCD invariants.
+    fn poly_shift_up(&self, p: &[G; FIELD_SIZE], k: u8) -> [G; FIELD_SIZE] {
+        let shift = 1usize << k;
+        let mut out = [G::zero(); FIELD_SIZE];
+        for i in 0..FIELD_SIZE - shift {
+            out[i + shift] = p[i];
+        }
+        out
+    }
+
+    /// Step-8 decomposition: given p and the current HGCD level g, return
+    /// $(p_ll, p_m)$ such that $p = p_ll + s_{g-2}(x) · p_m$, where
+    /// $$
+    ///   p_ll = p[0 .. 2^{g-2})
+    ///   p_m  = p_lh + (s_{g-2} + s_{g-2}(v_{g-2})) · p_h
+    /// $$
+    /// with $p_lh = p[2^{g-2} .. 2^{g-1})$ and $p_h = p[2^{g-1} .. 2^{g-1}+2^{g-2})$.
+    ///
+    /// Derivation: $s_{g-2}^2 = s_{g-1} + c·s_{g-2}$  (Cantor basis recursion),
+    /// so $s_{g-2}·p_m$ expands back to $s_{g-2}·p_lh + s_{g-1}·p_h$, recovering p.
+    fn poly_hgcd_middle(&self, p: &[G; FIELD_SIZE], g: u8) -> ([G; FIELD_SIZE], [G; FIELD_SIZE]) {
+        let q = 1usize << (g - 2); // 2^{g-2}
+        let h = q * 2; // 2^{g-1}
+
+        let (mut p_ll, mut p_lh, mut p_h) = (
+            [G::zero(); FIELD_SIZE],
+            [G::zero(); FIELD_SIZE],
+            [G::zero(); FIELD_SIZE],
+        );
+        for i in 0..q {
+            p_ll[i] = p[i];
+            p_lh[i] = p[i + q];
+            p_h[i] = p[i + h];
+        }
+
+        // c = s_{g-2}(v_{g-2}), where v_{g-2} = ω_{2^{g-2}}
+        let v_gm2 = self.get_subspace_point_lut(1u8 << (g - 2));
+        let c = self.eval_subspace_poly_lut(g - 2, v_gm2);
+
+        // p_m[0..q)  = p_lh + c · p_h  (low part)
+        // p_m[q..2q) = p_h             (shift of p_h by s_{g-2})
+        let mut p_m = [G::zero(); FIELD_SIZE];
+        for i in 0..q {
+            p_m[i] = p_lh[i].add(c.mul_lut(p_h[i]));
+            p_m[i + q] = p_h[i];
+        }
+
+        (p_ll, p_m)
+    }
+
+    // 2×2 matrix helpers (row-major: [m00, m01, m10, m11])
+    fn mat_vec_lnh(
+        &self,
+        m: &[[G; FIELD_SIZE]; 4],
+        v0: &[G; FIELD_SIZE],
+        v1: &[G; FIELD_SIZE],
+    ) -> ([G; FIELD_SIZE], [G; FIELD_SIZE]) {
+        (
+            self.poly_add(&self.poly_mul_lnh(&m[0], v0), &self.poly_mul_lnh(&m[1], v1)),
+            self.poly_add(&self.poly_mul_lnh(&m[2], v0), &self.poly_mul_lnh(&m[3], v1)),
+        )
+    }
+
+    fn mat_mul_lnh(
+        &self,
+        a: &[[G; FIELD_SIZE]; 4],
+        b: &[[G; FIELD_SIZE]; 4],
+    ) -> [[G; FIELD_SIZE]; 4] {
+        [
+            self.poly_add(
+                &self.poly_mul_lnh(&a[0], &b[0]),
+                &self.poly_mul_lnh(&a[1], &b[2]),
+            ),
+            self.poly_add(
+                &self.poly_mul_lnh(&a[0], &b[1]),
+                &self.poly_mul_lnh(&a[1], &b[3]),
+            ),
+            self.poly_add(
+                &self.poly_mul_lnh(&a[2], &b[0]),
+                &self.poly_mul_lnh(&a[3], &b[2]),
+            ),
+            self.poly_add(
+                &self.poly_mul_lnh(&a[2], &b[1]),
+                &self.poly_mul_lnh(&a[3], &b[3]),
+            ),
+        ]
+    }
+
+    /// Half-GCD algorithm (Algorithm 5, LNH).
+    ///
+    /// Preconditions: $deg(b) \le deg(a),  2^{g-1} \le deg(a) < 2^g$.
+    ///
+    /// Returns (z0, z1, M) where M = [m00, m01, m10, m11] (row-major) satisfies
+    ///   $[z_0, z_1]^T = M · [a, b]^T$,
+    ///   $deg(z_0) \ge 2^{g-1}, deg(z_1) < 2^{g-1}$.
+    fn hgcd(
+        &self,
+        a: &[G; FIELD_SIZE],
+        b: &[G; FIELD_SIZE],
+        g: u8,
+    ) -> ([G; FIELD_SIZE], [G; FIELD_SIZE], [[G; FIELD_SIZE]; 4]) {
+        let zero = [G::zero(); FIELD_SIZE];
+        let one = {
+            let mut p = zero;
+            p[0] = G::one();
+            p
+        };
+        let half = 1usize << (g - 1);
+
+        // Base case (Algorithm 5 lines 1-2)
+        // deg(b) < 2^{g-1}: Z = [a, b], M = I.
+        if b.degree().is_none_or(|d| d < half) {
+            return (*a, *b, [one, zero, zero, one]);
+        }
+
+        // Step 3: split at 2^{g-1}, recurse on high halves
+        let (a_l, a_h) = self.poly_split_at(a, g - 1);
+        let (b_l, b_h) = self.poly_split_at(b, g - 1);
+        let (z_h0, z_h1, m_h) = self.hgcd(&a_h, &b_h, g - 1);
+
+        // Step 4: z_M = Z_H · s_{g-1} + M_H · [a_L, b_L]^T
+        // Equivalently M_H · (s_{g-1}·[a_H,b_H] + [a_L,b_L]) = M_H · [a, b].
+        let (mv0, mv1) = self.mat_vec_lnh(&m_h, &a_l, &b_l);
+        let z_m0 = self.poly_add(&self.poly_shift_up(&z_h0, g - 1), &mv0);
+        let z_m1 = self.poly_add(&self.poly_shift_up(&z_h1, g - 1), &mv1);
+
+        // Step 5: early return if deg(z_M1) < 2^{g-1} (lines 5-6)
+        if z_m1.degree().is_none_or(|d| d < half) {
+            return (z_m0, z_m1, m_h);
+        }
+
+        // Step 7: divide z_M0 by z_M1
+        let (q_m, r_m) = self
+            .poly_div_lnh(&z_m0, &z_m1)
+            .expect("z_m1 nonzero: guaranteed by the HGCD degree invariant");
+
+        // Step 8: decompose z_M1 and r_M into LL and M parts
+        let (z_m1_ll, z_m1_m) = self.poly_hgcd_middle(&z_m1, g);
+        let (r_m_ll, r_m_m) = self.poly_hgcd_middle(&r_m, g);
+
+        // Step 9: second recursive call
+        let (y_m0, y_m1, m_m) = self.hgcd(&z_m1_m, &r_m_m, g - 1);
+
+        // Step 10
+        let swap = [zero, one, one, q_m];
+        let m_r = self.mat_mul_lnh(&m_m, &self.mat_mul_lnh(&swap, &m_h));
+
+        // Y_M · s_{g-2}: y_m1 is safe to shift (degree < 2^{g-2}, bit g-2 always 0),
+        // but y_m0 can have coefficients at index 2^{g-2} (bit g-2 set), so it
+        // requires a proper polynomial multiplication rather than a plain index shift.
+        let sg_minus_2 = {
+            let mut p = [G::zero(); FIELD_SIZE];
+            p[1 << (g - 2)] = G::one(); // s_{g-2} = X_{2^{g-2}} in basis X
+            p
+        };
+        let (mv0, mv1) = self.mat_vec_lnh(&m_m, &z_m1_ll, &r_m_ll);
+        let z_r0 = self.poly_add(&self.poly_mul_lnh(&y_m0, &sg_minus_2), &mv0);
+        let z_r1 = self.poly_add(&self.poly_shift_up(&y_m1, g - 2), &mv1); // y_m1 safe
+
+        (z_r0, z_r1, m_r)
+    }
+
+    fn solve_key_equation_hgcd(
+        &self,
+        syndrome: &[G; FIELD_SIZE],
+        t_log: u8,
+    ) -> Option<([G; FIELD_SIZE], [G; FIELD_SIZE])> {
+        let mut st = [G::zero(); FIELD_SIZE];
+        self.init_subspace_poly_coeffs(&mut st, t_log);
+
+        // s_t = q_t · s + r_t
+        let (q_t, r_t) = self.poly_div_lnh(&st, syndrome)?;
+
+        // HGCD(s, r_t, t_log) => M = [m00,m01,m10,m11] with
+        //   z1 = m10·s + m11·r_t
+        //      = m11·s_t + (m10 + m11·q_t)·s     [since r_t = s_t − q_t·s]
+        // so the error locator is λ = m10 + m11·q_t  (eq. 79, GF(2): - is +)
+        // and the error evaluator is v1 = m11
+        let (_z0, _z1, m) = self.hgcd(syndrome, &r_t, t_log);
+
+        let u1 = m[2]; // m10
+        let v1 = m[3]; // m11
+        let lambda = self.poly_add(&u1, &self.poly_mul_lnh(&v1, &q_t));
+
+        Some((v1, lambda))
     }
 }
 
@@ -1305,88 +1508,94 @@ pub trait Codec<G: Gf2p8Lut>: CantorBasisLut<G> + LchBasisLut<G> {
     /// * `false`    - if decoding failed
     fn decode_systematic_scalar(&self, received: &mut [G], k_msg: usize) -> bool {
         let n = received.len();
-        let n_log = n.trailing_zeros() as u8;
         let t_parity = n - k_msg;
         if t_parity == 0 {
             return true;
         }
         let t_log = t_parity.trailing_zeros() as u8;
 
-        // Step 1: Syndrome calculation
+        // Step 1: syndrome
         let syndrome = self.compute_syndrome_scalar(received, t_log);
-
-        println!(
-            "t_parity={t_parity}, syndrome={:?}",
-            syndrome.iter().map(|&s| s.into()).collect::<Vec<u8>>()
-        );
-
-        // No errors occurred.
         if syndrome.iter().take(t_parity).all(|&c| c == G::zero()) {
+            println!("Syndrome is zero.");
             return true;
         }
 
-        // Step 2: Solve the key equation (EEA)
-        let (q_coeffs, lambda_coeffs) =
-            if let Some((q, lambda)) = self.solve_key_equation(&syndrome, t_log) {
-                (q, lambda)
-            } else {
-                // TODO: more expressive return type
+        // Step 2: key equation
+        let (v1, lambda) = match self.solve_key_equation_eea(&syndrome, t_log) {
+            Some(pair) => pair,
+            None => {
+                // TODO: error type enum
+                println!("Key equation has no solution.");
                 return false;
-            };
+            }
+        };
 
-        println!(
-            "t_parity={t_parity}, syndrome={:?}, q_coeffs={:?}, lambda_coeffs={:?}",
-            syndrome.iter().map(|&s| s.into()).collect::<Vec<u8>>(),
-            q_coeffs.iter().map(|&x| x.into()).collect::<Vec<u8>>(),
-            lambda_coeffs.iter().map(|&x| x.into()).collect::<Vec<u8>>(),
-        );
+        let deg_lambda = match lambda.degree() {
+            Some(d) => d,
+            None => {
+                println!("Zero locator - no errors.");
+                return true;
+            }
+        };
 
-        let deg_lambda = lambda_coeffs.degree();
-        if deg_lambda.is_none() {
-            // No detected errors
-            return true;
-        }
-        let deg_lambda = deg_lambda.unwrap();
+        // Step 3: root-finding - one T-point FFT per chunk
+        let mut error_indices: Vec<usize> = Vec::with_capacity(deg_lambda);
 
-        // Step 3: Find error locations (roots)
-        let mut error_indices = Vec::with_capacity(deg_lambda);
+        'root: for chunk in 0..(n / t_parity) {
+            let beta = self.get_subspace_point_lut((chunk * t_parity) as u8);
+            let mut evals = lambda;
+            self.fft_scalar(&mut evals[..t_parity], t_log, beta);
 
-        for chunk_idx in 0..(n / t_parity) {
-            let beta = self.get_subspace_point_lut((chunk_idx * t_parity) as u8);
-            let mut chunk_evals = lambda_coeffs;
-            self.fft_scalar(&mut chunk_evals[..t_parity], t_log, beta);
-
-            println!(
-                "chunk_idx={chunk_idx}, chunk_evals={:?}",
-                chunk_evals.iter().map(|&x| x.into()).collect::<Vec<u8>>()
-            );
-
-            for (offset, &eval) in chunk_evals.iter().take(t_parity).enumerate() {
-                if eval == G::zero() {
-                    error_indices.push(chunk_idx * t_parity + offset);
+            for offset in 0..t_parity {
+                if evals[offset] == G::zero() {
+                    error_indices.push(chunk * t_parity + offset);
+                    if error_indices.len() == deg_lambda {
+                        break 'root; // found all roots, stop scanning
+                    }
                 }
             }
         }
 
-        // Integrity check: Number of roots must match degree of lambda
         if error_indices.len() < deg_lambda {
-            return false;
+            println!(
+                "Too few roots. deg_lambda={deg_lambda}, error_indices={error_indices:?}, syndrome={:?}, v1={:?}, lambda={:?}",
+                syndrome.iter().map(|&x| x.into()).collect::<Vec<u8>>(),
+                v1.iter().map(|&x| x.into()).collect::<Vec<u8>>(),
+                lambda.iter().map(|&x| x.into()).collect::<Vec<u8>>(),
+            );
+            return false; // too few roots, uncorrectable
         }
 
-        // Step 4: Calculate error values (eq 78)
-        // Calculate the error locator poly derivative lambda'.
-        let lambdap_coeffs = deriv_poly_lnh(&lambda_coeffs);
+        // Step 4: error values - same per-chunk FFT structure as step 3
+        let lambdap = deriv_poly_lnh(&lambda);
 
-        // Evaluate q and lambda'
-        let mut q_evals = q_coeffs;
-        let mut lambdap_evals = lambdap_coeffs;
-        self.fft_scalar(&mut q_evals, n_log, G::zero());
-        self.fft_scalar(&mut lambdap_evals, n_log, G::zero());
+        for chunk in 0..(n / t_parity) {
+            let chunk_errors: Vec<(usize, usize)> = error_indices
+                .iter()
+                .filter(|&&g| g / t_parity == chunk)
+                .map(|&g| (g, g % t_parity))
+                .collect();
 
-        // Correction: e_i = q(omega_i) / lp(omega_i)
-        for i in error_indices {
-            let error_val = q_evals[i].mul(lambdap_evals[i].inv_lut());
-            received[i] = received[i].add(error_val);
+            if chunk_errors.is_empty() {
+                continue;
+            }
+
+            let beta = self.get_subspace_point_lut((chunk * t_parity) as u8);
+
+            let mut q_evals = v1;
+            let mut lp_evals = lambdap;
+            self.fft_scalar(&mut q_evals[..t_parity], t_log, beta);
+            self.fft_scalar(&mut lp_evals[..t_parity], t_log, beta);
+
+            for (global, offset) in chunk_errors {
+                let lp = lp_evals[offset];
+                if lp == G::zero() {
+                    continue;
+                }
+                let error_val = q_evals[offset].mul_lut(lp.inv_lut());
+                received[global] = received[global].add(error_val);
+            }
         }
 
         true
