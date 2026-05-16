@@ -676,38 +676,6 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
     }
     */
 
-    fn init_eea_modulus(
-        &self,
-        r0: &mut [G], // Coefficient array for EEA (size FIELD_SIZE)
-        t_log: u8,
-        is_systematic: bool,
-    ) {
-        r0.fill(G::zero());
-
-        // s_t(x) = sum (mask_bit_i * x^{2^i})
-        let mask = self.get_subspace_poly_coeff_lut(t_log);
-
-        // Unpack the linearized coefficients into the standard basis
-        // Each bit i corresponds to the term x^(2^{i+1})
-        r0[1] = G::one(); // Coefficient of x stays 1.
-        for i in 0..t_log {
-            if (mask >> i) & 1 == 1 {
-                // Map bit i to the index 2^i
-                // e.g., i=0 -> r0[1], i=1 -> r0[2], i=2 -> r0[4]
-                r0[1 << (i + 1)] = G::one();
-            }
-        }
-
-        // Systematic data shift (Eq 76)
-        // To find errors in data blocks (indices >= T), the modulus
-        // must be shifted by the subspace evaluation of the coset.
-        // In the Cantor basis where s_j(v_j) = 1, this shift is always 1.
-        if is_systematic {
-            // r0(x) becomes s_t(x) + 1
-            r0[0] = G::one();
-        }
-    }
-
     /// Fused multiply-add scaled to a subspace of size 2^k.
     ///
     /// out ^= (coeff * X_deg) * rhs (mod s_k(x))
@@ -1069,30 +1037,23 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
     /// Derivation: $s_{g-2}^2 = s_{g-1} + c·s_{g-2}$  (Cantor basis recursion),
     /// so $s_{g-2}·p_m$ expands back to $s_{g-2}·p_lh + s_{g-1}·p_h$, recovering p.
     fn poly_hgcd_middle(&self, p: &[G; FIELD_SIZE], g: u8) -> ([G; FIELD_SIZE], [G; FIELD_SIZE]) {
+        debug_assert!(g >= 2);
         let q = 1usize << (g - 2); // 2^{g-2}
-        let h = q * 2; // 2^{g-1}
+        let h = 1usize << (g - 1); // 2^{g-1}
+        let c = self.eval_subspace_poly_lut(g - 2, self.get_subspace_point_lut(1u8 << (g - 2)));
 
-        let (mut p_ll, mut p_lh, mut p_h) = (
-            [G::zero(); FIELD_SIZE],
-            [G::zero(); FIELD_SIZE],
-            [G::zero(); FIELD_SIZE],
-        );
-        for i in 0..q {
-            p_ll[i] = p[i];
-            p_lh[i] = p[i + q];
-            p_h[i] = p[i + h];
-        }
-
-        // c = s_{g-2}(v_{g-2}), where v_{g-2} = ω_{2^{g-2}}
-        let v_gm2 = self.get_subspace_point_lut(1u8 << (g - 2));
-        let c = self.eval_subspace_poly_lut(g - 2, v_gm2);
-
-        // p_m[0..q)  = p_lh + c · p_h  (low part)
-        // p_m[q..2q) = p_h             (shift of p_h by s_{g-2})
+        let mut p_ll = [G::zero(); FIELD_SIZE];
         let mut p_m = [G::zero(); FIELD_SIZE];
+        p_ll[..q].copy_from_slice(&p[..q]);
+
         for i in 0..q {
-            p_m[i] = p_lh[i].add(c.mul_lut(p_h[i]));
-            p_m[i + q] = p_h[i];
+            // Lower block of p_m: derived from p[q..h] and p[h..h+q]
+            p_m[i] = p[i + q].add(c.mul_lut(p[i + h]));
+            p_m[i + q] = p[i + h];
+            // Upper block of p_m: derived from p[h+q..h+2q] and p[2h..2h+q]
+            // (these indices are 0 for deg(p) < 2^g but nonzero when deg(p) = 2^{g-1}..2^g-1)
+            p_m[i + h] = p[i + h + q].add(c.mul_lut(p[i + 2 * h]));
+            p_m[i + h + q] = p[i + 2 * h];
         }
 
         (p_ll, p_m)
@@ -1411,12 +1372,12 @@ pub trait Codec<G: Gf2p8Lut>: CantorBasisLut<G> + LchBasisLut<G> {
             // Copy received chunk into workspace
             // Pad with zeros if the last chunk is partial (Eq 63)
             workspace[..t_parity].fill(G::zero());
-            for (w, &r) in workspace.iter_mut().zip(chunk.iter()) {
+            for (w, &r) in workspace[..t_parity].iter_mut().zip(chunk.iter()) {
                 *w = r;
             }
 
             // Perform the partial IFFT (Algorithm 2)
-            // This moves the chunk from Evaluation Space -> Novel Basis Coefficients
+            // This moves the chunk from evaluation space to basis X coefficients
             self.ifft_scalar(&mut workspace[..t_parity], t_log, beta);
 
             // Accumulate into the syndrome buffer
@@ -1520,6 +1481,13 @@ pub trait Codec<G: Gf2p8Lut>: CantorBasisLut<G> + LchBasisLut<G> {
             println!("Syndrome is zero.");
             return true;
         }
+        println!(
+            "syndrome[..t_parity] = {:?}",
+            &syndrome[..t_parity]
+                .iter()
+                .map(|&x| x.into())
+                .collect::<Vec<_>>()
+        );
 
         // Step 2: key equation
         let (v1, lambda) = match self.solve_key_equation_eea(&syndrome, t_log) {

@@ -735,4 +735,22 @@ mod tests {
             assert_eq!(q[i], a[i].mul_lut(c_inv));
         }
     }
+
+    #[test]
+    fn field_non_degeneracy() {
+        let bases = BasesLut11d::new();
+
+        for k in 1..=7 {
+            let v_k = bases.get_subspace_point_lut(1 << k);
+            let v_k_minus_1 = bases.get_subspace_point_lut(1 << (k - 1));
+            let s_k_minus_1_v_k = bases.eval_subspace_poly_lut(k - 1, v_k);
+            let s_k_minus_1_v_k_minus_1 = bases.eval_subspace_poly_lut(k - 1, v_k_minus_1);
+            let k_minus_1 = k - 1;
+            println!(
+                "s_{k_minus_1}(v_{k}) = {:?}, s_{k_minus_1}(v_{k_minus_1}) = {:?}",
+                s_k_minus_1_v_k, s_k_minus_1_v_k_minus_1
+            );
+            assert_ne!(s_k_minus_1_v_k, s_k_minus_1_v_k_minus_1);
+        }
+    }
 }
