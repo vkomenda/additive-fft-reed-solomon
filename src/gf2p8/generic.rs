@@ -189,8 +189,7 @@ pub trait CantorBasis<G: Gf2p8>:
     /// Returns the i-th point in the basis subspace.
     fn get_subspace_point(&self, i: u8) -> G {
         let mut point: G = G::zero();
-        // Reverse the order of indices to match the reversed storage order.
-        for (bit, elem) in (0..8).rev().zip(self.into_iter()) {
+        for (bit, elem) in (0..8).zip(*self) {
             if (i >> bit) & 1 != 0 {
                 point = point.add(elem);
             }
@@ -842,21 +841,7 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
     }
 
     fn init_subspace_poly_coeffs(&self, st: &mut [G], t_log: u8) {
-        st.fill(G::zero());
         st[1 << t_log] = G::one(); // Coefficient of x stays 1.
-
-        // // s_t(x) = sum (mask_bit_i * x^{2^i})
-        // let mask = self.get_subspace_poly_coeff_lut(t_log);
-
-        // // Unpack the linearized coefficients into the standard basis
-        // // Each bit i corresponds to the term x^(2^{i+1})
-        // for i in 0..t_log {
-        //     if (mask >> i) & 1 == 1 {
-        //         // Map bit i to the index 2^i
-        //         // e.g., i=0 -> r0[1], i=1 -> r0[2], i=2 -> r0[4]
-        //         st[1 << (i + 1)] = G::one();
-        //     }
-        // }
     }
 
     /// Division in the monomial basis.
@@ -1171,6 +1156,8 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         (z_r0, z_r1, m_r)
     }
 
+    /// This is functionally equivalent to `solve_key_equation_eea` and is what the LNH paper
+    /// has.
     fn solve_key_equation_hgcd(
         &self,
         syndrome: &[G; FIELD_SIZE],
@@ -1490,7 +1477,7 @@ pub trait Codec<G: Gf2p8Lut>: CantorBasisLut<G> + LchBasisLut<G> {
         );
 
         // Step 2: key equation
-        let (v1, lambda) = match self.solve_key_equation_eea(&syndrome, t_log) {
+        let (v1, lambda) = match self.solve_key_equation_hgcd(&syndrome, t_log) {
             Some(pair) => pair,
             None => {
                 // TODO: error type enum

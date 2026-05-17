@@ -763,6 +763,6 @@ mod tests {
             .iter()
             .map(|&p| u8::from(bases.get_subspace_point_lut(p)))
             .collect();
-        assert_eq!(points, [231, 88, 200, 86, 146, 152, 214, 1]);
+        assert_eq!(points, [1, 214, 152, 146, 86, 200, 88, 231]);
     }
 }

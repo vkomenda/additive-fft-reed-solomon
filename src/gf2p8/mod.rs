@@ -164,9 +164,6 @@ mod tests {
         let basis = CantorBasis11d::new();
         let elements: Vec<Gf2p8_11d> = basis.into_iter().collect();
 
-        assert_eq!(u8::from(basis.get_subspace_point(0)), 0);
-        assert_eq!(basis.get_subspace_point(1), elements[7]);
-        assert_eq!(basis.get_subspace_point(2), elements[6]);
-        assert_eq!(basis.get_subspace_point(4), elements[5]);
+        assert!((0..8).all(|i| basis.get_subspace_point(2u8.pow(i)) == elements[i as usize]));
     }
 }
