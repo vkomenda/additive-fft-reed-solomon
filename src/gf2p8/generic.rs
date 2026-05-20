@@ -1324,6 +1324,80 @@ pub trait Codec<G: Gf2p8Lut>: CantorBasisLut<G> + LchBasisLut<G> {
         received[t_parity..].copy_from_slice(&workspace[..t_parity]);
     }
 
+    /// Recomputes data shards from parity shards when $n = 2T$.
+    fn recompute_data_from_parity_sharded(&self, received: &mut [&mut [G]]) {
+        let n = received.len();
+        let n_log = n.trailing_zeros() as u8;
+        let t_log = n_log - 1;
+        let t_parity = 1 << t_log;
+        let shard_len = received[0].len();
+
+        let mut backing = vec![G::zero(); t_parity * shard_len];
+        let mut hdrs: [MaybeUninit<&mut [G]>; FIELD_SIZE / 2] =
+            unsafe { MaybeUninit::uninit().assume_init() };
+        for (i, chunk) in backing.chunks_mut(shard_len).enumerate() {
+            hdrs[i].write(chunk);
+        }
+        let workspace: &mut [&mut [G]] =
+            unsafe { std::slice::from_raw_parts_mut(hdrs.as_mut_ptr() as *mut &mut [G], t_parity) };
+
+        // Copy parity shards into workspace, then recover polynomial coefficients
+        for i in 0..t_parity {
+            workspace[i].copy_from_slice(received[i]);
+        }
+        self.ifft_sharded(workspace, t_log, G::zero());
+
+        // Evaluate at the data chunk's subspace to recover data shards
+        self.fft_sharded(
+            workspace,
+            t_log,
+            self.get_subspace_point_lut(t_parity as u8),
+        );
+
+        for i in 0..t_parity {
+            received[i + t_parity].copy_from_slice(workspace[i]);
+        }
+    }
+
+    /*
+    fn recompute_data_from_parity_sharded(&self, received: &mut [&mut [G]]) {
+        let n = received.len();
+        let n_log = n.trailing_zeros() as u8;
+        let t_log = n_log - 1;
+        let t_parity = 1 << t_log;
+        let shard_len = received[0].len();
+
+        // TODO: accept the workspace or the backing store as a fn argument
+        let mut backing = vec![G::zero(); t_parity * shard_len];
+
+        // Fixed-size header array on the stack: FIELD_SIZE/2 × 16 bytes = 2 KB,
+        // regardless of shard size or t_parity.
+        let mut hdrs: [MaybeUninit<&mut [G]>; FIELD_SIZE / 2] =
+            unsafe { MaybeUninit::uninit().assume_init() };
+
+        for (i, chunk) in backing.chunks_mut(shard_len).enumerate() {
+            hdrs[i].write(chunk);
+        }
+
+        let workspace: &mut [&mut [G]] =
+            unsafe { std::slice::from_raw_parts_mut(hdrs.as_mut_ptr() as *mut &mut [G], t_parity) };
+
+        for i in 0..t_parity {
+            workspace[i].copy_from_slice(&received[i]);
+        }
+        self.ifft_sharded(workspace, t_log, G::zero());
+        self.fft_sharded(
+            workspace,
+            t_log,
+            self.get_subspace_point_lut(t_parity as u8),
+        );
+
+        for i in 0..t_parity {
+            received[i + t_parity].clone_from_slice(&workspace[i]);
+        }
+    }
+    */
+
     /// Systematic scalar RS decoder.
     ///
     /// # Arguments
