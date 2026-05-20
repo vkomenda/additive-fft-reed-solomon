@@ -822,7 +822,8 @@ mod tests {
 
             // Corrupt data
             for (i, r) in received.iter_mut().skip(t_parity).enumerate() {
-                r.fill((i as u8 + 2).into());
+                // r.fill((i as u8 + 2).into());
+                r.fill(Gf2p8_11d::zero());
             }
 
             let mut received_slices: Vec<&mut [Gf2p8_11d]> =
