@@ -810,6 +810,22 @@ mod tests {
     }
 
     #[test]
+    fn encode_sharded_injective() {
+        const SHARD_LEN: usize = 1;
+
+        let bases = BasesLut11d::new();
+
+        for t_log in 1..8 {
+            let t_parity = 1 << t_log;
+
+            let scalar = generate_lch_codeword(&bases, t_parity);
+            let sharded = generate_sharded_lch_codeword(&bases, t_parity, SHARD_LEN);
+
+            assert_eq!(scalar, sharded.into_iter().flatten().collect::<Vec<_>>());
+        }
+    }
+
+    #[test]
     fn recompute_max_corrupt_data_sharded() {
         const SHARD_LEN: usize = 1;
 
@@ -821,8 +837,7 @@ mod tests {
             let mut received = original.clone();
 
             // Corrupt data
-            for (i, r) in received.iter_mut().skip(t_parity).enumerate() {
-                // r.fill((i as u8 + 2).into());
+            for r in received.iter_mut().skip(t_parity) {
                 r.fill(Gf2p8_11d::zero());
             }
 
