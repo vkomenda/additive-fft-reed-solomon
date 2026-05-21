@@ -591,64 +591,12 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         for i in 0..half {
             let (left, right) = shards.split_at_mut(i + half);
             for (ai, bi) in left[i].iter_mut().zip(right[0].iter_mut()) {
-                let t = lut[bi.into_usize()];
                 *bi = bi.add(*ai); //  d' = g0 + g1
+                let t = lut[bi.into_usize()];
                 *ai = ai.add(t); //  d  = g0 + T*d'
             }
         }
     }
-
-    /*
-    fn fft_sharded(&self, shards: &mut [&mut [u8]], k: u8, beta: G) {
-        if k == 0 {
-            return;
-        }
-        let half = 1 << (k - 1);
-
-        let (left, right) = shards.split_at_mut(half);
-        let twiddle = self.eval_subspace_poly_lut(k - 1, beta);
-
-        for i in 0..half {
-            let (s_i, s_i_half) = (&mut left[i], &mut right[i]);
-            for (byte_l, byte_r) in s_i.iter_mut().zip(s_i_half.iter_mut()) {
-                let d_i = G::from(*byte_l);
-                let d_i_half = G::from(*byte_r);
-                let g_i_0 = d_i.add(twiddle.mul(d_i_half));
-                let g_i_1 = g_i_0.add(d_i_half);
-                *byte_l = g_i_0.into();
-                *byte_r = g_i_1.into();
-            }
-        }
-
-        self.fft_sharded(left, k - 1, beta);
-        self.fft_sharded(right, k - 1, beta.add(self.get_basis_point_lut(k - 1)));
-    }
-
-    fn ifft_sharded(&self, shards: &mut [&mut [u8]], k: u8, beta: G) {
-        if k == 0 {
-            return;
-        }
-        let half = 1 << (k - 1);
-
-        let (left, right) = shards.split_at_mut(half);
-        self.ifft_sharded(left, k - 1, beta);
-        self.ifft_sharded(right, k - 1, beta.add(self.get_basis_point_lut(k - 1)));
-
-        let twiddle = self.eval_subspace_poly_lut(k - 1, beta);
-
-        for i in 0..half {
-            let (s_i, s_i_half) = (&mut left[i], &mut right[i]);
-            for (byte_l, byte_r) in s_i.iter_mut().zip(s_i_half.iter_mut()) {
-                let g_i_0 = G::from(*byte_l);
-                let g_i_1 = G::from(*byte_r);
-                let d_i_half = g_i_0.add(g_i_1);
-                let d_i = g_i_0.add(twiddle.mul(d_i_half));
-                *byte_l = d_i.into();
-                *byte_r = d_i_half.into();
-            }
-        }
-    }
-    */
 
     /// Fused multiply-add scaled to a subspace of size 2^k.
     ///
