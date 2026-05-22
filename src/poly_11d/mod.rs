@@ -20,20 +20,20 @@ impl Gf2p8Lut for Gf2p8_11d {
     }
 
     fn inv_lut(self) -> Self {
-        generated::INV_TABLE[u8::from(self) as usize].into()
+        generated::INV_TABLE[self.into_usize()].into()
+    }
+
+    fn gfni_mul_matrix(self) -> u64 {
+        generated::GFNI_MUL_TABLE[self.into_usize()]
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct BasesLut11d {
-    twiddle_factors: &'static [BitMatrix],
-}
+pub struct BasesLut11d;
 
 impl BasesLut11d {
     pub fn new() -> Self {
-        Self {
-            twiddle_factors: &generated::TWIDDLE_FACTORS,
-        }
+        Self
     }
 }
 
@@ -60,13 +60,9 @@ impl LchBasisLut<Gf2p8_11d> for BasesLut11d {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        encode, fft_recursive,
-        gf2p8::{
-            CantorBasis, CantorBasis11d, Gf2p8,
-            generic::{Codec, FIELD_SIZE, PolyOps},
-        },
-        ifft_recursive, reconstruct_systematic,
+    use crate::gf2p8::{
+        CantorBasis, CantorBasis11d, Gf2p8,
+        generic::{Codec, FIELD_SIZE, PolyOps},
     };
 
     #[test]
@@ -80,173 +76,18 @@ mod tests {
     }
 
     #[test]
-    fn bit_matrix_correctness() {
-        let a: Gf2p8_11d = 0x42.into();
-        let b = 0x13.into();
-        let expected = a.mul(b);
+    fn gfni_mul_matrix_correctness() {
+        let elems = || (0..FIELD_SIZE).map(|i| Gf2p8_11d::from(i as u8));
+        for a in elems() {
+            for b in elems() {
+                let expected = a.mul(b);
 
-        let mat = a.into_bit_matrix();
-        let actual = mat.apply(b.into());
+                let mat = a.into_mul_matrix();
+                let actual = mat.apply(b.into());
 
-        assert_eq!(actual, expected.into());
-    }
-
-    #[test]
-    fn twiddle_matrix_ranks() {
-        let basis = CantorBasis11d::new();
-        let twiddles = basis.generate_lch_twiddle_tower::<256>();
-
-        for (i, mat) in twiddles.iter().enumerate() {
-            let rank = mat.rank();
-            assert_eq!(
-                rank, 8,
-                "Twiddle matrix at layer {} is singular (Rank {})",
-                i, rank
-            );
-        }
-    }
-
-    // #[test]
-    // fn verify_unique_points() {
-    //     let basis = CantorBasis11d::new();
-    //     let twiddles = basis.generate_lch_twiddle_tower::<256>();
-
-    //     println!("{twiddles:?}");
-
-    //     let mut shards = vec![vec![0u8; 1]; 256];
-    //     shards[1][0] = 1; // f(x) = x
-
-    //     let mut refs: Vec<&mut [u8]> = shards.iter_mut().map(|s| s.as_mut_slice()).collect();
-    //     fft_recursive(&mut refs, &twiddles);
-
-    //     println!("{shards:?}");
-
-    //     let mut seen = std::collections::HashSet::new();
-    //     for i in 0..256 {
-    //         let val = shards[i][0];
-    //         assert!(
-    //             seen.insert(val),
-    //             "Duplicate point {} found at index {}!",
-    //             val,
-    //             i
-    //         );
-    //     }
-    // }
-
-    #[test]
-    fn recursive_fft_4_shards() {
-        // Data: 4 shards of 2 bytes each
-        let mut s0 = [10, 20];
-        let mut s1 = [30, 40];
-        let mut s2 = [50, 60];
-        let mut s3 = [70, 80];
-
-        let mut shards: Vec<&mut [u8]> = vec![&mut s0, &mut s1, &mut s2, &mut s3];
-
-        fft_recursive(&mut shards, &generated::TWIDDLE_FACTORS);
-
-        // Verify that all shards were modified
-        assert_ne!(s0, [10, 20], "Shard 0 was not modified");
-        assert_ne!(s1, [30, 40], "Shard 1 was not modified");
-        assert_ne!(s2, [50, 60], "Shard 2 was not modified");
-        assert_ne!(s3, [70, 80], "Shard 3 was not modified");
-    }
-
-    #[test]
-    fn fft_ifft_composition_identity() {
-        let basis = BasesLut11d::new();
-        let twiddles = &basis.twiddle_factors;
-
-        let mut original = vec![vec![0u8; 1]; 128];
-        for i in 0..128 {
-            original[i][0] = i as u8;
-        }
-
-        let mut work = original.clone();
-        let mut refs: Vec<&mut [u8]> = work.iter_mut().map(|s| s.as_mut_slice()).collect();
-
-        // Transform to evaluations
-        fft_recursive(&mut refs, twiddles);
-
-        // Transform back to coefficients
-        ifft_recursive(&mut refs, twiddles);
-
-        assert_eq!(work, original);
-    }
-
-    #[test]
-    fn dual_subspace_identity() {
-        const N_DATA_SHARDS: usize = 128;
-        const SHARD_LEN: usize = 8;
-        let basis = BasesLut11d::new();
-        let twiddles = &basis.twiddle_factors;
-        let bridge_mat = twiddles[0];
-        let recursive_twiddles = &twiddles[1..];
-
-        let mut data_shards = vec![vec![0u8; SHARD_LEN]; N_DATA_SHARDS];
-        for i in 0..N_DATA_SHARDS {
-            for j in 0..SHARD_LEN {
-                data_shards[i][j] = (i ^ j) as u8; // Random-ish data
+                assert_eq!(actual, expected.into());
             }
         }
-
-        let mut expected_parity = vec![vec![0u8; SHARD_LEN]; N_DATA_SHARDS];
-        {
-            let data_refs: Vec<&[u8]> = data_shards.iter().map(|s| s.as_slice()).collect();
-            let mut parity_refs: Vec<&mut [u8]> = expected_parity
-                .iter_mut()
-                .map(|s| s.as_mut_slice())
-                .collect();
-            encode::<N_DATA_SHARDS, Gf2p8_11d>(&data_refs, &mut parity_refs, twiddles);
-        }
-
-        let mut manual_parity = data_shards.clone();
-        let mut manual_refs: Vec<&mut [u8]> =
-            manual_parity.iter_mut().map(|s| s.as_mut_slice()).collect();
-        ifft_recursive(&mut manual_refs, recursive_twiddles);
-
-        for i in 0..N_DATA_SHARDS {
-            for j in 0..SHARD_LEN {
-                manual_refs[i][j] = bridge_mat.apply(manual_refs[i][j]);
-            }
-        }
-
-        fft_recursive(&mut manual_refs, recursive_twiddles);
-
-        for i in 0..N_DATA_SHARDS {
-            assert_eq!(
-                manual_refs[i], expected_parity[i],
-                "Bridge identity failed at shard {}. Identity: P = FFT(Bridge(IFFT(D)))",
-                i
-            );
-        }
-    }
-
-    /// Helper to create a 64-shard codeword (32 data, 32 parity)
-    fn generate_test_codeword(shard_len: usize) -> Vec<Vec<u8>> {
-        let basis = BasesLut11d::new();
-        let twiddles = &basis.twiddle_factors[2..];
-
-        // Create 32 data shards with distinct patterns
-        let mut shards = vec![vec![0u8; shard_len]; 64];
-        for i in 0..32 {
-            for j in 0..shard_len {
-                shards[i][j] = (i ^ j) as u8;
-            }
-        }
-
-        // Encode to generate shards 32..64 (Parity)
-        // Note: Using a temporary slice-of-mut-slices for the encoder
-        let mut refs: Vec<&mut [u8]> = shards.iter_mut().map(|s| s.as_mut_slice()).collect();
-        let (data_part, parity_part) = refs.split_at_mut(32);
-
-        encode::<32, Gf2p8_11d>(
-            &data_part.iter().map(|s| s.as_ref()).collect::<Vec<_>>(),
-            parity_part,
-            twiddles,
-        );
-
-        shards
     }
 
     // Assumption: k_msg == t_parity, hence n == 2 * t_parity
@@ -291,33 +132,6 @@ mod tests {
         codeword[..t_parity].clone_from_slice(&parity);
         codeword[t_parity..].clone_from_slice(&message);
         codeword
-    }
-
-    #[test]
-    fn reconstruct_no_erasures() {
-        let shard_len = 8;
-        let original_codeword = generate_test_codeword(shard_len);
-        let basis = BasesLut11d::new();
-        let twiddles = &basis.twiddle_factors[2..];
-
-        let mut received = Vec::new();
-        for i in 0..64 {
-            received.push((i as u8, original_codeword[i].as_slice()));
-        }
-
-        let mut workspace_data = vec![vec![0u8; shard_len]; 64];
-        let mut workspace: Vec<&mut [u8]> = workspace_data
-            .iter_mut()
-            .map(|s| s.as_mut_slice())
-            .collect();
-
-        let success =
-            reconstruct_systematic::<64, Gf2p8_11d>(&received, &mut workspace, twiddles, &basis);
-
-        assert!(success);
-        for i in 0..64 {
-            assert_eq!(workspace[i], original_codeword[i]);
-        }
     }
 
     #[test]

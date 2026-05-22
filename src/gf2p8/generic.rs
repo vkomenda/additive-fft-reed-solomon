@@ -124,13 +124,17 @@ pub trait Gf2p8: Sized + Copy + From<u8> + Into<u8> + PartialEq {
     }
 
     /// Create a bit matrix for (x * self) mod POLY
-    fn into_bit_matrix(self) -> BitMatrix {
+    fn into_mul_matrix(self) -> BitMatrix {
         let mut m = BitMatrix([0u8; 8]);
         for i in 0..8 {
             m.0[i] = self.mul((1u8 << i).into()).into();
         }
 
         m.transpose()
+    }
+
+    fn iter_gfni_mul_matrices() -> impl Iterator<Item = u64> {
+        (0..FIELD_SIZE).map(|i| Self::from(i as u8).into_mul_matrix().to_gfni_u64())
     }
 
     // TODO: vectorized ops need to move to a dedicated trait.
@@ -170,13 +174,6 @@ pub trait CantorBasis<G: Gf2p8>:
         basis.into_iter().collect()
     }
 
-    fn into_fft_twiddle_matrices(self) -> Vec<BitMatrix> {
-        // Convert each basis element into an 8x8 bit matrix.
-        // In the actual Firedancer assembly, these are the constants
-        // that get loaded into ZMM registers for vgf2p8affineqb.
-        self.into_iter().map(|a| a.into_bit_matrix()).collect()
-    }
-
     /// Evaluates the erasure locator polynomial E(x) at point alpha_i.
     /// E(x) = product over missing indices j of (x ^ alpha_j).
     fn eval_erasure_locator_poly(&self, i: u8, erased_indices: &[u8]) -> G {
@@ -212,32 +209,6 @@ pub trait CantorBasis<G: Gf2p8>:
             num_points,
             (0..num_points).map(|i| self.get_subspace_point(i as u8)),
         )
-    }
-
-    /// Generates the LCH Twiddle Tower for an N-point FFT.
-    fn generate_lch_twiddle_tower<const N: usize>(&self) -> Vec<BitMatrix> {
-        let k = N.trailing_zeros() as usize;
-
-        let mut current_basis: Vec<G> = self.into_iter().take(k).collect();
-        let mut twiddles = Vec::with_capacity(k);
-
-        // Build the tower from the bottom
-        for i in (0..k).rev() {
-            // The pivot for the current butterfly layer
-            let beta = current_basis[i];
-            twiddles.push(beta.into_bit_matrix());
-
-            // Transform the lower-level basis elements for the sub-FFTs.
-            // This is the "Subspace Polynomial" step: L(x) = x^2 + x*beta.
-            // It ensures that the sub-problems see unique points.
-            for j in 0..i {
-                let x = current_basis[j];
-                current_basis[j] = (x.mul(x)).add(x.mul(beta));
-            }
-        }
-
-        twiddles.reverse();
-        twiddles
     }
 
     fn eval_subspace_poly(&self, k: u8, x: G) -> G {
@@ -429,6 +400,8 @@ pub trait Gf2p8Lut: Gf2p8 {
     fn make_mul_lut(self) -> [Self; 256] {
         std::array::from_fn(|i| self.mul_lut(Self::from(i as u8)))
     }
+
+    fn gfni_mul_matrix(self) -> u64;
 }
 
 /// Precompted lookup table operations on the Cantor basis subspace.
@@ -857,7 +830,7 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
 
     /// Multiply p by s_k = X_{2^k} by shifting coefficients up by 2^k.
     ///
-    /// Valid only when every nonzero coefficient of p sits at an index
+    /// Valid only when every non-zero coefficient of p sits at an index
     /// where bit k is 0 — always satisfied by the HGCD invariants.
     fn poly_shift_up(&self, p: &[G; FIELD_SIZE], k: u8) -> [G; FIELD_SIZE] {
         let shift = 1usize << k;
@@ -891,7 +864,7 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
             p_m[i] = p[i + q].add(c.mul_lut(p[i + h]));
             p_m[i + q] = p[i + h];
             // Upper block of p_m: derived from p[h+q..h+2q] and p[2h..2h+q]
-            // (these indices are 0 for deg(p) < 2^g but nonzero when deg(p) = 2^{g-1}..2^g-1)
+            // (these indices are 0 for deg(p) < 2^g but non-zero when deg(p) = 2^{g-1}..2^g-1)
             p_m[i + h] = p[i + h + q].add(c.mul_lut(p[i + 2 * h]));
             p_m[i + h + q] = p[i + 2 * h];
         }
@@ -983,7 +956,7 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
         // Step 7: divide z_M0 by z_M1
         let (q_m, r_m) = self
             .poly_div_lnh(&z_m0, &z_m1)
-            .expect("z_m1 nonzero: guaranteed by the HGCD degree invariant");
+            .expect("z_m1 non-zero: guaranteed by the HGCD degree invariant");
 
         // Step 8: decompose z_M1 and r_M into LL and M parts
         let (z_m1_ll, z_m1_m) = self.poly_hgcd_middle(&z_m1, g);

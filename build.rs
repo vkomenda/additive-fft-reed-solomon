@@ -51,22 +51,11 @@ fn main() {
     write!(f, "\npub const CANTOR_BASIS: [u8; 8] = [").unwrap();
     write_points(&mut f, basis.into_iter(), false);
 
-    let mut twiddles = basis.into_fft_twiddle_matrices();
-    // Reverse the twiddle factors in storage. They need to come in rev order at run time.
-    twiddles.reverse();
+    let gfni_mul_iter = Gf2p8_11d::iter_gfni_mul_matrices();
 
-    writeln!(
-        f,
-        "\npub const TWIDDLE_FACTORS: [BitMatrix; {}] = [",
-        twiddles.len()
-    )
-    .unwrap();
-    for mat in twiddles {
-        write!(f, "    BitMatrix([").unwrap();
-        for byte in mat.0 {
-            write!(f, "0x{:02x}, ", byte).unwrap();
-        }
-        writeln!(f, "]),").unwrap();
+    writeln!(f, "\npub const GFNI_MUL_TABLE: [u64; {}] = [", FIELD_SIZE).unwrap();
+    for mat in gfni_mul_iter {
+        writeln!(f, "    0x{:08x},", mat).unwrap();
     }
     writeln!(f, "];").unwrap();
 
@@ -77,7 +66,12 @@ fn main() {
 
     let sub_poly_luts = basis.gen_all_subspace_poly_luts();
 
-    writeln!(f, "\npub const SUBSPACE_POLY_VALUES: [[u8; 256]; 9] = [",).unwrap();
+    writeln!(
+        f,
+        "\npub const SUBSPACE_POLY_VALUES: [[u8; {}]; 9] = [",
+        FIELD_SIZE,
+    )
+    .unwrap();
     for lut in sub_poly_luts {
         write!(f, "    [").unwrap();
         write_points(&mut f, lut.into_iter(), true);
@@ -91,6 +85,7 @@ fn main() {
 
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=src/gf2p8/mod.rs");
+    println!("cargo:rerun-if-changed=src/gf2p8/avx512_impl.rs");
     println!("cargo:rerun-if-changed=src/gf2p8/generic.rs");
     println!("cargo:rerun-if-changed=src/gf2p8/bit_matrix.rs");
 }

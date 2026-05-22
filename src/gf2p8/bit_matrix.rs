@@ -76,6 +76,10 @@ impl BitMatrix {
         }
         rank
     }
+
+    pub fn to_gfni_u64(self) -> u64 {
+        u64::from_be_bytes(self.0)
+    }
 }
 
 #[cfg(test)]
@@ -94,7 +98,7 @@ mod tests {
     // M(a ^ b) == M(a) ^ M(b)
     #[test]
     fn apply_linearity() {
-        let m = Gf2p8_11d::from(0x42).into_bit_matrix();
+        let m = Gf2p8_11d::from(0x42).into_mul_matrix();
         let a = 0x57;
         let b = 0x83;
 
@@ -119,7 +123,7 @@ mod tests {
     fn field_consistency() {
         for a_val in [0x02, 0x42, 0x80, 0xFF] {
             let a = Gf2p8_11d::from(a_val);
-            let matrix = a.into_bit_matrix();
+            let matrix = a.into_mul_matrix();
             for b_val in [0x01, 0x02, 0x55, 0xAA] {
                 let b = Gf2p8_11d::from(b_val);
                 let expected = u8::from(a.mul(b));
