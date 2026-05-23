@@ -2,7 +2,7 @@ use super::generic::{CantorBasisLut, Gf2p8Lut};
 use core::arch::x86_64::*;
 
 /// Forward butterfly transforming (a, b) into (a + T·b, b + a + T·b).
-#[target_feature(enable = "avx512f,avx512bw,gfni")]
+#[cfg(avx512_gfni)]
 pub unsafe fn butterfly_fwd_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
     let mut i = 0;
     while i + 64 <= len {
@@ -28,7 +28,7 @@ pub unsafe fn butterfly_fwd_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512
 }
 
 /// Inverse butterfly transforming (g0, g1) into (g0 + T·(g0+g1), g0+g1).
-#[target_feature(enable = "avx512f,avx512bw,gfni")]
+#[cfg(avx512_gfni)]
 pub unsafe fn butterfly_inv_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
     let mut i = 0;
     while i + 64 <= len {
@@ -53,7 +53,7 @@ pub unsafe fn butterfly_inv_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512
     }
 }
 
-#[target_feature(enable = "avx512f,avx512bw,gfni")]
+#[cfg(avx512_gfni)]
 pub unsafe fn fft_sharded_gfni<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [&mut [G]],
@@ -82,7 +82,7 @@ pub unsafe fn fft_sharded_gfni<G: Gf2p8Lut>(
     unsafe { fft_sharded_gfni(basis, &mut shards[half..], k - 1, next_beta) };
 }
 
-#[target_feature(enable = "avx512f,avx512bw,gfni")]
+#[cfg(avx512_gfni)]
 pub unsafe fn ifft_sharded_gfni<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [&mut [G]],
@@ -120,6 +120,14 @@ mod tests {
     use crate::gf2p8::Gf2p8_11d;
     use crate::poly_11d::BasesLut11d;
 
+    #[test]
+    fn debug_gfni_cfg() {
+        println!("target_arch x86_64: {}", cfg!(target_arch = "x86_64"));
+        println!("avx512f: {}", cfg!(target_feature = "avx512f"));
+        println!("avx512bw: {}", cfg!(target_feature = "avx512bw"));
+        println!("gfni: {}", cfg!(target_feature = "gfni"));
+    }
+
     fn make_shards(n: usize, shard_len: usize) -> Vec<Vec<Gf2p8_11d>> {
         (0..n)
             .map(|i| {
@@ -133,10 +141,8 @@ mod tests {
     /// GFNI FFT produces the same evaluations as the LUT butterfly.
     /// shard_len covers: pure tail (63), exact ZMM (64), ZMM + tail (65), two ZMMs (128).
     #[test]
+    #[cfg(avx512_gfni)]
     fn fft_gfni_matches_lut() {
-        if !is_x86_feature_detected!("avx512f") || !is_x86_feature_detected!("gfni") {
-            return;
-        }
         let bases = BasesLut11d::new();
         for shard_len in [1, 63, 64, 65, 128] {
             for k in 1u8..=4 {
@@ -163,10 +169,8 @@ mod tests {
 
     /// GFNI IFFT produces the same coefficients as the LUT butterfly.
     #[test]
+    #[cfg(avx512_gfni)]
     fn ifft_gfni_matches_lut() {
-        if !is_x86_feature_detected!("avx512f") || !is_x86_feature_detected!("gfni") {
-            return;
-        }
         let bases = BasesLut11d::new();
         for shard_len in [1, 63, 64, 65, 128] {
             for k in 1u8..=4 {
@@ -192,10 +196,8 @@ mod tests {
 
     /// IFFT;FFT ~= Id.
     #[test]
+    #[cfg(avx512_gfni)]
     fn ifft_then_fft_gfni_is_identity() {
-        if !is_x86_feature_detected!("avx512f") || !is_x86_feature_detected!("gfni") {
-            return;
-        }
         let bases = BasesLut11d::new();
         for shard_len in [1, 63, 64, 65] {
             for k in 1u8..=4 {

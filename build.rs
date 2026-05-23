@@ -88,4 +88,13 @@ fn main() {
     println!("cargo:rerun-if-changed=src/gf2p8/avx512_impl.rs");
     println!("cargo:rerun-if-changed=src/gf2p8/generic.rs");
     println!("cargo:rerun-if-changed=src/gf2p8/bit_matrix.rs");
+
+    // CPU feature detection
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f")
+        && is_x86_feature_detected!("avx512bw")
+        && is_x86_feature_detected!("gfni")
+    {
+        println!("cargo:rustc-cfg=avx512_gfni");
+    }
 }
