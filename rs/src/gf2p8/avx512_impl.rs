@@ -1,8 +1,11 @@
 use super::generic::{CantorBasisLut, Gf2p8Lut};
+use crate::kernel::Kernel;
 use core::arch::x86_64::*;
+#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
+use std::marker::PhantomData;
 
 /// Forward butterfly transforming (a, b) into (a + T·b, b + a + T·b).
-#[cfg(avx512_gfni)]
+#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 pub unsafe fn butterfly_fwd_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
     let mut i = 0;
     while i + 64 <= len {
@@ -28,7 +31,7 @@ pub unsafe fn butterfly_fwd_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512
 }
 
 /// Inverse butterfly transforming (g0, g1) into (g0 + T·(g0+g1), g0+g1).
-#[cfg(avx512_gfni)]
+#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 pub unsafe fn butterfly_inv_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
     let mut i = 0;
     while i + 64 <= len {
@@ -53,7 +56,7 @@ pub unsafe fn butterfly_inv_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512
     }
 }
 
-#[cfg(avx512_gfni)]
+#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 pub unsafe fn fft_sharded_gfni<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [&mut [G]],
@@ -82,7 +85,7 @@ pub unsafe fn fft_sharded_gfni<G: Gf2p8Lut>(
     unsafe { fft_sharded_gfni(basis, &mut shards[half..], k - 1, next_beta) };
 }
 
-#[cfg(avx512_gfni)]
+#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 pub unsafe fn ifft_sharded_gfni<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [&mut [G]],
@@ -111,6 +114,25 @@ pub unsafe fn ifft_sharded_gfni<G: Gf2p8Lut>(
                 mat,
             )
         };
+    }
+}
+
+#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
+pub struct Avx512GfniKernel<G: Gf2p8Lut>(PhantomData<G>);
+
+#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
+impl<G> Kernel<G> for Avx512GfniKernel<G> {
+    fn fft_sharded(&self, shards: &mut [&mut [G]], k: u8, beta: G) {
+        unsafe { fft_sharded_gfni(&self, shards, k, beta) }
+    }
+
+    fn ifft_sharded(&self, shards: &mut [&mut [G]], k: u8, beta: G) {
+        unsafe { ifft_sharded_gfni(&self, shards, k, beta) }
+    }
+
+    fn scale(dst: &mut [G], src: &[G], scalar: G) {
+        let mat = unsafe { _mm512_set1_epi64(scalar.gfni_mul_matrix() as i64) };
+        unsafe { scale_gfni(dst.as_mut_ptr() as _, src.as_ptr() as _, dst.len(), mat) }
     }
 }
 

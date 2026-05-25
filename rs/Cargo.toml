@@ -1,0 +1,17 @@
+[package]
+name = "additive-fft-reed-solomon"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8" }
+
+[build-dependencies]
+additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8" }
+
+[features]
+default = ["avx512_gfni"]
+avx512_gfni = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(avx512_gfni)"] }

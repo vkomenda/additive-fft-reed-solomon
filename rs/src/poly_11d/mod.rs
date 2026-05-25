@@ -1,3 +1,5 @@
+mod field_defs;
+
 use crate::gf2p8::{
     Gf2p8, Gf2p8_11d,
     bit_matrix::BitMatrix,

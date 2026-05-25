@@ -1,9 +1,5 @@
-#[path = "src/gf2p8/mod.rs"]
-mod g;
-
-use g::{
-    CantorBasis, CantorBasis11d, Gf2p8, Gf2p8_11d,
-    generic::{EXP_TABLE_SIZE, FIELD_SIZE},
+use additive_fft_reed_solomon_gf2p8::{
+    CantorBasis, CantorBasis11d, EXP_TABLE_SIZE, FIELD_SIZE, Gf2p8, Gf2p8_11d,
 };
 use std::env;
 use std::fs::File;
@@ -88,8 +84,10 @@ fn main() {
     println!("cargo:rerun-if-changed=src/gf2p8/avx512_impl.rs");
     println!("cargo:rerun-if-changed=src/gf2p8/generic.rs");
     println!("cargo:rerun-if-changed=src/gf2p8/bit_matrix.rs");
+    println!("cargo:rerun-if-changed=src/poly_11d/field_defs.rs");
 
     // CPU feature detection
+    // println!("cargo:rustc-check-cfg=cfg(avx512_gfni)");
     #[cfg(target_arch = "x86_64")]
     if is_x86_feature_detected!("avx512f")
         && is_x86_feature_detected!("avx512bw")

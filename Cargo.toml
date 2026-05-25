@@ -1,6 +1,6 @@
-[package]
-name = "additive-fft-reed-solomon"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
+[workspace]
+members = [
+    "gf2p8",
+    "rs",
+]
+resolver = "2"

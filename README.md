@@ -17,7 +17,7 @@ Multiplicative RS codes are the most common due to posessing a textbook implemen
 
 Additive RS codes evaluate the message polynomial at all 256 elements of the additive group, a GF(2)-vector space, whose power subspace structure admits a radix-2 FFT. Encoding and decoding both run in O(n log(n)) field operations, and the natural code length is 256.
 
-||ISA-L,reed-solomon-erasure,Backblaze|Cauchy/Vandermonde with structure|LNH additive FFT|
+||ISA-L, reed-solomon-erasure, Backblaze|Cauchy with structure|LNH additive FFT|
 |---|---|---|---|
 |encoding         |O(k·T) |O(k·T) |O(n log(T))                 |
 |erasure decoding |O(k^3) |O(k^2) |O(n log(T))                 |
@@ -30,9 +30,7 @@ Additive RS codes evaluate the message polynomial at all 256 elements of the add
 
 - Large n, large shards, e.g. n ≥ 128, hundreds of kilobytes or megabytes.
 
-- Low to medium to redundancy ratios, k ≥ n/2. The additive FFT cost is expressed in terms of n
-  regardless of how it splits into k and T. Cauchy decoding, on the other hand, is faster when k is
-  low and the redundancy ratio is high.
+- Medium redundancy ratio, k = n/2. The additive FFT cost is expressed in terms of n regardless of how it splits into k and T. Cauchy decoding, on the other hand, is faster when k is low and the redundancy ratio is high.
 
 - Erasure-heavy environments - distributed storage, high throughput erasure-coded gossip messaging.
 
@@ -44,7 +42,7 @@ Additive RS codes evaluate the message polynomial at all 256 elements of the add
 
 - Small shards - tens of bytes. Per-butterfly ovehead dominates.
 
-- Wire compatibility required. The crate is not Cauchy/Vandermonde implementation compatible.
+- Wire compatibility required. The crate is not Cauchy implementation compatible.
 
 - Non-x86 accelerated targets. We have no support for ARM NEON or RISC-V RVV acceleration yet.
 

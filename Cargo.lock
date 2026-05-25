@@ -5,3 +5,10 @@ version = 4
 [[package]]
 name = "additive-fft-reed-solomon"
 version = "0.1.0"
+dependencies = [
+ "additive-fft-reed-solomon-gf2p8",
+]
+
+[[package]]
+name = "additive-fft-reed-solomon-gf2p8"
+version = "0.1.0"

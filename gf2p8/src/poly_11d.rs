@@ -1,8 +1,4 @@
-pub mod avx512_impl;
-pub mod bit_matrix;
-pub mod generic;
-
-pub use generic::{CantorBasis, Gf2p8};
+pub use crate::field::{CantorBasis, Gf2p8};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Gf2p8_11d(pub u8);
