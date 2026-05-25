@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "buttrs"
+name = "additive-fft-reed-solomon"
 version = "0.1.0"

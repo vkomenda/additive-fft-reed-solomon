@@ -1,5 +1,5 @@
 [package]
-name = "buttrs"
+name = "additive-fft-reed-solomon"
 version = "0.1.0"
 edition = "2024"
 
