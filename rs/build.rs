@@ -31,8 +31,6 @@ fn main() {
     let dest_path = Path::new(&out_dir).join("tables_11d.rs");
     let mut f = File::create(&dest_path).unwrap();
 
-    writeln!(f, "use crate::BitMatrix;").unwrap();
-
     let (exp_table, log_table) = Gf2p8_11d::exp_log_tables();
     let inv_table = Gf2p8_11d::inv_table(&exp_table, &log_table);
     write!(f, "\npub const EXP_TABLE: [u8; {}] = [", EXP_TABLE_SIZE).unwrap();
@@ -51,7 +49,7 @@ fn main() {
 
     writeln!(f, "\npub const GFNI_MUL_TABLE: [u64; {}] = [", FIELD_SIZE).unwrap();
     for mat in gfni_mul_iter {
-        writeln!(f, "    0x{:08x},", mat).unwrap();
+        writeln!(f, "    0x{:016x},", mat).unwrap();
     }
     writeln!(f, "];").unwrap();
 

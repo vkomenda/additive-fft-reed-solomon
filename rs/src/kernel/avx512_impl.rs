@@ -1,63 +1,67 @@
-use super::generic::{CantorBasisLut, Gf2p8Lut};
-use crate::kernel::Kernel;
+use super::Kernel;
+use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
 use core::arch::x86_64::*;
 #[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 use std::marker::PhantomData;
 
 /// Forward butterfly transforming (a, b) into (a + T·b, b + a + T·b).
 #[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
-pub unsafe fn butterfly_fwd_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
-    let mut i = 0;
-    while i + 64 <= len {
-        let va = unsafe { _mm512_loadu_si512(a.add(i) as *const __m512i) };
-        let vb = unsafe { _mm512_loadu_si512(b.add(i) as *const __m512i) };
-        let t = _mm512_gf2p8affine_epi64_epi8(vb, mat, 0); // T·b
-        let va = _mm512_xor_si512(va, t); // a + T·b  = g0
-        let vb = _mm512_xor_si512(vb, va); // b + g0   = g1
-        unsafe { _mm512_storeu_si512(a.add(i) as *mut __m512i, va) };
-        unsafe { _mm512_storeu_si512(b.add(i) as *mut __m512i, vb) };
-        i += 64;
-    }
-    if i < len {
-        let k = (1u64 << (len - i)) - 1;
-        let va = unsafe { _mm512_maskz_loadu_epi8(k, a.add(i) as *const i8) };
-        let vb = unsafe { _mm512_maskz_loadu_epi8(k, b.add(i) as *const i8) };
-        let t = _mm512_gf2p8affine_epi64_epi8(vb, mat, 0);
-        let va = _mm512_xor_si512(va, t);
-        let vb = _mm512_xor_si512(vb, va);
-        unsafe { _mm512_mask_storeu_epi8(a.add(i) as *mut i8, k, va) };
-        unsafe { _mm512_mask_storeu_epi8(b.add(i) as *mut i8, k, vb) };
+unsafe fn butterfly_fwd_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
+    unsafe {
+        let mut i = 0;
+        while i + 64 <= len {
+            let va = _mm512_loadu_si512(a.add(i) as *const __m512i);
+            let vb = _mm512_loadu_si512(b.add(i) as *const __m512i);
+            let t = _mm512_gf2p8affine_epi64_epi8(vb, mat, 0); // T·b
+            let va = _mm512_xor_si512(va, t); // a + T·b  = g0
+            let vb = _mm512_xor_si512(vb, va); // b + g0   = g1
+            _mm512_storeu_si512(a.add(i) as *mut __m512i, va);
+            _mm512_storeu_si512(b.add(i) as *mut __m512i, vb);
+            i += 64;
+        }
+        if i < len {
+            let k = (1u64 << (len - i)) - 1;
+            let va = _mm512_maskz_loadu_epi8(k, a.add(i) as *const i8);
+            let vb = _mm512_maskz_loadu_epi8(k, b.add(i) as *const i8);
+            let t = _mm512_gf2p8affine_epi64_epi8(vb, mat, 0);
+            let va = _mm512_xor_si512(va, t);
+            let vb = _mm512_xor_si512(vb, va);
+            _mm512_mask_storeu_epi8(a.add(i) as *mut i8, k, va);
+            _mm512_mask_storeu_epi8(b.add(i) as *mut i8, k, vb);
+        }
     }
 }
 
 /// Inverse butterfly transforming (g0, g1) into (g0 + T·(g0+g1), g0+g1).
 #[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
-pub unsafe fn butterfly_inv_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
-    let mut i = 0;
-    while i + 64 <= len {
-        let va = unsafe { _mm512_loadu_si512(a.add(i) as *const __m512i) };
-        let vb = unsafe { _mm512_loadu_si512(b.add(i) as *const __m512i) };
-        let vb = _mm512_xor_si512(vb, va); // d' = g0 + g1
-        let t = _mm512_gf2p8affine_epi64_epi8(vb, mat, 0); // T·d'
-        let va = _mm512_xor_si512(va, t); // d  = g0 + T·d'
-        unsafe { _mm512_storeu_si512(a.add(i) as *mut __m512i, va) };
-        unsafe { _mm512_storeu_si512(b.add(i) as *mut __m512i, vb) };
-        i += 64;
-    }
-    if i < len {
-        let k = (1u64 << (len - i)) - 1;
-        let va = unsafe { _mm512_maskz_loadu_epi8(k, a.add(i) as *const i8) };
-        let vb = unsafe { _mm512_maskz_loadu_epi8(k, b.add(i) as *const i8) };
-        let vb = _mm512_xor_si512(vb, va);
-        let t = _mm512_gf2p8affine_epi64_epi8(vb, mat, 0);
-        let va = _mm512_xor_si512(va, t);
-        unsafe { _mm512_mask_storeu_epi8(a.add(i) as *mut i8, k, va) };
-        unsafe { _mm512_mask_storeu_epi8(b.add(i) as *mut i8, k, vb) };
+unsafe fn butterfly_inv_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
+    unsafe {
+        let mut i = 0;
+        while i + 64 <= len {
+            let va = _mm512_loadu_si512(a.add(i) as *const __m512i);
+            let vb = _mm512_loadu_si512(b.add(i) as *const __m512i);
+            let vb = _mm512_xor_si512(vb, va); // d' = g0 + g1
+            let t = _mm512_gf2p8affine_epi64_epi8(vb, mat, 0); // T·d'
+            let va = _mm512_xor_si512(va, t); // d  = g0 + T·d'
+            _mm512_storeu_si512(a.add(i) as *mut __m512i, va);
+            _mm512_storeu_si512(b.add(i) as *mut __m512i, vb);
+            i += 64;
+        }
+        if i < len {
+            let k = (1u64 << (len - i)) - 1;
+            let va = _mm512_maskz_loadu_epi8(k, a.add(i) as *const i8);
+            let vb = _mm512_maskz_loadu_epi8(k, b.add(i) as *const i8);
+            let vb = _mm512_xor_si512(vb, va);
+            let t = _mm512_gf2p8affine_epi64_epi8(vb, mat, 0);
+            let va = _mm512_xor_si512(va, t);
+            _mm512_mask_storeu_epi8(a.add(i) as *mut i8, k, va);
+            _mm512_mask_storeu_epi8(b.add(i) as *mut i8, k, vb);
+        }
     }
 }
 
 #[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
-pub unsafe fn fft_sharded_gfni<G: Gf2p8Lut>(
+fn fft_sharded_gfni<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [&mut [G]],
     k: u8,
@@ -68,25 +72,27 @@ pub unsafe fn fft_sharded_gfni<G: Gf2p8Lut>(
     }
     let half = 1usize << (k - 1);
     let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
-    let mat = _mm512_set1_epi64(twiddle.gfni_mul_matrix() as i64);
+    let mat = unsafe { _mm512_set1_epi64(twiddle.gfni_mul_matrix() as i64) };
 
     for i in 0..half {
         let (left, right) = shards.split_at_mut(i + half);
-        butterfly_fwd_gfni(
-            left[i].as_mut_ptr() as *mut u8,
-            right[0].as_mut_ptr() as *mut u8,
-            left[i].len(),
-            mat,
-        );
+        unsafe {
+            butterfly_fwd_gfni(
+                left[i].as_mut_ptr() as *mut u8,
+                right[0].as_mut_ptr() as *mut u8,
+                left[i].len(),
+                mat,
+            );
+        }
     }
 
     let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
-    unsafe { fft_sharded_gfni(basis, &mut shards[..half], k - 1, beta) };
-    unsafe { fft_sharded_gfni(basis, &mut shards[half..], k - 1, next_beta) };
+    fft_sharded_gfni(basis, &mut shards[..half], k - 1, beta);
+    fft_sharded_gfni(basis, &mut shards[half..], k - 1, next_beta);
 }
 
 #[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
-pub unsafe fn ifft_sharded_gfni<G: Gf2p8Lut>(
+fn ifft_sharded_gfni<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [&mut [G]],
     k: u8,
@@ -98,11 +104,11 @@ pub unsafe fn ifft_sharded_gfni<G: Gf2p8Lut>(
     let half = 1usize << (k - 1);
 
     let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
-    unsafe { ifft_sharded_gfni(basis, &mut shards[..half], k - 1, beta) };
-    unsafe { ifft_sharded_gfni(basis, &mut shards[half..], k - 1, next_beta) };
+    ifft_sharded_gfni(basis, &mut shards[..half], k - 1, beta);
+    ifft_sharded_gfni(basis, &mut shards[half..], k - 1, next_beta);
 
     let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
-    let mat = _mm512_set1_epi64(twiddle.gfni_mul_matrix() as i64);
+    let mat = unsafe { _mm512_set1_epi64(twiddle.gfni_mul_matrix() as i64) };
 
     for i in 0..half {
         let (left, right) = shards.split_at_mut(i + half);
@@ -118,16 +124,35 @@ pub unsafe fn ifft_sharded_gfni<G: Gf2p8Lut>(
 }
 
 #[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
+unsafe fn scale_gfni(dst: *mut u8, src: *const u8, len: usize, mat: __m512i) {
+    unsafe {
+        let mut i = 0;
+        while i + 64 <= len {
+            let v = _mm512_loadu_si512(src.add(i) as *const __m512i);
+            let r = _mm512_gf2p8affine_epi64_epi8(v, mat, 0);
+            _mm512_storeu_si512(dst.add(i) as *mut __m512i, r);
+            i += 64;
+        }
+        if i < len {
+            let k = (1u64 << (len - i)) - 1;
+            let v = _mm512_maskz_loadu_epi8(k, src.add(i) as *const i8);
+            let r = _mm512_gf2p8affine_epi64_epi8(v, mat, 0);
+            _mm512_mask_storeu_epi8(dst.add(i) as *mut i8, k, r);
+        }
+    }
+}
+
+#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 pub struct Avx512GfniKernel<G: Gf2p8Lut>(PhantomData<G>);
 
 #[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
-impl<G> Kernel<G> for Avx512GfniKernel<G> {
-    fn fft_sharded(&self, shards: &mut [&mut [G]], k: u8, beta: G) {
-        unsafe { fft_sharded_gfni(&self, shards, k, beta) }
+impl<G: Gf2p8Lut> Kernel<G> for Avx512GfniKernel<G> {
+    fn fft_sharded(basis: &impl CantorBasisLut<G>, shards: &mut [&mut [G]], k: u8, beta: G) {
+        fft_sharded_gfni(basis, shards, k, beta)
     }
 
-    fn ifft_sharded(&self, shards: &mut [&mut [G]], k: u8, beta: G) {
-        unsafe { ifft_sharded_gfni(&self, shards, k, beta) }
+    fn ifft_sharded(basis: &impl CantorBasisLut<G>, shards: &mut [&mut [G]], k: u8, beta: G) {
+        ifft_sharded_gfni(basis, shards, k, beta)
     }
 
     fn scale(dst: &mut [G], src: &[G], scalar: G) {
@@ -136,11 +161,17 @@ impl<G> Kernel<G> for Avx512GfniKernel<G> {
     }
 }
 
+impl<G: Gf2p8Lut> Avx512GfniKernel<G> {
+    pub fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gf2p8::Gf2p8_11d;
-    use crate::poly_11d::BasesLut11d;
+    use crate::poly_11d_lut::BasesLut11d;
+    use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
 
     #[test]
     fn debug_gfni_cfg() {

@@ -1,4 +1,7 @@
+use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8};
 use core::mem::MaybeUninit;
+
+use crate::kernel::Kernel;
 
 /// Precomputed lookup table group operations.
 pub trait Gf2p8Lut: Gf2p8 {
@@ -699,7 +702,7 @@ pub trait LchBasisLut<G: Gf2p8Lut>: CantorBasisLut<G> {
     }
 }
 
-pub trait Codec<G: Gf2p8Lut>: CantorBasisLut<G> + LchBasisLut<G> {
+pub trait Codec<G: Gf2p8Lut>: CantorBasisLut<G> + LchBasisLut<G> + Kernel<G> {
     fn encode_systematic_scalar(&self, message: &[G], parity: &mut [G]) {
         let t_parity = parity.len();
         let t_log = t_parity.trailing_zeros() as u8;
@@ -1118,7 +1121,7 @@ pub trait Codec<G: Gf2p8Lut>: CantorBasisLut<G> + LchBasisLut<G> {
     }
 }
 
-impl<G: Gf2p8Lut, T: CantorBasisLut<G> + LchBasisLut<G>> Codec<G> for T {}
+impl<G: Gf2p8Lut, T: CantorBasisLut<G> + LchBasisLut<G> + Kernel<G>> Codec<G> for T {}
 
 pub trait PolyOps<G: Gf2p8Lut>: AsRef<[G]> {
     fn degree(&self) -> Option<usize> {
