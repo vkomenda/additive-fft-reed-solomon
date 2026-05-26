@@ -1,14 +1,14 @@
 use additive_fft_reed_solomon_gf2p8::Gf2p8;
 
 use crate::{
-    gf2p8lut::{CantorBasisLut, Gf2p8Lut, LchBasisLut},
+    gf2p8lut::{CantorBasisLut, Gf2p8Lut, LchBasisLut, PolyOps},
     kernel::Kernel,
 };
 use std::{marker::PhantomData, mem::MaybeUninit};
 
 pub struct Codec<G: Gf2p8Lut, B, K, const N: usize, const T: usize> {
     basis: B,
-    _kernel: PhantomData<(K, G)>,
+    _kernel: PhantomData<(G, K)>,
 }
 
 // impl<B, G, const N: usize, const T: usize> Codec<B, G, N, T>
@@ -96,53 +96,6 @@ where
             evals[i + half] = d_i_half;
         }
     }
-
-    // fn fft_sharded(&self, shards: &mut [&mut [G]], k: u8, beta: G) {
-    //     if k == 0 {
-    //         return;
-    //     }
-    //     let half = 1 << (k - 1);
-    //     let twiddle = self.eval_subspace_poly_lut(k - 1, beta);
-    //     let lut = twiddle.make_mul_lut();
-
-    //     // Butterfly with one lut computed for the whole pass
-    //     for i in 0..half {
-    //         let (left, right) = shards.split_at_mut(i + half);
-    //         // Forward butterfly
-    //         for (ai, bi) in left[i].iter_mut().zip(right[0].iter_mut()) {
-    //             let t = lut[bi.into_usize()]; //  T * b
-    //             *ai = ai.add(t); //  g0 = a + T*b
-    //             *bi = bi.add(*ai); //  g1 = g0 + b
-    //         }
-    //     }
-
-    //     let next_beta = beta.add(self.get_basis_point_lut(k - 1));
-    //     self.fft_sharded(&mut shards[..half], k - 1, beta);
-    //     self.fft_sharded(&mut shards[half..], k - 1, next_beta);
-    // }
-
-    // fn ifft_sharded(&self, shards: &mut [&mut [G]], k: u8, beta: G) {
-    //     if k == 0 {
-    //         return;
-    //     }
-    //     let half = 1 << (k - 1);
-
-    //     let next_beta = beta.add(self.get_basis_point_lut(k - 1));
-    //     self.ifft_sharded(&mut shards[..half], k - 1, beta);
-    //     self.ifft_sharded(&mut shards[half..], k - 1, next_beta);
-
-    //     let twiddle = self.eval_subspace_poly_lut(k - 1, beta);
-    //     let lut = twiddle.make_mul_lut();
-
-    //     for i in 0..half {
-    //         let (left, right) = shards.split_at_mut(i + half);
-    //         for (ai, bi) in left[i].iter_mut().zip(right[0].iter_mut()) {
-    //             *bi = bi.add(*ai); //  d' = g0 + g1
-    //             let t = lut[bi.into_usize()];
-    //             *ai = ai.add(t); //  d  = g0 + T*d'
-    //         }
-    //     }
-    // }
 
     fn solve_key_equation_eea(&self, syndrome: &[G; N], t_log: u8) -> Option<([G; N], [G; N])> {
         let mut st = [G::zero(); N];
@@ -810,10 +763,7 @@ where
         out: &mut [&mut [G]], // one shard per erased position, in order
     ) {
         for (k, (&pos, &d)) in erasure_positions.iter().zip(denoms).enumerate() {
-            let lut = d.inv_lut().make_mul_lut();
-            for (o, &num) in out[k].iter_mut().zip(q[pos].iter()) {
-                *o = lut[num.into_usize()];
-            }
+            K::scale(out[k], q[pos], d.inv_lut());
         }
     }
 
@@ -894,10 +844,7 @@ where
 
         // Pointwise multiply: work[i] := work[i] · λ(ω_i)
         for i in 0..n {
-            let lut = lambda_evals[i].make_mul_lut();
-            for b in work[i].iter_mut() {
-                *b = lut[b.into_usize()];
-            }
+            K::scale_in_place(work[i], lambda_evals[i]);
         }
 
         // X-basis coefficients of (s·λ); q is in work[T .. T+e]
@@ -920,10 +867,7 @@ where
 
         // (Forney) Eq 78: u(ω_i) = q(ω_i) / λ'(ω_i)
         for (&pos, d) in erasure_positions.iter().zip(denoms) {
-            let lut = d.inv_lut().make_mul_lut();
-            for (dst, &src) in received[pos].iter_mut().zip(work[pos].iter()) {
-                *dst = lut[src.into_usize()];
-            }
+            K::scale(received[pos], work[pos], d.inv_lut());
         }
 
         true
@@ -931,7 +875,7 @@ where
 }
 
 /// Derivative in the LNH basis based on Eq 82
-pub fn deriv_poly_lnh<G: Gf2p8, const N: usize>(coeffs: &[G; N]) -> [G; N] {
+fn deriv_poly_lnh<G: Gf2p8, const N: usize>(coeffs: &[G; N]) -> [G; N] {
     let mut res = [G::zero(); N];
 
     let n = coeffs.len();
@@ -957,24 +901,3 @@ pub fn deriv_poly_lnh<G: Gf2p8, const N: usize>(coeffs: &[G; N]) -> [G; N] {
 
     res
 }
-
-pub trait PolyOps<G: Gf2p8Lut>: AsRef<[G]> {
-    fn degree(&self) -> Option<usize> {
-        self.as_ref()
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_, c)| **c != G::zero())
-            .map(|(i, _)| i)
-    }
-
-    fn leading_coeff(&self) -> G {
-        let coeffs = self.as_ref();
-        coeffs
-            .get(self.degree().unwrap_or(0))
-            .copied()
-            .unwrap_or(G::zero())
-    }
-}
-
-impl<G: Gf2p8Lut, T: AsRef<[G]>> PolyOps<G> for T {}

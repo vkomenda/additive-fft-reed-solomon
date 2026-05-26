@@ -117,18 +117,23 @@ pub trait LchBasisLut<G: Gf2p8Lut>: CantorBasisLut<G> {
     }
 }
 
-// pub struct Poly<'a, G>(pub &'a [G]);
+pub trait PolyOps<G: Gf2p8Lut>: AsRef<[G]> {
+    fn degree(&self) -> Option<usize> {
+        self.as_ref()
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, c)| **c != G::zero())
+            .map(|(i, _)| i)
+    }
 
-// impl<'a, G> AsRef<[G]> for Poly<'a, G> {
-//     fn as_ref(&self) -> &[G] {
-//         self.0
-//     }
-// }
+    fn leading_coeff(&self) -> G {
+        let coeffs = self.as_ref();
+        coeffs
+            .get(self.degree().unwrap_or(0))
+            .copied()
+            .unwrap_or(G::zero())
+    }
+}
 
-// pub struct PolyMut<'a, G>(pub &'a mut [G]);
-
-// impl<'a, G> AsMut<[G]> for PolyMut<'a, G> {
-//     fn as_mut(&mut self) -> &mut [G] {
-//         self.0
-//     }
-// }
+impl<G: Gf2p8Lut, T: AsRef<[G]>> PolyOps<G> for T {}

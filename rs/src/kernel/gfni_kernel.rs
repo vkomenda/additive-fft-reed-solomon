@@ -125,15 +125,17 @@ fn ifft_sharded_gfni<G: Gf2p8Lut>(
 
 #[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 unsafe fn scale_gfni(dst: *mut u8, src: *const u8, len: usize, mat: __m512i) {
-    unsafe {
-        let mut i = 0;
-        while i + 64 <= len {
+    let mut i = 0;
+    while i + 64 <= len {
+        unsafe {
             let v = _mm512_loadu_si512(src.add(i) as *const __m512i);
             let r = _mm512_gf2p8affine_epi64_epi8(v, mat, 0);
             _mm512_storeu_si512(dst.add(i) as *mut __m512i, r);
             i += 64;
         }
-        if i < len {
+    }
+    if i < len {
+        unsafe {
             let k = (1u64 << (len - i)) - 1;
             let v = _mm512_maskz_loadu_epi8(k, src.add(i) as *const i8);
             let r = _mm512_gf2p8affine_epi64_epi8(v, mat, 0);
@@ -142,11 +144,31 @@ unsafe fn scale_gfni(dst: *mut u8, src: *const u8, len: usize, mat: __m512i) {
     }
 }
 
-#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
-pub struct Avx512GfniKernel<G: Gf2p8Lut>(PhantomData<G>);
+unsafe fn scale_in_place(dst: *mut u8, len: usize, mat: __m512i) {
+    let mut i = 0;
+    while i + 64 <= len {
+        unsafe {
+            let v = _mm512_loadu_si512(dst.add(i) as *const __m512i);
+            let v = _mm512_gf2p8affine_epi64_epi8(v, mat, 0);
+            _mm512_storeu_si512(dst.add(i) as *mut __m512i, v);
+        }
+        i += 64;
+    }
+    if i < len {
+        unsafe {
+            let k = (1u64 << (len - i)) - 1;
+            let v = _mm512_maskz_loadu_epi8(k, dst.add(i) as *const i8);
+            let v = _mm512_gf2p8affine_epi64_epi8(v, mat, 0);
+            _mm512_mask_storeu_epi8(dst.add(i) as *mut i8, k, v);
+        }
+    }
+}
 
 #[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
-impl<G: Gf2p8Lut> Kernel<G> for Avx512GfniKernel<G> {
+pub struct GfniKernel<G: Gf2p8Lut>(PhantomData<G>);
+
+#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
+impl<G: Gf2p8Lut> Kernel<G> for GfniKernel<G> {
     fn fft_sharded(basis: &impl CantorBasisLut<G>, shards: &mut [&mut [G]], k: u8, beta: G) {
         fft_sharded_gfni(basis, shards, k, beta)
     }
@@ -156,12 +178,21 @@ impl<G: Gf2p8Lut> Kernel<G> for Avx512GfniKernel<G> {
     }
 
     fn scale(dst: &mut [G], src: &[G], scalar: G) {
-        let mat = unsafe { _mm512_set1_epi64(scalar.gfni_mul_matrix() as i64) };
-        unsafe { scale_gfni(dst.as_mut_ptr() as _, src.as_ptr() as _, dst.len(), mat) }
+        unsafe {
+            let mat = _mm512_set1_epi64(scalar.gfni_mul_matrix() as i64);
+            scale_gfni(dst.as_mut_ptr() as _, src.as_ptr() as _, dst.len(), mat)
+        }
+    }
+
+    fn scale_in_place(dst: &mut [G], scalar: G) {
+        unsafe {
+            let mat = _mm512_set1_epi64(scalar.gfni_mul_matrix() as i64);
+            scale_in_place(dst.as_mut_ptr() as _, dst.len(), mat)
+        }
     }
 }
 
-impl<G: Gf2p8Lut> Avx512GfniKernel<G> {
+impl<G: Gf2p8Lut> GfniKernel<G> {
     pub fn new() -> Self {
         Self(PhantomData)
     }
