@@ -27,6 +27,13 @@ where
     B: CantorBasisLut<G> + LchBasisLut<G>,
     K: Kernel<G>,
 {
+    pub fn new(basis: B) -> Self {
+        Self {
+            basis,
+            _kernel: PhantomData,
+        }
+    }
+
     /// Algorithm 1 in LNH paper.
     ///
     /// The input coefficients `coeff` represent a polynomial in the basis X. That is,
@@ -528,7 +535,7 @@ where
 
     /// Syndrome calculation (scalar).
     /// Computes s = sum_{i=0}^{n/T-1} IFFT(r_i, t, omega_{i*T})
-    pub fn compute_syndrome_scalar(
+    fn compute_syndrome_scalar(
         &self,
         received: &[G], // Size n (e.g., 256)
         t_log: u8,      // log_2(T)
@@ -626,7 +633,7 @@ where
     /// # Returns
     /// * `true`     - if decoding succeeded
     /// * `false`    - if decoding failed
-    fn decode_systematic_scalar(&self, received: &mut [G], k_msg: usize) -> bool {
+    pub fn decode_systematic_scalar(&self, received: &mut [G], k_msg: usize) -> bool {
         let n = received.len();
         let t_parity = n - k_msg;
         if t_parity == 0 {
@@ -767,7 +774,7 @@ where
         }
     }
 
-    fn recover_erasure_shards(
+    pub fn recover_erasure_shards(
         &self,
         received: &mut [&mut [G]],
         k_msg: usize,

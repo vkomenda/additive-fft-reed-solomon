@@ -60,7 +60,8 @@ impl LchBasisLut<Gf2p8_11d> for BasesLut11d {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gf2p8lut::{Codec, PolyOps};
+    use crate::RsLut;
+    use crate::gf2p8lut::PolyOps;
     use additive_fft_reed_solomon_gf2p8::{CantorBasis, CantorBasis11d, FIELD_SIZE, Gf2p8};
 
     #[test]
@@ -89,7 +90,10 @@ mod tests {
     }
 
     // Assumption: k_msg == t_parity, hence n == 2 * t_parity
-    fn generate_lch_codeword(bases: &BasesLut11d, t_parity: usize) -> Vec<Gf2p8_11d> {
+    fn generate_lch_codeword<const N: usize, const T: usize>(
+        rs: &RsLut<N, T>,
+        t_parity: usize,
+    ) -> Vec<Gf2p8_11d> {
         let mut message = vec![Gf2p8_11d::zero(); t_parity];
         let mut parity = vec![Gf2p8_11d::zero(); t_parity];
 
@@ -97,7 +101,7 @@ mod tests {
             message[i] = Gf2p8_11d::from((t_parity + i) as u8);
         }
 
-        bases.encode_systematic_scalar(&message, &mut parity);
+        rs.encode_systematic_scalar(&message, &mut parity);
 
         let mut codeword = vec![Gf2p8_11d::zero(); 2 * t_parity];
         codeword[..t_parity].copy_from_slice(&parity);
@@ -105,8 +109,8 @@ mod tests {
         codeword
     }
 
-    fn generate_sharded_lch_codeword(
-        bases: &BasesLut11d,
+    fn generate_sharded_lch_codeword<const N: usize, const T: usize>(
+        rs: &RsLut<N, T>,
         t_parity: usize,
         shard_len: usize,
     ) -> Vec<Vec<Gf2p8_11d>> {
@@ -124,7 +128,7 @@ mod tests {
         let mut parity_slices: Vec<&mut [Gf2p8_11d]> =
             parity.iter_mut().map(|shard| shard.as_mut()).collect();
 
-        bases.encode_systematic_sharded(&message_slices, &mut parity_slices);
+        rs.encode_systematic_sharded(&message_slices, &mut parity_slices);
 
         let mut codeword = vec![vec![Gf2p8_11d::zero(); shard_len]; 2 * t_parity];
         codeword[..t_parity].clone_from_slice(&parity);
@@ -235,11 +239,14 @@ mod tests {
         let bases = BasesLut11d::new();
 
         for t_log in 1..=7 {
+            // FIXME: unroll the loop over t_log here and elsewhere
+            let rs = RsLut::<256, 128>::new(bases);
+
             let t_parity = 1 << t_log;
-            let original = generate_lch_codeword(&bases, t_parity);
+            let original = generate_lch_codeword(&rs, t_parity);
             let mut received = original.clone();
 
-            assert!(bases.decode_systematic_scalar(&mut received, t_parity));
+            assert!(rs.decode_systematic_scalar(&mut received, t_parity));
             assert_eq!(received, original);
         }
     }
