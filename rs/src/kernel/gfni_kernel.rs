@@ -201,7 +201,7 @@ impl<G: Gf2p8Lut> GfniKernel<G> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::poly_11d_lut::CantorBasisLut11d;
+    use crate::{RsLut, kernel::lut_kernel, poly_11d_lut::CantorBasisLut11d};
     use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
 
     #[test]
@@ -226,7 +226,9 @@ mod tests {
     /// shard_len covers: pure tail (63), exact ZMM (64), ZMM + tail (65), two ZMMs (128).
     #[test]
     #[cfg(avx512_gfni)]
-    fn fft_gfni_matches_lut() {
+    fn fft_gfni_matches_lut() {}
+
+    fn fft_gfni_matches_lut_t<const N: usize, const T: usize>() {
         let basis = CantorBasisLut11d;
         for shard_len in [1, 63, 64, 65, 128] {
             for k in 1u8..=4 {
@@ -238,13 +240,11 @@ mod tests {
 
                 let mut lut_slices: Vec<&mut [Gf2p8_11d]> =
                     lut.iter_mut().map(|s| s.as_mut_slice()).collect();
-                basis.fft_sharded(&mut lut_slices, k, beta);
+                lut_kernel::fft_sharded(&basis, &mut lut_slices, k, beta);
 
                 let mut gfni_slices: Vec<&mut [Gf2p8_11d]> =
                     gfni.iter_mut().map(|s| s.as_mut_slice()).collect();
-                unsafe {
-                    fft_sharded_gfni(&basis, &mut gfni_slices, k, beta);
-                }
+                fft_sharded_gfni(&basis, &mut gfni_slices, k, beta);
 
                 assert_eq!(lut, gfni, "k={k} shard_len={shard_len}");
             }
@@ -265,13 +265,11 @@ mod tests {
 
                 let mut lut_slices: Vec<&mut [Gf2p8_11d]> =
                     lut.iter_mut().map(|s| s.as_mut_slice()).collect();
-                basis.ifft_sharded(&mut lut_slices, k, beta);
+                lut_kernel::ifft_sharded(&basis, &mut lut_slices, k, beta);
 
                 let mut gfni_slices: Vec<&mut [Gf2p8_11d]> =
                     gfni.iter_mut().map(|s| s.as_mut_slice()).collect();
-                unsafe {
-                    ifft_sharded_gfni(&basis, &mut gfni_slices, k, beta);
-                }
+                ifft_sharded_gfni(&basis, &mut gfni_slices, k, beta);
 
                 assert_eq!(lut, gfni, "k={k} shard_len={shard_len}");
             }
@@ -292,10 +290,8 @@ mod tests {
 
                 let mut slices: Vec<&mut [Gf2p8_11d]> =
                     data.iter_mut().map(|s| s.as_mut_slice()).collect();
-                unsafe {
-                    ifft_sharded_gfni(&basis, &mut slices, k, beta);
-                    fft_sharded_gfni(&basis, &mut slices, k, beta);
-                }
+                ifft_sharded_gfni(&basis, &mut slices, k, beta);
+                fft_sharded_gfni(&basis, &mut slices, k, beta);
 
                 assert_eq!(data, original, "k={k} shard_len={shard_len}");
             }

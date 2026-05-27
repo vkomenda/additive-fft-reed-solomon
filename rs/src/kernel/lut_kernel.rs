@@ -4,7 +4,7 @@ use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
 
 use super::Kernel;
 
-fn fft_sharded<G: Gf2p8Lut>(
+pub fn fft_sharded<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [&mut [G]],
     k: u8,
@@ -33,7 +33,7 @@ fn fft_sharded<G: Gf2p8Lut>(
     fft_sharded(basis, &mut shards[half..], k - 1, next_beta);
 }
 
-fn ifft_sharded<G: Gf2p8Lut>(
+pub fn ifft_sharded<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [&mut [G]],
     k: u8,
@@ -61,14 +61,14 @@ fn ifft_sharded<G: Gf2p8Lut>(
     }
 }
 
-fn scale<G: Gf2p8Lut>(dst: &mut [G], src: &[G], scalar: G) {
+pub fn scale<G: Gf2p8Lut>(dst: &mut [G], src: &[G], scalar: G) {
     let lut = scalar.make_mul_lut();
     for (d, s) in dst.iter_mut().zip(src.iter()) {
         *d = lut[s.into_usize()];
     }
 }
 
-fn scale_in_place<G: Gf2p8Lut>(dst: &mut [G], scalar: G) {
+pub fn scale_in_place<G: Gf2p8Lut>(dst: &mut [G], scalar: G) {
     let lut = scalar.make_mul_lut();
     for b in dst.iter_mut() {
         *b = lut[b.into_usize()];
