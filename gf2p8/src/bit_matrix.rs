@@ -85,7 +85,8 @@ impl BitMatrix {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gf2p8::{Gf2p8, Gf2p8_11d};
+    use crate::field::Gf2p8;
+    use crate::poly_11d::Gf2p8_11d;
 
     #[test]
     fn identity_matrix_apply() {

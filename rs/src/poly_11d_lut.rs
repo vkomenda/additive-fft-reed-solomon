@@ -160,13 +160,13 @@ mod tests {
 
     #[test]
     fn decode_no_errors() {
-        decode_no_errors_t::<2, 2>();
-        decode_no_errors_t::<4, 4>();
-        decode_no_errors_t::<8, 8>();
-        decode_no_errors_t::<16, 16>();
-        decode_no_errors_t::<32, 32>();
-        decode_no_errors_t::<64, 64>();
-        decode_no_errors_t::<128, 128>();
+        decode_no_errors_t::<4, 2>();
+        decode_no_errors_t::<8, 4>();
+        decode_no_errors_t::<16, 8>();
+        decode_no_errors_t::<32, 16>();
+        decode_no_errors_t::<64, 32>();
+        decode_no_errors_t::<128, 64>();
+        decode_no_errors_t::<256, 128>();
     }
 
     fn decode_no_errors_t<const N: usize, const T: usize>() {
@@ -182,13 +182,13 @@ mod tests {
 
     #[test]
     fn decode_max_corrupt_parity() {
-        decode_max_corrupt_parity_t::<2, 2>();
-        decode_max_corrupt_parity_t::<4, 4>();
-        decode_max_corrupt_parity_t::<8, 8>();
-        decode_max_corrupt_parity_t::<16, 16>();
-        decode_max_corrupt_parity_t::<32, 32>();
-        decode_max_corrupt_parity_t::<64, 64>();
-        decode_max_corrupt_parity_t::<128, 128>();
+        decode_max_corrupt_parity_t::<4, 2>();
+        decode_max_corrupt_parity_t::<8, 4>();
+        decode_max_corrupt_parity_t::<16, 8>();
+        decode_max_corrupt_parity_t::<32, 16>();
+        decode_max_corrupt_parity_t::<64, 32>();
+        decode_max_corrupt_parity_t::<128, 64>();
+        decode_max_corrupt_parity_t::<256, 128>();
     }
 
     fn decode_max_corrupt_parity_t<const N: usize, const T: usize>() {
@@ -213,13 +213,13 @@ mod tests {
 
     #[test]
     fn decode_max_corrupt_data() {
-        decode_max_corrupt_data_t::<2, 2>();
-        decode_max_corrupt_data_t::<4, 4>();
-        decode_max_corrupt_data_t::<8, 8>();
-        decode_max_corrupt_data_t::<16, 16>();
-        decode_max_corrupt_data_t::<32, 32>();
-        decode_max_corrupt_data_t::<64, 64>();
-        decode_max_corrupt_data_t::<128, 128>();
+        decode_max_corrupt_data_t::<4, 2>();
+        decode_max_corrupt_data_t::<8, 4>();
+        decode_max_corrupt_data_t::<16, 8>();
+        decode_max_corrupt_data_t::<32, 16>();
+        decode_max_corrupt_data_t::<64, 32>();
+        decode_max_corrupt_data_t::<128, 64>();
+        decode_max_corrupt_data_t::<256, 128>();
     }
 
     fn decode_max_corrupt_data_t<const N: usize, const T: usize>() {
@@ -244,13 +244,13 @@ mod tests {
 
     #[test]
     fn recompute_max_corrupt_data() {
-        recompute_max_corrupt_data_t::<2, 2>();
-        recompute_max_corrupt_data_t::<4, 4>();
-        recompute_max_corrupt_data_t::<8, 8>();
-        recompute_max_corrupt_data_t::<16, 16>();
-        recompute_max_corrupt_data_t::<32, 32>();
-        recompute_max_corrupt_data_t::<64, 64>();
-        recompute_max_corrupt_data_t::<128, 128>();
+        recompute_max_corrupt_data_t::<4, 2>();
+        recompute_max_corrupt_data_t::<8, 4>();
+        recompute_max_corrupt_data_t::<16, 8>();
+        recompute_max_corrupt_data_t::<32, 16>();
+        recompute_max_corrupt_data_t::<64, 32>();
+        recompute_max_corrupt_data_t::<128, 64>();
+        recompute_max_corrupt_data_t::<256, 128>();
     }
 
     fn recompute_max_corrupt_data_t<const N: usize, const T: usize>() {
@@ -446,13 +446,13 @@ mod tests {
 
     #[test]
     fn encode_sharded_writes_parity() {
-        encode_sharded_writes_parity_t::<2, 2>();
-        encode_sharded_writes_parity_t::<4, 4>();
-        encode_sharded_writes_parity_t::<8, 8>();
-        encode_sharded_writes_parity_t::<16, 16>();
-        encode_sharded_writes_parity_t::<32, 32>();
-        encode_sharded_writes_parity_t::<64, 64>();
-        encode_sharded_writes_parity_t::<128, 128>();
+        encode_sharded_writes_parity_t::<4, 2>();
+        encode_sharded_writes_parity_t::<8, 4>();
+        encode_sharded_writes_parity_t::<16, 8>();
+        encode_sharded_writes_parity_t::<32, 16>();
+        encode_sharded_writes_parity_t::<64, 32>();
+        encode_sharded_writes_parity_t::<128, 64>();
+        encode_sharded_writes_parity_t::<256, 128>();
     }
 
     fn encode_sharded_writes_parity_t<const N: usize, const T: usize>() {
@@ -471,13 +471,13 @@ mod tests {
 
     #[test]
     fn encode_sharded_injective() {
-        encode_sharded_generalizes_scalar_t::<2, 2>();
-        encode_sharded_generalizes_scalar_t::<4, 4>();
-        encode_sharded_generalizes_scalar_t::<8, 8>();
-        encode_sharded_generalizes_scalar_t::<16, 16>();
-        encode_sharded_generalizes_scalar_t::<32, 32>();
-        encode_sharded_generalizes_scalar_t::<64, 64>();
-        encode_sharded_generalizes_scalar_t::<128, 128>();
+        encode_sharded_generalizes_scalar_t::<4, 2>();
+        encode_sharded_generalizes_scalar_t::<8, 4>();
+        encode_sharded_generalizes_scalar_t::<16, 8>();
+        encode_sharded_generalizes_scalar_t::<32, 16>();
+        encode_sharded_generalizes_scalar_t::<64, 32>();
+        encode_sharded_generalizes_scalar_t::<128, 64>();
+        encode_sharded_generalizes_scalar_t::<256, 128>();
     }
 
     fn encode_sharded_generalizes_scalar_t<const N: usize, const T: usize>() {
@@ -489,13 +489,13 @@ mod tests {
 
     #[test]
     fn recompute_max_corrupt_data_sharded() {
-        recompute_max_corrupt_data_sharded_t::<2, 2>();
-        recompute_max_corrupt_data_sharded_t::<4, 4>();
-        recompute_max_corrupt_data_sharded_t::<8, 8>();
-        recompute_max_corrupt_data_sharded_t::<16, 16>();
-        recompute_max_corrupt_data_sharded_t::<32, 32>();
-        recompute_max_corrupt_data_sharded_t::<64, 64>();
-        recompute_max_corrupt_data_sharded_t::<128, 128>();
+        recompute_max_corrupt_data_sharded_t::<4, 2>();
+        recompute_max_corrupt_data_sharded_t::<8, 4>();
+        recompute_max_corrupt_data_sharded_t::<16, 8>();
+        recompute_max_corrupt_data_sharded_t::<32, 16>();
+        recompute_max_corrupt_data_sharded_t::<64, 32>();
+        recompute_max_corrupt_data_sharded_t::<128, 64>();
+        recompute_max_corrupt_data_sharded_t::<256, 128>();
     }
 
     fn recompute_max_corrupt_data_sharded_t<const N: usize, const T: usize>() {
