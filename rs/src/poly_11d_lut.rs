@@ -1,7 +1,4 @@
-use crate::{
-    gf2p8lut::{CantorBasisLut, Gf2p8Lut, LchBasisLut},
-    kernel::Kernel,
-};
+use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d};
 
 pub mod generated {
@@ -28,16 +25,10 @@ impl Gf2p8Lut for Gf2p8_11d {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct BasesLut11d;
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct CantorBasisLut11d;
 
-impl BasesLut11d {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl CantorBasisLut<Gf2p8_11d> for BasesLut11d {
+impl CantorBasisLut<Gf2p8_11d> for CantorBasisLut11d {
     fn get_basis_point_lut(&self, i: u8) -> Gf2p8_11d {
         generated::CANTOR_BASIS[i as usize].into()
     }
@@ -55,13 +46,13 @@ impl CantorBasisLut<Gf2p8_11d> for BasesLut11d {
     }
 }
 
-impl LchBasisLut<Gf2p8_11d> for BasesLut11d {}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::RsLut;
-    use crate::gf2p8lut::PolyOps;
+    use crate::poly_arith::{
+        CantorBasisPolyArith, CantorBasisPolySliceArith, PolySliceArith, poly,
+    };
     use additive_fft_reed_solomon_gf2p8::{CantorBasis, CantorBasis11d, FIELD_SIZE, Gf2p8};
 
     #[test]
@@ -89,37 +80,34 @@ mod tests {
         }
     }
 
-    // Assumption: k_msg == t_parity, hence n == 2 * t_parity
-    fn generate_lch_codeword<const N: usize, const T: usize>(
-        rs: &RsLut<N, T>,
-        t_parity: usize,
-    ) -> Vec<Gf2p8_11d> {
-        let mut message = vec![Gf2p8_11d::zero(); t_parity];
-        let mut parity = vec![Gf2p8_11d::zero(); t_parity];
+    fn generate_lch_codeword<const N: usize, const T: usize>(rs: &RsLut<N, T>) -> Vec<Gf2p8_11d> {
+        let k = N - T;
+        let mut message = vec![Gf2p8_11d::zero(); k];
+        let mut parity = vec![Gf2p8_11d::zero(); T];
 
-        for i in 0..t_parity {
-            message[i] = Gf2p8_11d::from((t_parity + i) as u8);
+        for i in 0..k {
+            message[i] = Gf2p8_11d::from((T + i) as u8);
         }
 
         rs.encode_systematic_scalar(&message, &mut parity);
 
-        let mut codeword = vec![Gf2p8_11d::zero(); 2 * t_parity];
-        codeword[..t_parity].copy_from_slice(&parity);
-        codeword[t_parity..].copy_from_slice(&message);
+        let mut codeword = vec![Gf2p8_11d::zero(); N];
+        codeword[..T].copy_from_slice(&parity);
+        codeword[T..].copy_from_slice(&message);
         codeword
     }
 
     fn generate_sharded_lch_codeword<const N: usize, const T: usize>(
         rs: &RsLut<N, T>,
-        t_parity: usize,
         shard_len: usize,
     ) -> Vec<Vec<Gf2p8_11d>> {
-        let mut message = vec![vec![Gf2p8_11d::zero(); shard_len]; t_parity];
-        let mut parity = vec![vec![Gf2p8_11d::zero(); shard_len]; t_parity];
+        let k = N - T;
+        let mut message = vec![vec![Gf2p8_11d::zero(); shard_len]; k];
+        let mut parity = vec![vec![Gf2p8_11d::zero(); shard_len]; T];
 
-        for i in 0..t_parity {
+        for i in 0..k {
             for j in 0..shard_len {
-                message[i][j] = Gf2p8_11d::from((t_parity + i + j) as u8);
+                message[i][j] = Gf2p8_11d::from((T + i + j) as u8);
             }
         }
 
@@ -130,72 +118,10 @@ mod tests {
 
         rs.encode_systematic_sharded(&message_slices, &mut parity_slices);
 
-        let mut codeword = vec![vec![Gf2p8_11d::zero(); shard_len]; 2 * t_parity];
-        codeword[..t_parity].clone_from_slice(&parity);
-        codeword[t_parity..].clone_from_slice(&message);
+        let mut codeword = vec![vec![Gf2p8_11d::zero(); shard_len]; N];
+        codeword[..T].clone_from_slice(&parity);
+        codeword[T..].clone_from_slice(&message);
         codeword
-    }
-
-    #[test]
-    fn span_eq_span_by_gray_code() {
-        let basis = CantorBasis11d::new();
-        for i in 0..9 {
-            let s1 = basis.span(i);
-            let s2 = basis.span_by_gray_code(i);
-            assert_eq!(s1, s2, "spans of dimension {i} differ");
-        }
-    }
-
-    fn unwrap_gfs<'a>(it: impl Iterator<Item = &'a Gf2p8_11d>) -> Vec<u8> {
-        it.map(|&x| u8::from(x)).collect()
-    }
-
-    #[test]
-    fn all_subspace_poly_luts() {
-        let basis = CantorBasis11d::new();
-        let incremental_luts: Vec<_> = (0..9).map(|k| basis.gen_subspace_poly_lut(k)).collect();
-        let all_luts = basis.gen_all_subspace_poly_luts();
-        for (k, &lut) in all_luts.iter().enumerate() {
-            println!("LUT {k}: {:?}", unwrap_gfs(lut.iter()));
-            assert_eq!(lut, incremental_luts[k]);
-        }
-
-        println!(
-            "Chain of subspaces: {:?}",
-            basis
-                .chain_of_subspaces()
-                .iter()
-                .map(|ss| unwrap_gfs(ss.iter()))
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn subspace_poly_luts_match_over_subspace_chain() {
-        let basis = CantorBasis11d::new();
-        let all_luts = basis.gen_all_subspace_poly_luts();
-        let subspace_chain = basis.chain_of_subspaces();
-        for (lut, ss) in all_luts.iter().zip(subspace_chain.iter()) {
-            for (x, &p) in lut.iter().enumerate() {
-                let gf_x: Gf2p8_11d = (x as u8).into();
-                let mut prod: Gf2p8_11d = 1u8.into();
-                for &a in ss {
-                    prod = prod.mul(gf_x.add(a));
-                }
-                assert_eq!(p, prod);
-            }
-        }
-    }
-
-    #[test]
-    fn deriv_subspace_poly_luts() {
-        let basis = CantorBasis11d::new();
-        assert!(
-            basis
-                .gen_deriv_subspace_poly_lut()
-                .iter()
-                .all(|d| *d == Gf2p8_11d::one())
-        );
     }
 
     #[test]
@@ -208,22 +134,20 @@ mod tests {
 
     #[test]
     fn scalar_fft_ifft_id() {
-        let bases = BasesLut11d::new();
+        let basis = CantorBasisLut11d;
         let mut data = [0u8.into(); 256];
 
-        // 1. Fill with "random" test data
         for i in 0..128 {
             data[i] = Gf2p8_11d::from(i as u8);
         }
         let original = data;
 
         // k=8 for 256 points, beta=0 for the standard subspace V_8
-        bases.fft_scalar(&mut data, 8, 0u8.into());
+        basis.fft_scalar(&mut data, 8, 0u8.into());
 
-        println!("FFT result: {:?}", unwrap_gfs(data.iter()));
         assert_ne!(data, original, "FFT should have transformed the data");
 
-        bases.ifft_scalar(&mut data, 8, 0u8.into());
+        basis.ifft_scalar(&mut data, 8, 0u8.into());
 
         for i in 0..256 {
             assert_eq!(
@@ -236,103 +160,116 @@ mod tests {
 
     #[test]
     fn decode_no_errors() {
-        let bases = BasesLut11d::new();
+        decode_no_errors_t::<2, 2>();
+        decode_no_errors_t::<4, 4>();
+        decode_no_errors_t::<8, 8>();
+        decode_no_errors_t::<16, 16>();
+        decode_no_errors_t::<32, 32>();
+        decode_no_errors_t::<64, 64>();
+        decode_no_errors_t::<128, 128>();
+    }
 
-        for t_log in 1..=7 {
-            // FIXME: unroll the loop over t_log here and elsewhere
-            let rs = RsLut::<256, 128>::new(bases);
-
-            let t_parity = 1 << t_log;
-            let original = generate_lch_codeword(&rs, t_parity);
-            let mut received = original.clone();
-
-            assert!(rs.decode_systematic_scalar(&mut received, t_parity));
-            assert_eq!(received, original);
-        }
+    fn decode_no_errors_t<const N: usize, const T: usize>() {
+        let rs = RsLut::<N, T>::new();
+        let original = generate_lch_codeword(&rs);
+        let mut received = original.clone();
+        assert!(
+            rs.decode_systematic_scalar(&mut received, N - T),
+            "decode failed for N={N}, T={T}"
+        );
+        assert_eq!(received, original, "mismatch for N={N}, T={T}");
     }
 
     #[test]
     fn decode_max_corrupt_parity() {
-        let bases = BasesLut11d::new();
+        decode_max_corrupt_parity_t::<2, 2>();
+        decode_max_corrupt_parity_t::<4, 4>();
+        decode_max_corrupt_parity_t::<8, 8>();
+        decode_max_corrupt_parity_t::<16, 16>();
+        decode_max_corrupt_parity_t::<32, 32>();
+        decode_max_corrupt_parity_t::<64, 64>();
+        decode_max_corrupt_parity_t::<128, 128>();
+    }
 
-        for t_log in 1..=7 {
-            let t_parity = 1 << t_log;
-            let original = generate_lch_codeword(&bases, t_parity);
-            let mut received = original.clone();
+    fn decode_max_corrupt_parity_t<const N: usize, const T: usize>() {
+        let rs = RsLut::<N, T>::new();
+        let original = generate_lch_codeword(&rs);
+        let mut received = original.clone();
 
-            // Corrupt parity
-            for (i, r) in received.iter_mut().take(t_parity / 2).enumerate() {
-                *r = (*r).mul((i as u8 + 2).into())
-            }
-
-            println!("original codeword {original:?}");
-            println!("corrupted codeword {received:?}");
-
-            assert!(
-                bases.decode_systematic_scalar(&mut received, t_parity),
-                "Failed to decode corrupt parity, t_parity = {t_parity}"
-            );
-            assert_eq!(received, original);
+        // Corrupt parity
+        for (i, r) in received.iter_mut().take(T / 2).enumerate() {
+            *r = (*r).mul((i as u8 + 2).into())
         }
+
+        println!("original codeword {original:?}");
+        println!("corrupted codeword {received:?}");
+
+        assert!(
+            rs.decode_systematic_scalar(&mut received, N - T),
+            "Failed to decode corrupt parity at N={N}, T={T}"
+        );
+        assert_eq!(received, original);
     }
 
     #[test]
     fn decode_max_corrupt_data() {
-        let bases = BasesLut11d::new();
+        decode_max_corrupt_data_t::<2, 2>();
+        decode_max_corrupt_data_t::<4, 4>();
+        decode_max_corrupt_data_t::<8, 8>();
+        decode_max_corrupt_data_t::<16, 16>();
+        decode_max_corrupt_data_t::<32, 32>();
+        decode_max_corrupt_data_t::<64, 64>();
+        decode_max_corrupt_data_t::<128, 128>();
+    }
 
-        for t_log in 1..=7 {
-            let t_parity = 1 << t_log;
-            let original = generate_lch_codeword(&bases, t_parity);
-            let mut received = original.clone();
+    fn decode_max_corrupt_data_t<const N: usize, const T: usize>() {
+        let rs = RsLut::<N, T>::new();
+        let original = generate_lch_codeword(&rs);
+        let mut received = original.clone();
 
-            // Corrupt parity
-            for (i, r) in received
-                .iter_mut()
-                .skip(t_parity)
-                .take(t_parity / 2)
-                .enumerate()
-            {
-                *r = (*r).mul((i as u8 + 2).into())
-            }
-
-            println!("original codeword {original:?}");
-            println!("corrupted codeword {received:?}");
-
-            assert!(
-                bases.decode_systematic_scalar(&mut received, t_parity),
-                "Failed to decode corrupt data, t_parity = {t_parity}"
-            );
-            assert_eq!(received, original);
+        // Corrupt data
+        for (i, r) in received.iter_mut().skip(T).take(T / 2).enumerate() {
+            *r = (*r).mul((i as u8 + 2).into())
         }
+
+        println!("original codeword {original:?}");
+        println!("corrupted codeword {received:?}");
+
+        assert!(
+            rs.decode_systematic_scalar(&mut received, N - T),
+            "Failed to decode corrupt data at N={N}, T={T}"
+        );
+        assert_eq!(received, original);
     }
 
     #[test]
     fn recompute_max_corrupt_data() {
-        let bases = BasesLut11d::new();
+        recompute_max_corrupt_data_t::<2, 2>();
+        recompute_max_corrupt_data_t::<4, 4>();
+        recompute_max_corrupt_data_t::<8, 8>();
+        recompute_max_corrupt_data_t::<16, 16>();
+        recompute_max_corrupt_data_t::<32, 32>();
+        recompute_max_corrupt_data_t::<64, 64>();
+        recompute_max_corrupt_data_t::<128, 128>();
+    }
 
-        for t_log in 1..=7 {
-            let t_parity = 1 << t_log;
-            let original = generate_lch_codeword(&bases, t_parity);
-            let mut received = original.clone();
+    fn recompute_max_corrupt_data_t<const N: usize, const T: usize>() {
+        let rs = RsLut::<N, T>::new();
+        let original = generate_lch_codeword(&rs);
+        let mut received = original.clone();
 
-            // Corrupt data
-            for (i, r) in received
-                .iter_mut()
-                .skip(t_parity)
-                // .take(t_parity)
-                .enumerate()
-            {
-                *r = (*r).mul((i as u8 + 2).into())
-            }
-
-            bases.recompute_data_from_parity(&mut received);
-            assert_eq!(received, original);
+        // Corrupt data
+        for (i, r) in received.iter_mut().skip(T).enumerate() {
+            *r = (*r).mul((i as u8 + 2).into())
         }
+
+        rs.recompute_data_from_parity(&mut received);
+        assert_eq!(received, original);
     }
 
     #[test]
     fn poly_mul_lnh_by_zero() {
-        let bases = BasesLut11d::new();
+        let basis = CantorBasisLut11d;
         let zero = [0u8.into(); FIELD_SIZE];
 
         let mut a = [0u8.into(); FIELD_SIZE];
@@ -340,13 +277,13 @@ mod tests {
         a[1] = 0xca.into();
         a[3] = 1.into();
 
-        assert_eq!(bases.poly_mul_lnh(&a, &zero), zero);
-        assert_eq!(bases.poly_mul_lnh(&zero, &a), zero);
+        assert_eq!(basis.poly_mul_lnh(&a, &zero), zero);
+        assert_eq!(basis.poly_mul_lnh(&zero, &a), zero);
     }
 
     #[test]
     fn poly_mul_lnh_by_one() {
-        let bases = BasesLut11d::new();
+        let basis = CantorBasisLut11d;
         let mut one = [0u8.into(); FIELD_SIZE];
         one[0] = 1.into();
 
@@ -355,13 +292,13 @@ mod tests {
         a[2] = 0x3f.into();
         a[7] = 0x11.into();
 
-        assert_eq!(bases.poly_mul_lnh(&a, &one), a);
-        assert_eq!(bases.poly_mul_lnh(&one, &a), a);
+        assert_eq!(basis.poly_mul_lnh(&a, &one), a);
+        assert_eq!(basis.poly_mul_lnh(&one, &a), a);
     }
 
     #[test]
     fn poly_mul_lnh_const_by_const() {
-        let bases = BasesLut11d::new();
+        let basis = CantorBasisLut11d;
         let mut a = [0u8.into(); FIELD_SIZE];
         let a0 = 0x53.into();
         a[0] = a0;
@@ -370,14 +307,14 @@ mod tests {
         let b0 = 0xca.into();
         b[0] = b0;
 
-        let result = bases.poly_mul_lnh(&a, &b);
+        let result = basis.poly_mul_lnh(&a, &b);
         assert_eq!(result[0], a0.mul_lut(b0));
         assert_eq!(result[1..], [0u8.into(); FIELD_SIZE - 1]);
     }
 
     #[test]
     fn poly_mul_lnh_commutes() {
-        let bases = BasesLut11d::new();
+        let basis = CantorBasisLut11d;
         let mut a = [0u8.into(); FIELD_SIZE];
         a[0] = 1.into();
         a[1] = 0xff.into();
@@ -387,12 +324,12 @@ mod tests {
         b[2] = 0x83.into();
         b[5] = 0x2a.into();
 
-        assert_eq!(bases.poly_mul_lnh(&a, &b), bases.poly_mul_lnh(&b, &a));
+        assert_eq!(basis.poly_mul_lnh(&a, &b), basis.poly_mul_lnh(&b, &a));
     }
 
     #[test]
     fn poly_mul_lnh_associative() {
-        let bases = BasesLut11d::new();
+        let basis = CantorBasisLut11d;
 
         let mut a = [0.into(); FIELD_SIZE];
         a[0] = 3.into();
@@ -406,14 +343,14 @@ mod tests {
         c[0] = 0xaa.into();
         c[1] = 0x55.into();
 
-        let ab_c = bases.poly_mul_lnh(&bases.poly_mul_lnh(&a, &b), &c);
-        let a_bc = bases.poly_mul_lnh(&a, &bases.poly_mul_lnh(&b, &c));
+        let ab_c = basis.poly_mul_lnh(&basis.poly_mul_lnh(&a, &b), &c);
+        let a_bc = basis.poly_mul_lnh(&a, &basis.poly_mul_lnh(&b, &c));
         assert_eq!(ab_c, a_bc);
     }
 
     #[test]
     fn poly_mul_lnh_distributive_over_addition() {
-        let bases = BasesLut11d::new();
+        let basis = CantorBasisLut11d;
 
         let mut a = [0.into(); FIELD_SIZE];
         a[0] = 0x11.into();
@@ -427,10 +364,10 @@ mod tests {
         c[0] = 0x55.into();
         c[2] = 0x66.into();
 
-        let b_plus_c = bases.poly_add(&b, &c);
+        let b_plus_c = poly::add(&b, &c);
 
-        let lhs = bases.poly_mul_lnh(&a, &b_plus_c);
-        let rhs = bases.poly_add(&bases.poly_mul_lnh(&a, &b), &bases.poly_mul_lnh(&a, &c));
+        let lhs = basis.poly_mul_lnh(&a, &b_plus_c);
+        let rhs = poly::add(&basis.poly_mul_lnh(&a, &b), &basis.poly_mul_lnh(&a, &c));
 
         println!("lhs = {lhs:?}, rhs = {rhs:?}");
         assert_eq!(lhs, rhs);
@@ -441,7 +378,7 @@ mod tests {
         const DEGREE_A: usize = 3;
         const DEGREE_B: usize = 5;
 
-        let bases = BasesLut11d::new();
+        let basis = CantorBasisLut11d;
 
         let mut a = [0.into(); FIELD_SIZE];
         a[DEGREE_A] = 1.into();
@@ -449,14 +386,14 @@ mod tests {
         let mut b = [0.into(); FIELD_SIZE];
         b[DEGREE_B] = 1.into();
 
-        let result = bases.poly_mul_lnh(&a, &b);
+        let result = basis.poly_mul_lnh(&a, &b);
 
         assert_eq!(result.degree().unwrap(), DEGREE_A + DEGREE_B);
     }
 
     #[test]
     fn poly_div_lnh_by_constant_scales_coefficients() {
-        let bases = BasesLut11d::new();
+        let basis = CantorBasisLut11d;
         let c: Gf2p8_11d = 0x53.into();
         let c_inv = c.inv_lut();
 
@@ -468,7 +405,7 @@ mod tests {
         let mut b = [0.into(); FIELD_SIZE];
         b[0] = c;
 
-        let (q, r) = bases.poly_div_lnh(&a, &b).unwrap();
+        let (q, r) = basis.poly_div_lnh(&a, &b).unwrap();
 
         assert_eq!(r, [0.into(); FIELD_SIZE]);
 
@@ -479,13 +416,13 @@ mod tests {
 
     #[test]
     fn field_non_degeneracy() {
-        let bases = BasesLut11d::new();
+        let basis = CantorBasisLut11d;
 
         for k in 1..=7 {
-            let v_k = bases.get_subspace_point_lut(1 << k);
-            let v_k_minus_1 = bases.get_subspace_point_lut(1 << (k - 1));
-            let s_k_minus_1_v_k = bases.eval_subspace_poly_lut(k - 1, v_k);
-            let s_k_minus_1_v_k_minus_1 = bases.eval_subspace_poly_lut(k - 1, v_k_minus_1);
+            let v_k = basis.get_subspace_point_lut(1 << k);
+            let v_k_minus_1 = basis.get_subspace_point_lut(1 << (k - 1));
+            let s_k_minus_1_v_k = basis.eval_subspace_poly_lut(k - 1, v_k);
+            let s_k_minus_1_v_k_minus_1 = basis.eval_subspace_poly_lut(k - 1, v_k_minus_1);
             let k_minus_1 = k - 1;
             println!(
                 "s_{k_minus_1}(v_{k_minus_1}) = {:?}, s_{k_minus_1}(v_{k}) = {:?}",
@@ -497,103 +434,113 @@ mod tests {
 
     #[test]
     fn subspace_poly_trace() {
-        let bases = BasesLut11d::new();
+        let basis = CantorBasisLut11d;
         let p2: Vec<u8> = (0..8).map(|i| 2u8.pow(i)).collect();
 
         let points: Vec<_> = p2
             .iter()
-            .map(|&p| u8::from(bases.get_subspace_point_lut(p)))
+            .map(|&p| u8::from(basis.get_subspace_point_lut(p)))
             .collect();
         assert_eq!(points, [1, 214, 152, 146, 86, 200, 88, 231]);
     }
 
     #[test]
     fn encode_sharded_writes_parity() {
+        encode_sharded_writes_parity_t::<2, 2>();
+        encode_sharded_writes_parity_t::<4, 4>();
+        encode_sharded_writes_parity_t::<8, 8>();
+        encode_sharded_writes_parity_t::<16, 16>();
+        encode_sharded_writes_parity_t::<32, 32>();
+        encode_sharded_writes_parity_t::<64, 64>();
+        encode_sharded_writes_parity_t::<128, 128>();
+    }
+
+    fn encode_sharded_writes_parity_t<const N: usize, const T: usize>() {
         const SHARD_LEN: usize = 32;
-
-        let bases = BasesLut11d::new();
-
-        for t_log in 1..8 {
-            let t_parity = 1 << t_log;
-            let codeword = generate_sharded_lch_codeword(&bases, t_parity, SHARD_LEN);
-            // Verify that the parity shards have been written into.
-            for j in 0..t_parity {
-                assert_ne!(codeword[j], vec![Gf2p8_11d::zero(); SHARD_LEN]);
-            }
+        let rs = RsLut::<N, T>::new();
+        let codeword = generate_sharded_lch_codeword(&rs, SHARD_LEN);
+        // Verify that the parity shards have been written into.
+        for j in 0..T {
+            assert_ne!(
+                codeword[j],
+                vec![Gf2p8_11d::zero(); SHARD_LEN],
+                "failed for N={N}, T={T}"
+            );
         }
     }
 
     #[test]
     fn encode_sharded_injective() {
-        const SHARD_LEN: usize = 1;
+        encode_sharded_generalizes_scalar_t::<2, 2>();
+        encode_sharded_generalizes_scalar_t::<4, 4>();
+        encode_sharded_generalizes_scalar_t::<8, 8>();
+        encode_sharded_generalizes_scalar_t::<16, 16>();
+        encode_sharded_generalizes_scalar_t::<32, 32>();
+        encode_sharded_generalizes_scalar_t::<64, 64>();
+        encode_sharded_generalizes_scalar_t::<128, 128>();
+    }
 
-        let bases = BasesLut11d::new();
-
-        for t_log in 1..8 {
-            let t_parity = 1 << t_log;
-
-            let scalar = generate_lch_codeword(&bases, t_parity);
-            let sharded = generate_sharded_lch_codeword(&bases, t_parity, SHARD_LEN);
-
-            assert_eq!(scalar, sharded.into_iter().flatten().collect::<Vec<_>>());
-        }
+    fn encode_sharded_generalizes_scalar_t<const N: usize, const T: usize>() {
+        let rs = RsLut::<N, T>::new();
+        let scalar = generate_lch_codeword(&rs);
+        let sharded = generate_sharded_lch_codeword(&rs, 1);
+        assert_eq!(scalar, sharded.into_iter().flatten().collect::<Vec<_>>());
     }
 
     #[test]
     fn recompute_max_corrupt_data_sharded() {
+        recompute_max_corrupt_data_sharded_t::<2, 2>();
+        recompute_max_corrupt_data_sharded_t::<4, 4>();
+        recompute_max_corrupt_data_sharded_t::<8, 8>();
+        recompute_max_corrupt_data_sharded_t::<16, 16>();
+        recompute_max_corrupt_data_sharded_t::<32, 32>();
+        recompute_max_corrupt_data_sharded_t::<64, 64>();
+        recompute_max_corrupt_data_sharded_t::<128, 128>();
+    }
+
+    fn recompute_max_corrupt_data_sharded_t<const N: usize, const T: usize>() {
         const SHARD_LEN: usize = 16;
+        let rs = RsLut::<N, T>::new();
+        let original = generate_sharded_lch_codeword(&rs, SHARD_LEN);
+        let mut received = original.clone();
 
-        let bases = BasesLut11d::new();
-
-        for t_log in 1..8 {
-            let t_parity = 1 << t_log;
-            let original = generate_sharded_lch_codeword(&bases, t_parity, SHARD_LEN);
-            let mut received = original.clone();
-
-            // Corrupt data
-            for r in received.iter_mut().skip(t_parity) {
-                r.fill(Gf2p8_11d::zero());
-            }
-
-            let mut received_slices: Vec<&mut [Gf2p8_11d]> =
-                received.iter_mut().map(|shard| shard.as_mut()).collect();
-            bases.recompute_data_from_parity_sharded(&mut received_slices);
-            assert_eq!(received, original);
+        // Corrupt data
+        for r in received.iter_mut().skip(T) {
+            r.fill(Gf2p8_11d::zero());
         }
+
+        let mut received_slices: Vec<&mut [Gf2p8_11d]> =
+            received.iter_mut().map(|shard| shard.as_mut()).collect();
+        rs.recompute_data_from_parity_sharded(&mut received_slices);
+        assert_eq!(received, original);
     }
 
     #[test]
-    fn recover_erasure_shards() {
+    fn recover_erasure_shards() {}
+
+    fn recover_erasure_shards_t<const N: usize, const T: usize>() {
         const SHARD_LEN: usize = 8;
 
-        let bases = BasesLut11d::new();
+        let rs = RsLut::<N, T>::new();
         let zero_shard = vec![Gf2p8_11d::zero(); SHARD_LEN];
 
-        for t_log in 1..8 {
-            let t_parity = 1 << t_log;
-            let original = generate_sharded_lch_codeword(&bases, t_parity, SHARD_LEN);
-            let mut received = Vec::new();
+        let original = generate_sharded_lch_codeword(&rs, SHARD_LEN);
+        let mut received = Vec::new();
 
-            for (i, shard) in original.iter().enumerate() {
-                if i & 1 == 1 {
-                    received.push(shard.clone());
-                } else {
-                    received.push(zero_shard.clone());
-                }
+        for (i, shard) in original.iter().enumerate() {
+            if i & 1 == 1 {
+                received.push(shard.clone());
+            } else {
+                received.push(zero_shard.clone());
             }
-
-            let erasure_positions: Vec<_> = (0..2 * t_parity).step_by(2).collect();
-
-            let mut received_slices: Vec<&mut [Gf2p8_11d]> =
-                received.iter_mut().map(|shard| shard.as_mut()).collect();
-
-            assert!(bases.recover_erasure_shards(
-                &mut received_slices,
-                t_parity,
-                &erasure_positions
-            ));
-
-            assert_eq!(received, original);
         }
+
+        let erasure_positions: Vec<_> = (0..2 * T).step_by(2).collect();
+
+        let mut received_slices: Vec<&mut [Gf2p8_11d]> =
+            received.iter_mut().map(|shard| shard.as_mut()).collect();
+
+        assert!(rs.recover_erasure_shards(&mut received_slices, T, &erasure_positions));
+        assert_eq!(received, original);
     }
 }

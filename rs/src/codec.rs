@@ -1,120 +1,46 @@
-use additive_fft_reed_solomon_gf2p8::Gf2p8;
-
 use crate::{
-    gf2p8lut::{CantorBasisLut, Gf2p8Lut, LchBasisLut, PolyOps},
+    gf2p8lut::{CantorBasisLut, Gf2p8Lut},
     kernel::Kernel,
+    poly_arith::{
+        CantorBasisPolyArith, CantorBasisPolySliceArith, PolyMutSliceArith, PolySliceArith, poly,
+    },
 };
 use std::{marker::PhantomData, mem::MaybeUninit};
 
-pub struct Codec<G: Gf2p8Lut, B, K, const N: usize, const T: usize> {
+#[derive(Copy, Clone)]
+pub struct Codec<G, B, K, const N: usize, const T: usize> {
     basis: B,
     _kernel: PhantomData<(G, K)>,
 }
 
-// impl<B, G, const N: usize, const T: usize> Codec<B, G, N, T>
-// where
-//     G: Gf2p8Lut,
-//     B: Kernel<G>,
-// {
-//     pub fn new(basis: B) -> Self {
-//         Self(basis, PhantomData)
-//     }
-// }
-
 impl<G, B, K, const N: usize, const T: usize> Codec<G, B, K, N, T>
 where
     G: Gf2p8Lut,
-    B: CantorBasisLut<G> + LchBasisLut<G>,
+    B: CantorBasisLut<G> + Default,
     K: Kernel<G>,
 {
-    pub fn new(basis: B) -> Self {
+    pub fn new() -> Self {
         Self {
-            basis,
+            basis: B::default(),
             _kernel: PhantomData,
         }
     }
 
-    /// Algorithm 1 in LNH paper.
-    ///
-    /// The input coefficients `coeff` represent a polynomial in the basis X. That is,
-    /// a polynomial $\Sum_{i=0}^{2^k - 1} d_i X_i(x)$, for $d_i$ in `coeff`.
-    ///
-    /// The function outputs, in `coeff`, the evaluations of the input polynomial at points
-    /// $\omega_i + \beta$ where $\omega_i$ are the points of the subspace $V_k$,
-    /// for $0 \le i < 2^k$.
-    fn fft_scalar(&self, coeffs: &mut [G], k: u8, beta: G) {
-        if k == 0 {
-            return;
-        }
-
-        let half = 1 << (k - 1);
-
-        // Fetch the twiddle factor T = s_{k-1}(beta)
-        let twiddle = self.basis.eval_subspace_poly_lut(k - 1, beta);
-
-        // Butterfly stage (line 3-6)
-        for i in 0..half {
-            let d_i = coeffs[i];
-            let d_i_half = coeffs[i + half];
-
-            // g_i_0 = d_i + T * d_{i+half}
-            let g_i_0 = d_i.add(twiddle.mul(d_i_half));
-
-            // g_i_1 = g_i_0 + d_{i+half}
-            // This is equivalent to d_i + (T + 1) * d_{i+half}
-            let g_i_1 = g_i_0.add(d_i_half);
-
-            coeffs[i] = g_i_0;
-            coeffs[i + half] = g_i_1;
-        }
-
-        // Recursive calls (line 7-8)
-        // Left branch: FFT(g_0, k-1, beta)
-        self.fft_scalar(&mut coeffs[..half], k - 1, beta);
-
-        // Right branch: FFT(g_1, k-1, v_{k-1} + beta)
-        let next_beta = beta.add(self.basis.get_basis_point_lut(k - 1));
-        self.fft_scalar(&mut coeffs[half..], k - 1, next_beta);
-    }
-
-    /// Algorithm 2 in LNH paper.
-    fn ifft_scalar(&self, evals: &mut [G], k: u8, beta: G) {
-        if k == 0 {
-            return;
-        }
-
-        let half = 1 << (k - 1);
-
-        self.ifft_scalar(&mut evals[..half], k - 1, beta);
-
-        let next_beta = beta.add(self.basis.get_basis_point_lut(k - 1));
-        self.ifft_scalar(&mut evals[half..], k - 1, next_beta);
-
-        let twiddle = self.basis.eval_subspace_poly_lut(k - 1, beta);
-
-        for i in 0..half {
-            let g_i_0 = evals[i];
-            let g_i_1 = evals[i + half];
-
-            let d_i_half = g_i_0.add(g_i_1);
-            let d_i = g_i_0.add(twiddle.mul(d_i_half));
-
-            evals[i] = d_i;
-            evals[i + half] = d_i_half;
-        }
-    }
-
-    fn solve_key_equation_eea(&self, syndrome: &[G; N], t_log: u8) -> Option<([G; N], [G; N])> {
+    pub(crate) fn solve_key_equation_eea(
+        &self,
+        syndrome: &[G; N],
+        t_log: u8,
+    ) -> Option<([G; N], [G; N])> {
         let mut st = [G::zero(); N];
         self.init_subspace_poly_coeffs(&mut st, t_log);
-        let (qt, rt) = self.poly_div_lnh(&st, syndrome)?;
+        let (qt, rt) = self.basis.poly_div_lnh(&st, syndrome)?;
         let (u1, v1, _z1) = self.eea(syndrome, &rt, t_log);
-        let lambda = self.poly_add(&u1, &self.poly_mul_lnh(&v1, &qt));
+        let lambda = poly::add(&u1, &self.basis.poly_mul_lnh(&v1, &qt));
         Some((v1, lambda))
     }
 
     /// Extended Euclidean Algorithm.
-    fn eea(
+    pub(crate) fn eea(
         &self,
         a: &[G], // syndrome
         b: &[G], // remainder r_t(x) from the initial division
@@ -138,6 +64,7 @@ where
 
         while z1.degree().is_some_and(|d| d >= target_deg) {
             let (q, remainder) = self
+                .basis
                 .poly_div_lnh(&z0, &z1)
                 .expect("z1 is non-zero thanks to while condition");
 
@@ -146,14 +73,14 @@ where
             z1 = remainder;
 
             // Update u: u = u0 - q * u1
-            let q_u1 = self.poly_mul_lnh(&q, &u1);
-            let next_u = self.poly_add(&u0, &q_u1);
+            let q_u1 = self.basis.poly_mul_lnh(&q, &u1);
+            let next_u = poly::add(&u0, &q_u1);
             u0 = u1;
             u1 = next_u;
 
             // Update v: v = v0 - q * v1
-            let q_v1 = self.poly_mul_lnh(&q, &v1);
-            let next_v = self.poly_add(&v0, &q_v1);
+            let q_v1 = self.basis.poly_mul_lnh(&q, &v1);
+            let next_v = poly::add(&v0, &q_v1);
             v0 = v1;
             v1 = next_v;
         }
@@ -163,159 +90,8 @@ where
         (u1, v1, z1)
     }
 
-    fn init_subspace_poly_coeffs(&self, st: &mut [G], t_log: u8) {
+    pub(crate) fn init_subspace_poly_coeffs(&self, st: &mut [G], t_log: u8) {
         st[1 << t_log] = G::one(); // Coefficient of x stays 1.
-    }
-
-    /// Division in the monomial basis.
-    /// s_t(x) = q_t(x) * s(x) + r_t(x)
-    fn poly_div_mon(&self, a: &[G], b: &[G]) -> Option<([G; N], [G; N])> {
-        let a_deg = if let Some(deg) = a.degree() {
-            deg
-        } else {
-            return Some(([G::zero(); N], [G::zero(); N]));
-        };
-
-        let mut r = [G::zero(); N];
-        r.copy_from_slice(a);
-        let mut q = [G::zero(); N];
-        let b_deg = b.degree()?;
-        let b_lc_inv = b[b_deg].inv_lut();
-
-        for i in (b_deg..a_deg + 1).rev() {
-            let factor = r[i].mul(b_lc_inv);
-            q[i - b_deg] = factor;
-            for j in 0..=b_deg {
-                r[i - b_deg + j] = r[i - b_deg + j].add(factor.mul(b[j]));
-            }
-        }
-        Some((q, r))
-    }
-
-    /// Polynomial multiplication in the monomial basis.
-    fn poly_mul_mon(&self, a: &[G], b: &[G]) -> [G; N] {
-        let mut res = [G::zero(); N];
-
-        for (i, &ai) in a.iter().enumerate() {
-            if ai == G::zero() {
-                continue;
-            }
-            for (j, &bj) in b.iter().enumerate() {
-                res[i + j] = res[i + j].add(ai.mul(bj));
-            }
-        }
-        res
-    }
-
-    /// Addition of polynomials. Works the same for both the monomial and X bases.
-    fn poly_add(&self, a: &[G], b: &[G]) -> [G; N] {
-        let mut res = [G::zero(); N];
-        res.copy_from_slice(a);
-
-        for (ai, bi) in res.iter_mut().zip(b.iter()) {
-            *ai = ai.add(*bi);
-        }
-
-        res
-    }
-
-    fn poly_add_inplace(&self, a: &mut [G], b: &[G]) {
-        for (ai, bi) in a.iter_mut().zip(b.iter()) {
-            *ai = ai.add(*bi);
-        }
-    }
-
-    /// Polynomial multiplication in the basis X.
-    ///
-    /// As defined in Appendix A of the LNH paper.
-    fn poly_mul_lnh(&self, a: &[G; N], b: &[G; N]) -> [G; N] {
-        let deg_a = if let Some(deg) = a.degree() {
-            deg
-        } else {
-            return [G::zero(); N];
-        };
-
-        let deg_b = if let Some(deg) = b.degree() {
-            deg
-        } else {
-            return [G::zero(); N];
-        };
-
-        // Determine the smallest power-of-2 size n >= deg_a + deg_b + 1
-        let n = (deg_a + deg_b + 1).next_power_of_two();
-        let n_log = n.trailing_zeros() as u8;
-
-        let mut va = *a;
-        let mut vb = *b;
-
-        // Transform to evaluation space
-        self.fft_scalar(&mut va[..n], n_log, G::zero());
-        self.fft_scalar(&mut vb[..n], n_log, G::zero());
-
-        // Pointwise multiplication
-        for i in 0..n {
-            va[i] = va[i].mul(vb[i]);
-        }
-
-        // Transform back to coefficient space
-        self.ifft_scalar(&mut va[..n], n_log, G::zero());
-
-        va
-    }
-
-    fn poly_div_lnh(&self, a: &[G; N], b: &[G; N]) -> Option<([G; N], [G; N])> {
-        let b_deg = b.degree()?;
-
-        let mut r = *a;
-        let mut q = [G::zero(); N];
-
-        let b_lc_inv = b[b_deg].inv_lut();
-
-        // Standard synthetic division, but with basis-aware multiplication
-        while let Some(r_deg) = r.degree() {
-            if r_deg < b_deg {
-                break;
-            }
-
-            let deg_diff = r_deg - b_deg;
-
-            // Calculate leading coefficient of the quotient
-            let factor = r[r_deg].mul(b_lc_inv);
-            q[deg_diff] = q[deg_diff].add(factor);
-
-            // Compute what to subtract: factor * X_{deg_diff} * b(x)
-            let mut term_to_sub = [G::zero(); N];
-            term_to_sub[deg_diff] = factor;
-
-            // Basis-aware multiplication
-            let product = self.poly_mul_lnh(&term_to_sub, b);
-
-            // Update the remainder
-            r = self.poly_add(&r, &product);
-        }
-
-        Some((q, r))
-    }
-
-    /// Split p at 2^k: lo = p[0..2^k), hi = p[2^k..) shifted down.
-    fn poly_split_at(&self, p: &[G; N], k: u8) -> ([G; N], [G; N]) {
-        let pivot = 1usize << k;
-        let mut lo = [G::zero(); N];
-        let mut hi = [G::zero(); N];
-        lo[..pivot].copy_from_slice(&p[..pivot]);
-        hi[..N - pivot].copy_from_slice(&p[pivot..]);
-        (lo, hi)
-    }
-
-    /// Multiply p by s_k = X_{2^k} by shifting coefficients up by 2^k.
-    ///
-    /// Valid only when every non-zero coefficient of p sits at an index
-    /// where bit k is 0 — always satisfied by the HGCD invariants.
-    fn poly_shift_up(&self, p: &[G; N], k: u8) -> [G; N] {
-        let shift = 1usize << k;
-        let mut out = [G::zero(); N];
-        out[shift..].copy_from_slice(&p[..N - shift]);
-        out
     }
 
     /// Step-8 decomposition: given p and the current HGCD level g, return
@@ -328,7 +104,7 @@ where
     ///
     /// Derivation: $s_{g-2}^2 = s_{g-1} + c·s_{g-2}$  (Cantor basis recursion),
     /// so $s_{g-2}·p_m$ expands back to $s_{g-2}·p_lh + s_{g-1}·p_h$, recovering p.
-    fn poly_hgcd_middle(&self, p: &[G; N], g: u8) -> ([G; N], [G; N]) {
+    pub(crate) fn poly_hgcd_middle(&self, p: &[G; N], g: u8) -> ([G; N], [G; N]) {
         debug_assert!(g >= 2);
         let q = 1usize << (g - 2); // 2^{g-2}
         let h = 1usize << (g - 1); // 2^{g-1}
@@ -353,35 +129,6 @@ where
         (p_ll, p_m)
     }
 
-    // 2×2 matrix helpers (row-major: [m00, m01, m10, m11])
-    fn mat_vec_lnh(&self, m: &[[G; N]; 4], v0: &[G; N], v1: &[G; N]) -> ([G; N], [G; N]) {
-        (
-            self.poly_add(&self.poly_mul_lnh(&m[0], v0), &self.poly_mul_lnh(&m[1], v1)),
-            self.poly_add(&self.poly_mul_lnh(&m[2], v0), &self.poly_mul_lnh(&m[3], v1)),
-        )
-    }
-
-    fn mat_mul_lnh(&self, a: &[[G; N]; 4], b: &[[G; N]; 4]) -> [[G; N]; 4] {
-        [
-            self.poly_add(
-                &self.poly_mul_lnh(&a[0], &b[0]),
-                &self.poly_mul_lnh(&a[1], &b[2]),
-            ),
-            self.poly_add(
-                &self.poly_mul_lnh(&a[0], &b[1]),
-                &self.poly_mul_lnh(&a[1], &b[3]),
-            ),
-            self.poly_add(
-                &self.poly_mul_lnh(&a[2], &b[0]),
-                &self.poly_mul_lnh(&a[3], &b[2]),
-            ),
-            self.poly_add(
-                &self.poly_mul_lnh(&a[2], &b[1]),
-                &self.poly_mul_lnh(&a[3], &b[3]),
-            ),
-        ]
-    }
-
     /// Half-GCD algorithm (Algorithm 5, LNH).
     ///
     /// Preconditions: $deg(b) \le deg(a),  2^{g-1} \le deg(a) < 2^g$.
@@ -389,7 +136,7 @@ where
     /// Returns (z0, z1, M) where M = [m00, m01, m10, m11] (row-major) satisfies
     ///   $[z_0, z_1]^T = M · [a, b]^T$,
     ///   $deg(z_0) \ge 2^{g-1}, deg(z_1) < 2^{g-1}$.
-    fn hgcd(&self, a: &[G; N], b: &[G; N], g: u8) -> ([G; N], [G; N], [[G; N]; 4]) {
+    pub(crate) fn hgcd(&self, a: &[G; N], b: &[G; N], g: u8) -> ([G; N], [G; N], [[G; N]; 4]) {
         let zero = [G::zero(); N];
         let one = {
             let mut p = zero;
@@ -405,15 +152,15 @@ where
         }
 
         // Step 3: split at 2^{g-1}, recurse on high halves
-        let (a_l, a_h) = self.poly_split_at(a, g - 1);
-        let (b_l, b_h) = self.poly_split_at(b, g - 1);
+        let (a_l, a_h) = poly::split_at(a, g - 1);
+        let (b_l, b_h) = poly::split_at(b, g - 1);
         let (z_h0, z_h1, m_h) = self.hgcd(&a_h, &b_h, g - 1);
 
         // Step 4: z_M = Z_H · s_{g-1} + M_H · [a_L, b_L]^T
         // Equivalently M_H · (s_{g-1}·[a_H,b_H] + [a_L,b_L]) = M_H · [a, b].
-        let (mv0, mv1) = self.mat_vec_lnh(&m_h, &a_l, &b_l);
-        let z_m0 = self.poly_add(&self.poly_shift_up(&z_h0, g - 1), &mv0);
-        let z_m1 = self.poly_add(&self.poly_shift_up(&z_h1, g - 1), &mv1);
+        let (mv0, mv1) = self.basis.mat_vec_lnh(&m_h, &a_l, &b_l);
+        let z_m0 = poly::add(&poly::shift_up(&z_h0, g - 1), &mv0);
+        let z_m1 = poly::add(&poly::shift_up(&z_h1, g - 1), &mv1);
 
         // Step 5: early return if deg(z_M1) < 2^{g-1} (lines 5-6)
         if z_m1.degree().is_none_or(|d| d < half) {
@@ -422,6 +169,7 @@ where
 
         // Step 7: divide z_M0 by z_M1
         let (q_m, r_m) = self
+            .basis
             .poly_div_lnh(&z_m0, &z_m1)
             .expect("z_m1 non-zero: guaranteed by the HGCD degree invariant");
 
@@ -434,7 +182,9 @@ where
 
         // Step 10
         let swap = [zero, one, one, q_m];
-        let m_r = self.mat_mul_lnh(&m_m, &self.mat_mul_lnh(&swap, &m_h));
+        let m_r = self
+            .basis
+            .mat_mul_lnh(&m_m, &self.basis.mat_mul_lnh(&swap, &m_h));
 
         // Y_M · s_{g-2}: y_m1 is safe to shift (degree < 2^{g-2}, bit g-2 always 0),
         // but y_m0 can have coefficients at index 2^{g-2} (bit g-2 set), so it
@@ -444,21 +194,25 @@ where
             p[1 << (g - 2)] = G::one(); // s_{g-2} = X_{2^{g-2}} in basis X
             p
         };
-        let (mv0, mv1) = self.mat_vec_lnh(&m_m, &z_m1_ll, &r_m_ll);
-        let z_r0 = self.poly_add(&self.poly_mul_lnh(&y_m0, &sg_minus_2), &mv0);
-        let z_r1 = self.poly_add(&self.poly_shift_up(&y_m1, g - 2), &mv1); // y_m1 safe
+        let (mv0, mv1) = self.basis.mat_vec_lnh(&m_m, &z_m1_ll, &r_m_ll);
+        let z_r0 = poly::add(&self.basis.poly_mul_lnh(&y_m0, &sg_minus_2), &mv0);
+        let z_r1 = poly::add(&poly::shift_up(&y_m1, g - 2), &mv1); // y_m1 safe
 
         (z_r0, z_r1, m_r)
     }
 
     /// This is functionally equivalent to `solve_key_equation_eea` and is what the LNH paper
     /// has.
-    fn solve_key_equation_hgcd(&self, syndrome: &[G; N], t_log: u8) -> Option<([G; N], [G; N])> {
+    pub(crate) fn solve_key_equation_hgcd(
+        &self,
+        syndrome: &[G; N],
+        t_log: u8,
+    ) -> Option<([G; N], [G; N])> {
         let mut st = [G::zero(); N];
         self.init_subspace_poly_coeffs(&mut st, t_log);
 
         // s_t = q_t · s + r_t
-        let (q_t, r_t) = self.poly_div_lnh(&st, syndrome)?;
+        let (q_t, r_t) = self.basis.poly_div_lnh(&st, syndrome)?;
 
         // HGCD(s, r_t, t_log) => M = [m00,m01,m10,m11] with
         //   z1 = m10·s + m11·r_t
@@ -469,7 +223,7 @@ where
 
         let u1 = m[2]; // m10
         let v1 = m[3]; // m11
-        let lambda = self.poly_add(&u1, &self.poly_mul_lnh(&v1, &q_t));
+        let lambda = poly::add(&u1, &self.basis.poly_mul_lnh(&v1, &q_t));
 
         Some((v1, lambda))
     }
@@ -488,12 +242,13 @@ where
             let omega = self
                 .basis
                 .get_subspace_point_lut(((i + 1) * t_parity) as u8);
-            self.ifft_scalar(&mut workspace[..t_parity], t_log, omega);
-            self.poly_add_inplace(parity, &workspace[..t_parity]);
+            self.basis
+                .ifft_scalar(&mut workspace[..t_parity], t_log, omega);
+            parity.poly_add_in_place(&workspace[..t_parity]);
         }
 
         // Compute parity (v0)
-        self.fft_scalar(parity, t_log, G::zero());
+        self.basis.fft_scalar(parity, t_log, G::zero());
     }
 
     pub fn encode_systematic_sharded(&self, message: &[&[G]], parity: &mut [&mut [G]]) {
@@ -559,7 +314,8 @@ where
 
             // Perform the partial IFFT (Algorithm 2)
             // This moves the chunk from evaluation space to basis X coefficients
-            self.ifft_scalar(&mut workspace[..t_parity], t_log, beta);
+            self.basis
+                .ifft_scalar(&mut workspace[..t_parity], t_log, beta);
 
             // Accumulate into the syndrome buffer
             for (s, &w) in syndrome
@@ -584,8 +340,8 @@ where
         let mut workspace = [G::zero(); T];
 
         workspace[..t_parity].copy_from_slice(&received[..t_parity]);
-        self.ifft_scalar(&mut workspace, t_log, G::zero());
-        self.fft_scalar(
+        self.basis.ifft_scalar(&mut workspace, t_log, G::zero());
+        self.basis.fft_scalar(
             &mut workspace,
             t_log,
             self.basis.get_subspace_point_lut(t_parity as u8),
@@ -679,7 +435,7 @@ where
         'root: for chunk in 0..(n / t_parity) {
             let beta = self.basis.get_subspace_point_lut((chunk * t_parity) as u8);
             let mut evals = lambda;
-            self.fft_scalar(&mut evals[..t_parity], t_log, beta);
+            self.basis.fft_scalar(&mut evals[..t_parity], t_log, beta);
 
             for offset in 0..t_parity {
                 if evals[offset] == G::zero() {
@@ -702,7 +458,7 @@ where
         }
 
         // Step 4: error values - same per-chunk FFT structure as step 3
-        let lambdap = deriv_poly_lnh(&lambda);
+        let lambdap = poly::deriv_lnh(&lambda);
 
         for chunk in 0..(n / t_parity) {
             let chunk_errors: Vec<(usize, usize)> = error_indices
@@ -719,8 +475,9 @@ where
 
             let mut q_evals = v1;
             let mut lp_evals = lambdap;
-            self.fft_scalar(&mut q_evals[..t_parity], t_log, beta);
-            self.fft_scalar(&mut lp_evals[..t_parity], t_log, beta);
+            self.basis.fft_scalar(&mut q_evals[..t_parity], t_log, beta);
+            self.basis
+                .fft_scalar(&mut lp_evals[..t_parity], t_log, beta);
 
             for (global, offset) in chunk_errors {
                 let lp = lp_evals[offset];
@@ -735,7 +492,10 @@ where
         true
     }
 
-    fn erasure_locator_and_denominators(&self, erasure_positions: &[usize]) -> ([G; N], [G; N]) {
+    pub(crate) fn erasure_locator_and_denominators(
+        &self,
+        erasure_positions: &[usize],
+    ) -> ([G; N], [G; N]) {
         let erasure_count = erasure_positions.len();
 
         let mut pts = [G::zero(); N];
@@ -763,7 +523,7 @@ where
         (lambda, denoms)
     }
 
-    fn forney_sharded(
+    pub(crate) fn forney_sharded(
         q: &[&[G]],
         erasure_positions: &[usize],
         denoms: &[G],
@@ -879,32 +639,4 @@ where
 
         true
     }
-}
-
-/// Derivative in the LNH basis based on Eq 82
-fn deriv_poly_lnh<G: Gf2p8, const N: usize>(coeffs: &[G; N]) -> [G; N] {
-    let mut res = [G::zero(); N];
-
-    let n = coeffs.len();
-    if n <= 1 {
-        return res;
-    }
-
-    res[..n].copy_from_slice(coeffs);
-
-    let m = n.trailing_zeros() as usize;
-
-    for j in 1..=m {
-        let half = 1 << (j - 1);
-        let step = 1 << j;
-        for start in (0..n).step_by(step) {
-            for i in 0..half {
-                // Eq 82 simplified: The derivative of the upper half
-                // interacts with the subspace derivative.
-                res[start + i] = res[start + i].add(res[start + i + half]);
-            }
-        }
-    }
-
-    res
 }

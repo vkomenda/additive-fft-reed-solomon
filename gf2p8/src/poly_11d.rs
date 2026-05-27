@@ -128,7 +128,7 @@ mod tests {
         );
     }
 
-    /// Helper to check linear independence over GF(2) using Gaussian Elimination
+    /// Helper to check linear independence over GF(2) using Gaussian elimination
     fn is_linearly_independent(basis: &CantorBasis11d) -> bool {
         let mut matrix = basis.0.to_vec();
         let mut rank = 0;
@@ -162,5 +162,53 @@ mod tests {
         let elements: Vec<Gf2p8_11d> = basis.into_iter().collect();
 
         assert!((0..8).all(|i| basis.get_subspace_point(2u8.pow(i)) == elements[i as usize]));
+    }
+
+    #[test]
+    fn span_eq_span_by_gray_code() {
+        let basis = CantorBasis11d::new();
+        for i in 0..9 {
+            let s1 = basis.span(i);
+            let s2 = basis.span_by_gray_code(i);
+            assert_eq!(s1, s2, "spans of dimension {i} differ");
+        }
+    }
+
+    #[test]
+    fn all_subspace_poly_luts() {
+        let basis = CantorBasis11d::new();
+        let incremental_luts: Vec<_> = (0..9).map(|k| basis.gen_subspace_poly_lut(k)).collect();
+        let all_luts = basis.gen_all_subspace_poly_luts();
+        for (k, &lut) in all_luts.iter().enumerate() {
+            assert_eq!(lut, incremental_luts[k]);
+        }
+    }
+
+    #[test]
+    fn subspace_poly_luts_match_over_subspace_chain() {
+        let basis = CantorBasis11d::new();
+        let all_luts = basis.gen_all_subspace_poly_luts();
+        let subspace_chain = basis.chain_of_subspaces();
+        for (lut, ss) in all_luts.iter().zip(subspace_chain.iter()) {
+            for (x, &p) in lut.iter().enumerate() {
+                let gf_x: Gf2p8_11d = (x as u8).into();
+                let mut prod: Gf2p8_11d = 1u8.into();
+                for &a in ss {
+                    prod = prod.mul(gf_x.add(a));
+                }
+                assert_eq!(p, prod);
+            }
+        }
+    }
+
+    #[test]
+    fn deriv_subspace_poly_luts() {
+        let basis = CantorBasis11d::new();
+        assert!(
+            basis
+                .gen_deriv_subspace_poly_lut()
+                .iter()
+                .all(|d| *d == Gf2p8_11d::one())
+        );
     }
 }

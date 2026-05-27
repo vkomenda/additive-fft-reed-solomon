@@ -1,7 +1,4 @@
-use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8};
-use core::mem::MaybeUninit;
-
-use crate::kernel::Kernel;
+use additive_fft_reed_solomon_gf2p8::Gf2p8;
 
 /// Precomputed lookup table group operations.
 pub trait Gf2p8Lut: Gf2p8 {
@@ -116,24 +113,3 @@ pub trait LchBasisLut<G: Gf2p8Lut>: CantorBasisLut<G> {
         result
     }
 }
-
-pub trait PolyOps<G: Gf2p8Lut>: AsRef<[G]> {
-    fn degree(&self) -> Option<usize> {
-        self.as_ref()
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_, c)| **c != G::zero())
-            .map(|(i, _)| i)
-    }
-
-    fn leading_coeff(&self) -> G {
-        let coeffs = self.as_ref();
-        coeffs
-            .get(self.degree().unwrap_or(0))
-            .copied()
-            .unwrap_or(G::zero())
-    }
-}
-
-impl<G: Gf2p8Lut, T: AsRef<[G]>> PolyOps<G> for T {}
