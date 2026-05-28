@@ -1,8 +1,8 @@
-mod codec;
-mod gf2p8lut;
-mod kernel;
-mod poly_11d_lut;
-mod poly_arith;
+pub mod codec;
+pub mod gf2p8lut;
+pub mod kernel;
+pub mod poly_11d_lut;
+pub mod poly_arith;
 
 //use crate::kernel::Kernel;
 use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;

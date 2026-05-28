@@ -1,4 +1,9 @@
-use additive_fft_reed_solomon::RsLut;
+use additive_fft_reed_solomon::{
+    codec::Codec,
+    gf2p8lut::CantorBasisLut,
+    kernel::{Kernel, lut_kernel::LutKernel},
+    poly_11d_lut::CantorBasisLut11d,
+};
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d};
 use criterion::{
     BatchSize, Bencher, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main,
@@ -8,14 +13,20 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
 macro_rules! bench_params {
-    ($group:expr, $shard_len:expr, $rng:expr, [$(($n:expr, $t:expr)),* $(,)?]) => {
+    ($group:expr,
+     $shard_len:expr,
+     $rng:expr,
+     $b:ty,
+     $kernel:ty,
+     $kernel_name:expr,
+     [$(($n:expr, $t:expr)),* $(,)?]) => {
         $({
+            let rs = Codec::<Gf2p8_11d, $b, $kernel, $n, $t>::new();
             $group.throughput(Throughput::Bytes(($n * $shard_len) as u64));
             $group.bench_with_input(
-                BenchmarkId::new(format!("N{}_T{}", $n, $t), $shard_len),
+                BenchmarkId::new(format!("N{}_T{}_{}", $n, $t, $kernel_name), $shard_len),
                 &$shard_len,
                 |mut b, &shard_len| {
-                    let rs = RsLut::<$n, $t>::new();
                     bench_recover_erasure_shards_inner(&mut b, &rs, shard_len, &mut $rng);
                 },
             );
@@ -23,11 +34,15 @@ macro_rules! bench_params {
     }
 }
 
-fn generate_random_codeword<const N: usize, const T: usize>(
-    rs: &RsLut<N, T>,
+fn generate_random_codeword<B, K, const N: usize, const T: usize>(
+    rs: &Codec<Gf2p8_11d, B, K, N, T>,
     shard_len: usize,
     rng: &mut impl Rng,
-) -> Vec<Vec<Gf2p8_11d>> {
+) -> Vec<Vec<Gf2p8_11d>>
+where
+    B: CantorBasisLut<Gf2p8_11d> + Default,
+    K: Kernel<Gf2p8_11d>,
+{
     let k = N - T;
     let message: Vec<Vec<Gf2p8_11d>> = (0..k)
         .map(|_| {
@@ -49,23 +64,25 @@ fn generate_random_codeword<const N: usize, const T: usize>(
     codeword
 }
 
-fn bench_recover_erasure_shards_inner<const N: usize, const T: usize>(
+fn bench_recover_erasure_shards_inner<B, K, const N: usize, const T: usize>(
     b: &mut Bencher<'_>,
-    rs: &RsLut<N, T>,
+    rs: &Codec<Gf2p8_11d, B, K, N, T>,
     shard_len: usize,
     rng: &mut impl Rng,
-) {
+) where
+    B: CantorBasisLut<Gf2p8_11d> + Default,
+    K: Kernel<Gf2p8_11d>,
+{
     let original = generate_random_codeword(rs, shard_len, rng);
     b.iter_batched(
         || {
-            let mut rng = SmallRng::seed_from_u64(42);
             let mut received = original.clone();
 
             // Choose T random distinct positions to erase
             let mut positions: Vec<usize> = (0..N).collect();
             // partial Fisher-Yates shuffle for T elements
             for i in 0..T {
-                let j = Uniform::new(i, N).unwrap().sample(&mut rng);
+                let j = Uniform::new(i, N).unwrap().sample(rng);
                 positions.swap(i, j);
             }
             let mut erasure_positions: Vec<usize> = positions[..T].to_vec();
@@ -95,6 +112,35 @@ fn bench_recover_erasure_shards(c: &mut Criterion) {
             group,
             shard_len,
             &mut rng,
+            CantorBasisLut11d,
+            LutKernel<Gf2p8_11d>,
+            "lut",
+            [
+                (4, 1),
+                (4, 2),
+                (8, 2),
+                (8, 4),
+                (16, 4),
+                (16, 8),
+                (32, 8),
+                (32, 16),
+                (64, 16),
+                (64, 32),
+                (128, 32),
+                (128, 64),
+                (256, 64),
+                (256, 128),
+            ]
+        );
+
+        #[cfg(native_gfni)]
+        bench_params!(
+            group,
+            shard_len,
+            &mut rng,
+            CantorBasisLut11d,
+            GfniKernel<Gf2p8_11d>,
+            "gfni",
             [
                 (4, 1),
                 (4, 2),
