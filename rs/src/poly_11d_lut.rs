@@ -517,12 +517,40 @@ mod tests {
 
     #[test]
     fn recover_erasure_shards() {
+        recover_erasure_shards_t::<4, 1>();
         recover_erasure_shards_t::<4, 2>();
+        recover_erasure_shards_t::<8, 1>();
+        recover_erasure_shards_t::<8, 2>();
         recover_erasure_shards_t::<8, 4>();
+        recover_erasure_shards_t::<16, 1>();
+        recover_erasure_shards_t::<16, 2>();
+        recover_erasure_shards_t::<16, 4>();
         recover_erasure_shards_t::<16, 8>();
+        recover_erasure_shards_t::<32, 1>();
+        recover_erasure_shards_t::<32, 2>();
+        recover_erasure_shards_t::<32, 4>();
+        recover_erasure_shards_t::<32, 8>();
         recover_erasure_shards_t::<32, 16>();
+        recover_erasure_shards_t::<64, 1>();
+        recover_erasure_shards_t::<64, 2>();
+        recover_erasure_shards_t::<64, 4>();
+        recover_erasure_shards_t::<64, 8>();
+        recover_erasure_shards_t::<64, 16>();
         recover_erasure_shards_t::<64, 32>();
+        recover_erasure_shards_t::<128, 1>();
+        recover_erasure_shards_t::<128, 2>();
+        recover_erasure_shards_t::<128, 4>();
+        recover_erasure_shards_t::<128, 8>();
+        recover_erasure_shards_t::<128, 16>();
+        recover_erasure_shards_t::<128, 32>();
         recover_erasure_shards_t::<128, 64>();
+        recover_erasure_shards_t::<256, 1>();
+        recover_erasure_shards_t::<256, 2>();
+        recover_erasure_shards_t::<256, 4>();
+        recover_erasure_shards_t::<256, 8>();
+        recover_erasure_shards_t::<256, 16>();
+        recover_erasure_shards_t::<256, 32>();
+        recover_erasure_shards_t::<256, 64>();
         recover_erasure_shards_t::<256, 128>();
     }
 
@@ -533,22 +561,27 @@ mod tests {
         let zero_shard = vec![Gf2p8_11d::zero(); SHARD_LEN];
 
         let original = generate_sharded_lch_codeword(&rs, SHARD_LEN);
-        let mut received = Vec::new();
+        let mut received = original.clone();
+        let mut erasure_positions = Vec::new();
 
-        for (i, shard) in original.iter().enumerate() {
-            if i & 1 == 1 {
-                received.push(shard.clone());
-            } else {
-                received.push(zero_shard.clone());
-            }
+        for (i, shard) in received
+            .iter_mut()
+            .enumerate()
+            .skip(1)
+            .take(T * 2 - 1)
+            .step_by(2)
+        {
+            *shard = zero_shard.clone();
+            erasure_positions.push(i);
         }
 
-        let erasure_positions: Vec<_> = (0..2 * T).step_by(2).collect();
+        //let erasure_positions: Vec<_> = (1..T * 2).step_by(2).collect();
+        println!("erasure_positions={erasure_positions:?}");
 
         let mut received_slices: Vec<&mut [Gf2p8_11d]> =
             received.iter_mut().map(|shard| shard.as_mut()).collect();
 
         assert!(rs.recover_erasure_shards(&mut received_slices, T, &erasure_positions));
-        assert_eq!(received, original);
+        assert_eq!(received, original, "N={N}, T={T}");
     }
 }

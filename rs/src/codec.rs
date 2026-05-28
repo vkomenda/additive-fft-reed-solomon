@@ -520,6 +520,11 @@ where
                 .fold(G::one(), |acc, i| acc.mul_lut(pts[j].add(pts[i])));
         }
 
+        println!(
+            "pts={:?}",
+            pts.iter().map(|&g| g.into_usize()).collect::<Vec<_>>(),
+        );
+
         (lambda, denoms)
     }
 
@@ -540,64 +545,63 @@ where
         k_msg: usize,
         erasure_positions: &[usize],
     ) -> bool {
-        let n = received.len();
-        let t_parity = n - k_msg;
         let e = erasure_positions.len();
 
-        if e > t_parity {
+        if e > T {
             return false;
         }
-        if e == 0 || t_parity == 0 {
+        if e == 0 || T == 0 {
             return true;
         }
 
-        let t_log = t_parity.trailing_zeros() as u8;
+        let t_log = T.trailing_zeros() as u8;
+        let n_log = N.trailing_zeros() as u8;
         let shard_len = received[0].len();
 
         let (lambda, denoms) = self.erasure_locator_and_denominators(erasure_positions);
 
-        let mut work_backing = vec![G::zero(); n * shard_len];
+        let mut work_backing = vec![G::zero(); N * shard_len];
         let mut work_hdrs: [MaybeUninit<&mut [G]>; N] =
             unsafe { MaybeUninit::uninit().assume_init() };
         for (i, chunk) in work_backing.chunks_mut(shard_len).enumerate() {
             work_hdrs[i].write(chunk);
         }
         let work: &mut [&mut [G]] =
-            unsafe { std::slice::from_raw_parts_mut(work_hdrs.as_mut_ptr() as *mut &mut [G], n) };
+            unsafe { std::slice::from_raw_parts_mut(work_hdrs.as_mut_ptr() as *mut &mut [G], N) };
 
         // Chunk 0: parity block at ω_0
-        for i in 0..t_parity {
+        for i in 0..T {
             work[i].copy_from_slice(received[i]);
         }
-        K::ifft_sharded(&self.basis, &mut work[..t_parity], t_log, G::zero());
+        K::ifft_sharded(&self.basis, &mut work[..T], t_log, G::zero());
 
         // Chunks 1 .. n/T-1: message blocks, each shifted by one more ωT
         {
-            let mut msg_backing = vec![G::zero(); t_parity * shard_len];
-            let mut msg_hdrs: [MaybeUninit<&mut [G]>; N] =
+            let mut msg_backing = vec![G::zero(); T * shard_len];
+            let mut msg_hdrs: [MaybeUninit<&mut [G]>; T] =
                 unsafe { MaybeUninit::uninit().assume_init() };
             for (i, chunk) in msg_backing.chunks_mut(shard_len).enumerate() {
                 msg_hdrs[i].write(chunk);
             }
             let msg: &mut [&mut [G]] = unsafe {
-                std::slice::from_raw_parts_mut(msg_hdrs.as_mut_ptr() as *mut &mut [G], t_parity)
+                std::slice::from_raw_parts_mut(msg_hdrs.as_mut_ptr() as *mut &mut [G], T)
             };
 
-            for chunk in 1..(n / t_parity) {
-                let omega = self.basis.get_subspace_point_lut((chunk * t_parity) as u8);
-                for i in 0..t_parity {
-                    msg[i].copy_from_slice(received[chunk * t_parity + i]);
+            for chunk in 1..(N / T) {
+                let omega = self.basis.get_subspace_point_lut((chunk * T) as u8);
+                for i in 0..T {
+                    msg[i].copy_from_slice(received[chunk * T + i]);
                 }
                 K::ifft_sharded(&self.basis, msg, t_log, omega);
-                for i in 0..t_parity {
+                for i in 0..T {
                     G::shard_add(work[i], msg[i]);
                 }
             }
         }
 
-        // Horner evaluation of λ in the monomial basis at all n Cantor subspace points
+        // Horner evaluation of λ in the monomial basis at all N Cantor subspace points
         let mut lambda_evals = [G::zero(); N];
-        for (i, u) in lambda_evals.iter_mut().take(n).enumerate() {
+        for (i, u) in lambda_evals.iter_mut().enumerate() {
             let p = self.basis.get_subspace_point_lut(i as u8);
             let mut v = lambda[e]; // monic coefficient = G::one()
             for j in (0..e).rev() {
@@ -607,30 +611,43 @@ where
         }
 
         // Evaluate s at all n points
-        K::fft_sharded(&self.basis, work, t_log + 1, G::zero());
+        K::fft_sharded(&self.basis, work, n_log, G::zero());
 
         // Pointwise multiply: work[i] := work[i] · λ(ω_i)
-        for i in 0..n {
+        for i in 0..N {
             K::scale_in_place(work[i], lambda_evals[i]);
         }
 
         // X-basis coefficients of (s·λ); q is in work[T .. T+e]
-        K::ifft_sharded(&self.basis, work, t_log + 1, G::zero());
+        K::ifft_sharded(&self.basis, work, n_log, G::zero());
 
         // Shift q from work[T..T+e] down to work[0..e], zero everything else
         {
-            let (lo, hi) = work.split_at_mut(t_parity);
+            let (lo, hi) = work.split_at_mut(T);
             for k in 0..e {
                 lo[k].copy_from_slice(hi[k]);
                 hi[k].fill(G::zero());
             }
-            for l in lo.iter_mut().skip(e).take(t_parity) {
+            for l in lo.iter_mut().skip(e).take(T) {
                 l.fill(G::zero());
             }
         }
 
+        println!(
+            "work_backing={:?}\nlambda_evals={:?}\ndenoms={:?}",
+            work_backing
+                .iter()
+                .map(|&g| g.into_usize())
+                .collect::<Vec<_>>(),
+            lambda_evals
+                .iter()
+                .map(|&g| g.into_usize())
+                .collect::<Vec<_>>(),
+            denoms.iter().map(|&g| g.into_usize()).collect::<Vec<_>>(),
+        );
+
         // Evaluate q at all n points
-        K::fft_sharded(&self.basis, work, n.trailing_zeros() as u8, G::zero());
+        K::fft_sharded(&self.basis, work, n_log, G::zero());
 
         // (Forney) Eq 78: u(ω_i) = q(ω_i) / λ'(ω_i)
         for (&pos, d) in erasure_positions.iter().zip(denoms) {
