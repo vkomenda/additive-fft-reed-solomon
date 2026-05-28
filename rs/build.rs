@@ -85,12 +85,22 @@ fn main() {
     println!("cargo:rerun-if-changed=src/poly_11d/field_defs.rs");
 
     // CPU feature detection
-    // println!("cargo:rustc-check-cfg=cfg(avx512_gfni)");
     #[cfg(target_arch = "x86_64")]
-    if is_x86_feature_detected!("avx512f")
-        && is_x86_feature_detected!("avx512bw")
-        && is_x86_feature_detected!("gfni")
     {
-        println!("cargo:rustc-cfg=avx512_gfni");
+        let has_gfni = is_x86_feature_detected!("avx512f")
+            && is_x86_feature_detected!("avx512bw")
+            && is_x86_feature_detected!("gfni");
+        let has_avx2 = is_x86_feature_detected!("avx2");
+
+        if has_gfni {
+            println!("cargo:rustc-cfg=native_gfni");
+        }
+        if has_avx2 {
+            println!("cargo:rustc-cfg=native_avx2");
+        }
     }
+
+    // Emit the lint checker tweaks on all platforms.
+    println!("cargo:rustc-check-cfg=cfg(native_gfni)");
+    println!("cargo:rustc-check-cfg=cfg(native_avx2)");
 }

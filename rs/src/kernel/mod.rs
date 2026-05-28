@@ -1,3 +1,4 @@
+#[cfg(any(native_gfni, feature = "compile_gfni"))]
 pub mod gfni_kernel;
 pub mod lut_kernel;
 

@@ -557,7 +557,7 @@ where
         let (lambda, denoms) = self.erasure_locator_and_denominators(erasure_positions);
 
         let mut work_backing = vec![G::zero(); n * shard_len];
-        let mut work_hdrs: [MaybeUninit<&mut [G]>; T] =
+        let mut work_hdrs: [MaybeUninit<&mut [G]>; N] =
             unsafe { MaybeUninit::uninit().assume_init() };
         for (i, chunk) in work_backing.chunks_mut(shard_len).enumerate() {
             work_hdrs[i].write(chunk);
@@ -574,7 +574,7 @@ where
         // Chunks 1 .. n/T-1: message blocks, each shifted by one more ωT
         {
             let mut msg_backing = vec![G::zero(); t_parity * shard_len];
-            let mut msg_hdrs: [MaybeUninit<&mut [G]>; T] =
+            let mut msg_hdrs: [MaybeUninit<&mut [G]>; N] =
                 unsafe { MaybeUninit::uninit().assume_init() };
             for (i, chunk) in msg_backing.chunks_mut(shard_len).enumerate() {
                 msg_hdrs[i].write(chunk);

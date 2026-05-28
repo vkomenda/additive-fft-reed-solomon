@@ -1,11 +1,9 @@
 use super::Kernel;
 use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
 use core::arch::x86_64::*;
-#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 use std::marker::PhantomData;
 
 /// Forward butterfly transforming (a, b) into (a + T·b, b + a + T·b).
-#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 unsafe fn butterfly_fwd_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
     unsafe {
         let mut i = 0;
@@ -33,7 +31,6 @@ unsafe fn butterfly_fwd_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
 }
 
 /// Inverse butterfly transforming (g0, g1) into (g0 + T·(g0+g1), g0+g1).
-#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 unsafe fn butterfly_inv_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
     unsafe {
         let mut i = 0;
@@ -60,7 +57,6 @@ unsafe fn butterfly_inv_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
     }
 }
 
-#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 fn fft_sharded_gfni<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [&mut [G]],
@@ -91,7 +87,6 @@ fn fft_sharded_gfni<G: Gf2p8Lut>(
     fft_sharded_gfni(basis, &mut shards[half..], k - 1, next_beta);
 }
 
-#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 fn ifft_sharded_gfni<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [&mut [G]],
@@ -123,7 +118,6 @@ fn ifft_sharded_gfni<G: Gf2p8Lut>(
     }
 }
 
-#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 unsafe fn scale_gfni(dst: *mut u8, src: *const u8, len: usize, mat: __m512i) {
     let mut i = 0;
     while i + 64 <= len {
@@ -164,10 +158,8 @@ unsafe fn scale_in_place(dst: *mut u8, len: usize, mat: __m512i) {
     }
 }
 
-#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 pub struct GfniKernel<G: Gf2p8Lut>(PhantomData<G>);
 
-#[cfg(any(avx512_gfni, feature = "avx512_gfni"))]
 impl<G: Gf2p8Lut> Kernel<G> for GfniKernel<G> {
     fn fft_sharded(basis: &impl CantorBasisLut<G>, shards: &mut [&mut [G]], k: u8, beta: G) {
         fft_sharded_gfni(basis, shards, k, beta)
@@ -199,6 +191,7 @@ impl<G: Gf2p8Lut> GfniKernel<G> {
 }
 
 #[cfg(test)]
+#[cfg(native_gfni)]
 mod tests {
     use super::*;
     use crate::{RsLut, kernel::lut_kernel, poly_11d_lut::CantorBasisLut11d};
@@ -225,10 +218,7 @@ mod tests {
     /// GFNI FFT produces the same evaluations as the LUT butterfly.
     /// shard_len covers: pure tail (63), exact ZMM (64), ZMM + tail (65), two ZMMs (128).
     #[test]
-    #[cfg(avx512_gfni)]
-    fn fft_gfni_matches_lut() {}
-
-    fn fft_gfni_matches_lut_t<const N: usize, const T: usize>() {
+    fn fft_gfni_matches_lut() {
         let basis = CantorBasisLut11d;
         for shard_len in [1, 63, 64, 65, 128] {
             for k in 1u8..=4 {
@@ -253,7 +243,6 @@ mod tests {
 
     /// GFNI IFFT produces the same coefficients as the LUT butterfly.
     #[test]
-    #[cfg(avx512_gfni)]
     fn ifft_gfni_matches_lut() {
         let basis = CantorBasisLut11d;
         for shard_len in [1, 63, 64, 65, 128] {
@@ -278,7 +267,6 @@ mod tests {
 
     /// IFFT;FFT ~= Id.
     #[test]
-    #[cfg(avx512_gfni)]
     fn ifft_then_fft_gfni_is_identity() {
         let basis = CantorBasisLut11d;
         for shard_len in [1, 63, 64, 65] {

@@ -516,10 +516,18 @@ mod tests {
     }
 
     #[test]
-    fn recover_erasure_shards() {}
+    fn recover_erasure_shards() {
+        recover_erasure_shards_t::<4, 2>();
+        recover_erasure_shards_t::<8, 4>();
+        recover_erasure_shards_t::<16, 8>();
+        recover_erasure_shards_t::<32, 16>();
+        recover_erasure_shards_t::<64, 32>();
+        recover_erasure_shards_t::<128, 64>();
+        recover_erasure_shards_t::<256, 128>();
+    }
 
     fn recover_erasure_shards_t<const N: usize, const T: usize>() {
-        const SHARD_LEN: usize = 8;
+        const SHARD_LEN: usize = 1;
 
         let rs = RsLut::<N, T>::new();
         let zero_shard = vec![Gf2p8_11d::zero(); SHARD_LEN];

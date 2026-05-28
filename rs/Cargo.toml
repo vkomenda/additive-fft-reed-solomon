@@ -5,13 +5,15 @@ edition = "2024"
 
 [dependencies]
 additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8" }
+cfg-if = "1.0"
 
 [build-dependencies]
 additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8" }
 
 [features]
-default = ["avx512_gfni"]
-avx512_gfni = []
+default = ["compile_gfni"]
+compile_gfni = []
+compile_avx2 = []
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(avx512_gfni)"] }
+# [lints.rust]
+# unexpected_cfgs = { level = "warn", check-cfg = ["cfg(native_gfni)"] }
