@@ -7,6 +7,22 @@ use rand::distr::{Distribution, Uniform};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
+macro_rules! bench_params {
+    ($group:expr, $shard_len:expr, $rng:expr, [$(($n:expr, $t:expr)),* $(,)?]) => {
+        $({
+            $group.throughput(Throughput::Bytes(($n * $shard_len) as u64));
+            $group.bench_with_input(
+                BenchmarkId::new(format!("N{}_T{}", $n, $t), $shard_len),
+                &$shard_len,
+                |mut b, &shard_len| {
+                    let rs = RsLut::<$n, $t>::new();
+                    bench_recover_erasure_shards_inner(&mut b, &rs, shard_len, &mut $rng);
+                },
+            );
+        })*
+    }
+}
+
 fn generate_random_codeword<const N: usize, const T: usize>(
     rs: &RsLut<N, T>,
     shard_len: usize,
@@ -33,24 +49,6 @@ fn generate_random_codeword<const N: usize, const T: usize>(
     codeword
 }
 
-fn bench_recover_erasure_shards(c: &mut Criterion) {
-    let mut group = c.benchmark_group("recover_erasure_shards");
-
-    for shard_len in [64, 1024, 65536] {
-        group.throughput(Throughput::Bytes((256 * shard_len) as u64));
-        group.bench_with_input(
-            BenchmarkId::new("lut N=256 T=128", shard_len),
-            &shard_len,
-            |mut b, &shard_len| {
-                let rs = RsLut::<256, 128>::new();
-                let mut rng = SmallRng::seed_from_u64(42);
-                bench_recover_erasure_shards_inner(&mut b, &rs, shard_len, &mut rng);
-            },
-        );
-    }
-    group.finish();
-}
-
 fn bench_recover_erasure_shards_inner<const N: usize, const T: usize>(
     b: &mut Bencher<'_>,
     rs: &RsLut<N, T>,
@@ -58,7 +56,6 @@ fn bench_recover_erasure_shards_inner<const N: usize, const T: usize>(
     rng: &mut impl Rng,
 ) {
     let original = generate_random_codeword(rs, shard_len, rng);
-    // setup received and erasure_positions once outside the loop
     b.iter_batched(
         || {
             let mut rng = SmallRng::seed_from_u64(42);
@@ -87,6 +84,36 @@ fn bench_recover_erasure_shards_inner<const N: usize, const T: usize>(
         },
         BatchSize::LargeInput,
     );
+}
+
+fn bench_recover_erasure_shards(c: &mut Criterion) {
+    let mut group = c.benchmark_group("recover_erasure_shards");
+    let mut rng = SmallRng::seed_from_u64(42);
+
+    for shard_len in [64, 1024, 65536] {
+        bench_params!(
+            group,
+            shard_len,
+            &mut rng,
+            [
+                (4, 1),
+                (4, 2),
+                (8, 2),
+                (8, 4),
+                (16, 4),
+                (16, 8),
+                (32, 8),
+                (32, 16),
+                (64, 16),
+                (64, 32),
+                (128, 32),
+                (128, 64),
+                (256, 64),
+                (256, 128),
+            ]
+        );
+    }
+    group.finish();
 }
 
 criterion_group!(benches, bench_recover_erasure_shards);
