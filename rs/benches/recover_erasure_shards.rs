@@ -1,3 +1,5 @@
+#[cfg(native_gfni)]
+use additive_fft_reed_solomon::kernel::gfni_kernel::GfniKernel;
 use additive_fft_reed_solomon::{
     codec::Codec,
     gf2p8lut::CantorBasisLut,
