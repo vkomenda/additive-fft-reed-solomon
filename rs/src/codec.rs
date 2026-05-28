@@ -26,15 +26,11 @@ where
         }
     }
 
-    pub(crate) fn solve_key_equation_eea(
-        &self,
-        syndrome: &[G; N],
-        t_log: u8,
-    ) -> Option<([G; N], [G; N])> {
+    pub(crate) fn solve_key_equation_eea(&self, syndrome: &[G; N]) -> Option<([G; N], [G; N])> {
         let mut st = [G::zero(); N];
-        self.init_subspace_poly_coeffs(&mut st, t_log);
+        st[T] = G::one();
         let (qt, rt) = self.basis.poly_div_lnh(&st, syndrome)?;
-        let (u1, v1, _z1) = self.eea(syndrome, &rt, t_log);
+        let (u1, v1, _z1) = self.eea(syndrome, &rt);
         let lambda = poly::add(&u1, &self.basis.poly_mul_lnh(&v1, &qt));
         Some((v1, lambda))
     }
@@ -44,10 +40,8 @@ where
         &self,
         a: &[G], // syndrome
         b: &[G], // remainder r_t(x) from the initial division
-        t_log: u8,
     ) -> ([G; N], [G; N], [G; N]) {
-        let t_parity = 1 << t_log;
-        let target_deg = t_parity / 2; // Stop when deg(z) < T/2
+        let target_deg = T / 2; // Stop when deg(z) < T/2
 
         let mut z0 = [G::zero(); N];
         z0.copy_from_slice(a);
@@ -90,10 +84,6 @@ where
         (u1, v1, z1)
     }
 
-    pub(crate) fn init_subspace_poly_coeffs(&self, st: &mut [G], t_log: u8) {
-        st[1 << t_log] = G::one(); // Coefficient of x stays 1.
-    }
-
     /// Step-8 decomposition: given p and the current HGCD level g, return
     /// $(p_ll, p_m)$ such that $p = p_ll + s_{g-2}(x) · p_m$, where
     /// $$
@@ -134,8 +124,8 @@ where
     /// Preconditions: $deg(b) \le deg(a),  2^{g-1} \le deg(a) < 2^g$.
     ///
     /// Returns (z0, z1, M) where M = [m00, m01, m10, m11] (row-major) satisfies
-    ///   $[z_0, z_1]^T = M · [a, b]^T$,
-    ///   $deg(z_0) \ge 2^{g-1}, deg(z_1) < 2^{g-1}$.
+    /// - $[z_0, z_1]^T = M · [a, b]^T$,
+    /// - $deg(z_0) \ge 2^{g-1}, deg(z_1) < 2^{g-1}$.
     pub(crate) fn hgcd(&self, a: &[G; N], b: &[G; N], g: u8) -> ([G; N], [G; N], [[G; N]; 4]) {
         let zero = [G::zero(); N];
         let one = {
@@ -143,7 +133,7 @@ where
             p[0] = G::one();
             p
         };
-        let half = 1usize << (g - 1);
+        let half = 1 << (g - 1);
 
         // Base case (Algorithm 5 lines 1-2)
         // deg(b) < 2^{g-1}: Z = [a, b], M = I.
@@ -209,7 +199,7 @@ where
         t_log: u8,
     ) -> Option<([G; N], [G; N])> {
         let mut st = [G::zero(); N];
-        self.init_subspace_poly_coeffs(&mut st, t_log);
+        st[T] = G::one();
 
         // s_t = q_t · s + r_t
         let (q_t, r_t) = self.basis.poly_div_lnh(&st, syndrome)?;
@@ -229,22 +219,18 @@ where
     }
 
     pub fn encode_systematic_scalar(&self, message: &[G], parity: &mut [G]) {
-        let t_parity = parity.len();
-        let t_log = t_parity.trailing_zeros() as u8;
-        let k_msg = message.len();
+        let t_log = T.trailing_zeros() as u8;
+        let k_msg = N - T;
 
         // Compute parity image (v0') using LNH Eq 68
         parity.fill(G::zero());
         let mut workspace = [G::zero(); T];
 
-        for i in 0..k_msg / t_parity {
-            workspace[..t_parity].copy_from_slice(&message[i * t_parity..(i + 1) * t_parity]);
-            let omega = self
-                .basis
-                .get_subspace_point_lut(((i + 1) * t_parity) as u8);
-            self.basis
-                .ifft_scalar(&mut workspace[..t_parity], t_log, omega);
-            parity.poly_add_in_place(&workspace[..t_parity]);
+        for i in 0..k_msg / T {
+            workspace[..T].copy_from_slice(&message[i * T..(i + 1) * T]);
+            let omega = self.basis.get_subspace_point_lut(((i + 1) * T) as u8);
+            self.basis.ifft_scalar(&mut workspace[..T], t_log, omega);
+            parity.poly_add_in_place(&workspace[..T]);
         }
 
         // Compute parity (v0)
@@ -252,8 +238,7 @@ where
     }
 
     pub fn encode_systematic_sharded(&self, message: &[&[G]], parity: &mut [&mut [G]]) {
-        let t_parity = parity.len();
-        let t_log = t_parity.trailing_zeros() as u8;
+        let t_log = T.trailing_zeros() as u8;
         let shard_len = parity[0].len();
 
         for shard in parity.iter_mut() {
@@ -261,7 +246,7 @@ where
         }
 
         // TODO: accept the workspace or the backing store as a fn argument
-        let mut backing = vec![G::zero(); t_parity * shard_len];
+        let mut backing = vec![G::zero(); T * shard_len];
 
         // Fixed-size header array on the stack
         let mut hdrs: [MaybeUninit<&mut [G]>; T] = unsafe { MaybeUninit::uninit().assume_init() };
@@ -271,16 +256,14 @@ where
         }
 
         let workspace: &mut [&mut [G]] =
-            unsafe { std::slice::from_raw_parts_mut(hdrs.as_mut_ptr() as *mut &mut [G], t_parity) };
-        for i in 0..message.len() / t_parity {
-            for j in 0..t_parity {
-                workspace[j].copy_from_slice(message[i * t_parity + j]);
+            unsafe { std::slice::from_raw_parts_mut(hdrs.as_mut_ptr() as *mut &mut [G], T) };
+        for i in 0..message.len() / T {
+            for j in 0..T {
+                workspace[j].copy_from_slice(message[i * T + j]);
             }
-            let omega = self
-                .basis
-                .get_subspace_point_lut(((i + 1) * t_parity) as u8);
+            let omega = self.basis.get_subspace_point_lut(((i + 1) * T) as u8);
             K::ifft_sharded(&self.basis, workspace, t_log, omega);
-            for j in 0..t_parity {
+            for j in 0..T {
                 G::shard_add(parity[j], workspace[j]);
             }
         }
@@ -293,36 +276,30 @@ where
     fn compute_syndrome_scalar(
         &self,
         received: &[G], // Size n (e.g., 256)
-        t_log: u8,      // log_2(T)
     ) -> [G; N] {
-        let t_parity = 1 << t_log;
         // Reserve the extra bit for the key equation solver (EEA requirement).
         let mut syndrome = [G::zero(); N];
         let mut workspace = [G::zero(); T];
 
-        for (i, chunk) in received.chunks(t_parity).enumerate() {
+        for (i, chunk) in received.chunks(T).enumerate() {
             // beta corresponds to the starting point of the i-th chunk: omega_{i*T}
-            let omega_idx = (i * t_parity) as u8;
+            let omega_idx = (i * T) as u8;
             let beta = self.basis.get_subspace_point_lut(omega_idx);
 
             // Copy received chunk into workspace
             // Pad with zeros if the last chunk is partial (Eq 63)
-            workspace[..t_parity].fill(G::zero());
-            for (w, &r) in workspace[..t_parity].iter_mut().zip(chunk.iter()) {
+            workspace[..T].fill(G::zero());
+            for (w, &r) in workspace[..T].iter_mut().zip(chunk.iter()) {
                 *w = r;
             }
 
+            let t_log = T.trailing_zeros() as u8;
             // Perform the partial IFFT (Algorithm 2)
             // This moves the chunk from evaluation space to basis X coefficients
-            self.basis
-                .ifft_scalar(&mut workspace[..t_parity], t_log, beta);
+            self.basis.ifft_scalar(&mut workspace[..T], t_log, beta);
 
             // Accumulate into the syndrome buffer
-            for (s, &w) in syndrome
-                .iter_mut()
-                .take(t_parity)
-                .zip(workspace[..t_parity].iter())
-            {
+            for (s, &w) in syndrome.iter_mut().take(T).zip(workspace[..T].iter()) {
                 *s = s.add(w);
             }
         }
@@ -332,51 +309,45 @@ where
 
     /// Recomputes data from parity when $n = 2T$.
     pub fn recompute_data_from_parity(&self, received: &mut [G]) {
-        let n = received.len();
-        let n_log = n.trailing_zeros() as u8;
-        let t_log = n_log - 1;
-        let t_parity = 1 << t_log;
+        let t_log = T.trailing_zeros() as u8;
 
         let mut workspace = [G::zero(); T];
 
-        workspace[..t_parity].copy_from_slice(&received[..t_parity]);
+        workspace[..T].copy_from_slice(&received[..T]);
         self.basis.ifft_scalar(&mut workspace, t_log, G::zero());
         self.basis.fft_scalar(
             &mut workspace,
             t_log,
-            self.basis.get_subspace_point_lut(t_parity as u8),
+            self.basis.get_subspace_point_lut(T as u8),
         );
 
-        received[t_parity..].copy_from_slice(&workspace[..t_parity]);
+        received[T..].copy_from_slice(&workspace[..T]);
     }
 
     /// Recomputes data shards from parity shards when $n = 2T$.
     pub fn recompute_data_from_parity_sharded(&self, received: &mut [&mut [G]]) {
-        let n = received.len();
-        let n_log = n.trailing_zeros() as u8;
-        let t_log = n_log - 1;
-        let t_parity = 1 << t_log;
+        let t_log = T.trailing_zeros() as u8;
         let shard_len = received[0].len();
 
-        let mut backing = vec![G::zero(); t_parity * shard_len];
+        let mut backing = vec![G::zero(); T * shard_len];
         let mut hdrs: [MaybeUninit<&mut [G]>; T] = unsafe { MaybeUninit::uninit().assume_init() };
         for (i, chunk) in backing.chunks_mut(shard_len).enumerate() {
             hdrs[i].write(chunk);
         }
         let workspace: &mut [&mut [G]] =
-            unsafe { std::slice::from_raw_parts_mut(hdrs.as_mut_ptr() as *mut &mut [G], t_parity) };
+            unsafe { std::slice::from_raw_parts_mut(hdrs.as_mut_ptr() as *mut &mut [G], T) };
 
         // Copy parity shards into workspace, then recover polynomial coefficients
-        for i in 0..t_parity {
+        for i in 0..T {
             workspace[i].copy_from_slice(received[i]);
         }
         K::ifft_sharded(&self.basis, workspace, t_log, G::zero());
-        let omega = self.basis.get_subspace_point_lut(t_parity as u8);
+        let omega = self.basis.get_subspace_point_lut(T as u8);
         K::fft_sharded(&self.basis, workspace, t_log, omega);
 
-        for i in 0..t_parity {
-            // G::shard_add(&mut received[i + t_parity], &workspace[i]);
-            received[i + t_parity].copy_from_slice(workspace[i]);
+        for i in 0..T {
+            // G::shard_add(&mut received[i + T], &workspace[i]);
+            received[i + T].copy_from_slice(workspace[i]);
         }
     }
 
@@ -389,34 +360,23 @@ where
     /// # Returns
     /// * `true`     - if decoding succeeded
     /// * `false`    - if decoding failed
-    pub fn decode_systematic_scalar(&self, received: &mut [G], k_msg: usize) -> bool {
-        let n = received.len();
-        let t_parity = n - k_msg;
-        if t_parity == 0 {
+    pub fn decode_systematic_scalar(&self, received: &mut [G]) -> bool {
+        if T == 0 {
             return true;
         }
-        let t_log = t_parity.trailing_zeros() as u8;
+        let t_log = T.trailing_zeros() as u8;
 
         // Step 1: syndrome
-        let syndrome = self.compute_syndrome_scalar(received, t_log);
-        if syndrome.iter().take(t_parity).all(|&c| c == G::zero()) {
-            // println!("Syndrome is zero.");
+        let syndrome = self.compute_syndrome_scalar(received);
+        if syndrome.iter().take(T).all(|&c| c == G::zero()) {
             return true;
         }
-        // println!(
-        //     "syndrome[..t_parity] = {:?}",
-        //     &syndrome[..t_parity]
-        //         .iter()
-        //         .map(|&x| x.into())
-        //         .collect::<Vec<_>>()
-        // );
 
         // Step 2: key equation
         let (v1, lambda) = match self.solve_key_equation_hgcd(&syndrome, t_log) {
             Some(pair) => pair,
             None => {
                 // TODO: error type enum
-                // println!("Key equation has no solution.");
                 return false;
             }
         };
@@ -424,7 +384,7 @@ where
         let deg_lambda = match lambda.degree() {
             Some(d) => d,
             None => {
-                // println!("Zero locator - no errors.");
+                // Zero locator - no errors.
                 return true;
             }
         };
@@ -432,14 +392,14 @@ where
         // Step 3: root-finding - one T-point FFT per chunk
         let mut error_indices: Vec<usize> = Vec::with_capacity(deg_lambda);
 
-        'root: for chunk in 0..(n / t_parity) {
-            let beta = self.basis.get_subspace_point_lut((chunk * t_parity) as u8);
+        'root: for chunk in 0..(N / T) {
+            let beta = self.basis.get_subspace_point_lut((chunk * T) as u8);
             let mut evals = lambda;
-            self.basis.fft_scalar(&mut evals[..t_parity], t_log, beta);
+            self.basis.fft_scalar(&mut evals[..T], t_log, beta);
 
-            for offset in 0..t_parity {
+            for offset in 0..T {
                 if evals[offset] == G::zero() {
-                    error_indices.push(chunk * t_parity + offset);
+                    error_indices.push(chunk * T + offset);
                     if error_indices.len() == deg_lambda {
                         break 'root; // found all roots, stop scanning
                     }
@@ -448,36 +408,29 @@ where
         }
 
         if error_indices.len() < deg_lambda {
-            // println!(
-            //     "Too few roots. deg_lambda={deg_lambda}, error_indices={error_indices:?}, syndrome={:?}, v1={:?}, lambda={:?}",
-            //     syndrome.iter().map(|&x| x.into()).collect::<Vec<u8>>(),
-            //     v1.iter().map(|&x| x.into()).collect::<Vec<u8>>(),
-            //     lambda.iter().map(|&x| x.into()).collect::<Vec<u8>>(),
-            // );
             return false; // too few roots, uncorrectable
         }
 
         // Step 4: error values - same per-chunk FFT structure as step 3
         let lambdap = poly::deriv_lnh(&lambda);
 
-        for chunk in 0..(n / t_parity) {
+        for chunk in 0..(N / T) {
             let chunk_errors: Vec<(usize, usize)> = error_indices
                 .iter()
-                .filter(|&&g| g / t_parity == chunk)
-                .map(|&g| (g, g % t_parity))
+                .filter(|&&g| g / T == chunk)
+                .map(|&g| (g, g % T))
                 .collect();
 
             if chunk_errors.is_empty() {
                 continue;
             }
 
-            let beta = self.basis.get_subspace_point_lut((chunk * t_parity) as u8);
+            let beta = self.basis.get_subspace_point_lut((chunk * T) as u8);
 
             let mut q_evals = v1;
             let mut lp_evals = lambdap;
-            self.basis.fft_scalar(&mut q_evals[..t_parity], t_log, beta);
-            self.basis
-                .fft_scalar(&mut lp_evals[..t_parity], t_log, beta);
+            self.basis.fft_scalar(&mut q_evals[..T], t_log, beta);
+            self.basis.fft_scalar(&mut lp_evals[..T], t_log, beta);
 
             for (global, offset) in chunk_errors {
                 let lp = lp_evals[offset];
@@ -520,11 +473,6 @@ where
                 .fold(G::one(), |acc, i| acc.mul_lut(pts[j].add(pts[i])));
         }
 
-        println!(
-            "pts={:?}",
-            pts.iter().map(|&g| g.into_usize()).collect::<Vec<_>>(),
-        );
-
         (lambda, denoms)
     }
 
@@ -542,7 +490,6 @@ where
     pub fn recover_erasure_shards(
         &self,
         received: &mut [&mut [G]],
-        k_msg: usize,
         erasure_positions: &[usize],
     ) -> bool {
         let e = erasure_positions.len();
@@ -632,19 +579,6 @@ where
                 l.fill(G::zero());
             }
         }
-
-        println!(
-            "work_backing={:?}\nlambda_evals={:?}\ndenoms={:?}",
-            work_backing
-                .iter()
-                .map(|&g| g.into_usize())
-                .collect::<Vec<_>>(),
-            lambda_evals
-                .iter()
-                .map(|&g| g.into_usize())
-                .collect::<Vec<_>>(),
-            denoms.iter().map(|&g| g.into_usize()).collect::<Vec<_>>(),
-        );
 
         // Evaluate q at all n points
         K::fft_sharded(&self.basis, work, n_log, G::zero());

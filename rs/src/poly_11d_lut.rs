@@ -174,7 +174,7 @@ mod tests {
         let original = generate_lch_codeword(&rs);
         let mut received = original.clone();
         assert!(
-            rs.decode_systematic_scalar(&mut received, N - T),
+            rs.decode_systematic_scalar(&mut received),
             "decode failed for N={N}, T={T}"
         );
         assert_eq!(received, original, "mismatch for N={N}, T={T}");
@@ -201,11 +201,8 @@ mod tests {
             *r = (*r).mul((i as u8 + 2).into())
         }
 
-        println!("original codeword {original:?}");
-        println!("corrupted codeword {received:?}");
-
         assert!(
-            rs.decode_systematic_scalar(&mut received, N - T),
+            rs.decode_systematic_scalar(&mut received),
             "Failed to decode corrupt parity at N={N}, T={T}"
         );
         assert_eq!(received, original);
@@ -232,11 +229,8 @@ mod tests {
             *r = (*r).mul((i as u8 + 2).into())
         }
 
-        println!("original codeword {original:?}");
-        println!("corrupted codeword {received:?}");
-
         assert!(
-            rs.decode_systematic_scalar(&mut received, N - T),
+            rs.decode_systematic_scalar(&mut received),
             "Failed to decode corrupt data at N={N}, T={T}"
         );
         assert_eq!(received, original);
@@ -369,7 +363,6 @@ mod tests {
         let lhs = basis.poly_mul_lnh(&a, &b_plus_c);
         let rhs = poly::add(&basis.poly_mul_lnh(&a, &b), &basis.poly_mul_lnh(&a, &c));
 
-        println!("lhs = {lhs:?}, rhs = {rhs:?}");
         assert_eq!(lhs, rhs);
     }
 
@@ -424,10 +417,6 @@ mod tests {
             let s_k_minus_1_v_k = basis.eval_subspace_poly_lut(k - 1, v_k);
             let s_k_minus_1_v_k_minus_1 = basis.eval_subspace_poly_lut(k - 1, v_k_minus_1);
             let k_minus_1 = k - 1;
-            println!(
-                "s_{k_minus_1}(v_{k_minus_1}) = {:?}, s_{k_minus_1}(v_{k}) = {:?}",
-                s_k_minus_1_v_k_minus_1, s_k_minus_1_v_k,
-            );
             assert_ne!(s_k_minus_1_v_k_minus_1, s_k_minus_1_v_k);
         }
     }
@@ -517,6 +506,7 @@ mod tests {
 
     #[test]
     fn recover_erasure_shards() {
+        recover_erasure_shards_t::<2, 1>();
         recover_erasure_shards_t::<4, 1>();
         recover_erasure_shards_t::<4, 2>();
         recover_erasure_shards_t::<8, 1>();
@@ -575,13 +565,10 @@ mod tests {
             erasure_positions.push(i);
         }
 
-        //let erasure_positions: Vec<_> = (1..T * 2).step_by(2).collect();
-        println!("erasure_positions={erasure_positions:?}");
-
         let mut received_slices: Vec<&mut [Gf2p8_11d]> =
             received.iter_mut().map(|shard| shard.as_mut()).collect();
 
-        assert!(rs.recover_erasure_shards(&mut received_slices, T, &erasure_positions));
+        assert!(rs.recover_erasure_shards(&mut received_slices, &erasure_positions));
         assert_eq!(received, original, "N={N}, T={T}");
     }
 }

@@ -199,10 +199,15 @@ mod tests {
 
     #[test]
     fn debug_gfni_cfg() {
-        println!("target_arch x86_64: {}", cfg!(target_arch = "x86_64"));
-        println!("avx512f: {}", cfg!(target_feature = "avx512f"));
-        println!("avx512bw: {}", cfg!(target_feature = "avx512bw"));
-        println!("gfni: {}", cfg!(target_feature = "gfni"));
+        let target_arch_x86_64 = cfg!(target_arch = "x86_64");
+        let avx512f = cfg!(target_feature = "avx512f");
+        let avx512bw = cfg!(target_feature = "avx512bw");
+        let gfni = cfg!(target_feature = "gfni");
+
+        assert!(target_arch_x86_64);
+        assert!(avx512f);
+        assert!(avx512bw);
+        assert!(gfni);
     }
 
     fn make_shards(n: usize, shard_len: usize) -> Vec<Vec<Gf2p8_11d>> {
