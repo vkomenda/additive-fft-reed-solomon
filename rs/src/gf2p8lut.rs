@@ -1,4 +1,4 @@
-use additive_fft_reed_solomon_gf2p8::Gf2p8;
+use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8};
 
 /// Precomputed lookup table group operations.
 pub trait Gf2p8Lut: Gf2p8 {
@@ -25,7 +25,7 @@ pub trait Gf2p8Lut: Gf2p8 {
 
     /// Precompute the 256-entry multiply table for a fixed scalar once per
     /// butterfly level.
-    fn make_mul_lut(self) -> [Self; 256] {
+    fn make_mul_lut(self) -> [Self; FIELD_SIZE] {
         std::array::from_fn(|i| self.mul_lut(Self::from(i as u8)))
     }
 
