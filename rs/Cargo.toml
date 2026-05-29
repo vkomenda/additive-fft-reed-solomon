@@ -18,6 +18,10 @@ rand = "0.10"
 name = "recover_erasure_shards"
 harness = false
 
+[[bench]]
+name = "encode_systematic_sharded"
+harness = false
+
 [features]
 default = ["compile_gfni"]
 compile_gfni = []
