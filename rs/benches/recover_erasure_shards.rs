@@ -13,6 +13,7 @@ use criterion::{
 use rand::distr::{Distribution, Uniform};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
+use std::alloc::{Layout, alloc};
 
 macro_rules! bench_params {
     ($group:expr,
@@ -35,6 +36,13 @@ macro_rules! bench_params {
     }
 }
 
+fn aligned_buffer(len: usize) -> Vec<Gf2p8_11d> {
+    let layout = Layout::from_size_align(len, 64).unwrap();
+    let buf = unsafe { alloc(layout) };
+    let codeword: Vec<Gf2p8_11d> = unsafe { Vec::from_raw_parts(buf as *mut Gf2p8_11d, len, len) };
+    codeword
+}
+
 fn generate_random_codeword<B, K, const N: usize, const T: usize>(
     rs: &Codec<Gf2p8_11d, B, K, N, T>,
     shard_len: usize,
@@ -50,14 +58,16 @@ where
         unsafe { std::slice::from_raw_parts_mut(message.as_mut_ptr() as *mut u8, message.len()) };
     rng.fill_bytes(bytes);
 
-    let mut parity = vec![Gf2p8_11d::zero(); shard_len * T];
-    let mut workspace = vec![Gf2p8_11d::zero(); shard_len * T];
+    let parity_len = T * shard_len;
+    let mut parity = vec![Gf2p8_11d::zero(); parity_len];
+    let mut workspace = vec![Gf2p8_11d::zero(); parity_len];
 
     rs.encode_systematic_sharded(&message, &mut parity, &mut workspace, shard_len);
 
-    let mut codeword = vec![Gf2p8_11d::zero(); shard_len * N];
-    codeword[..T * shard_len].clone_from_slice(&parity);
-    codeword[T * shard_len..].clone_from_slice(&message);
+    let mut codeword = aligned_buffer(N * shard_len);
+
+    codeword[..parity_len].clone_from_slice(&parity);
+    codeword[parity_len..].clone_from_slice(&message);
     codeword
 }
 
@@ -88,7 +98,7 @@ fn bench_recover_erasure_shards_inner<K, const N: usize, const T: usize>(
                 received[pos * shard_len..(pos + 1) * shard_len].fill(Gf2p8_11d::zero());
             }
 
-            let workspace = vec![Gf2p8_11d::zero(); shard_len * N];
+            let workspace = aligned_buffer(N * shard_len);
 
             (
                 received,
