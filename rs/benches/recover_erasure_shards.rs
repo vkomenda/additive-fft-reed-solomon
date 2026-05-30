@@ -75,7 +75,7 @@ fn bench_recover_erasure_shards_inner<K, const N: usize, const T: usize>(
             let mut received = original.clone();
 
             // Choose T random distinct positions to erase
-            let mut positions: Vec<u8> = (0..N as u8).collect();
+            let mut positions: Vec<usize> = (0..N).collect();
             // partial Fisher-Yates shuffle for T elements
             for i in 0..T {
                 let j = Uniform::new(i, N).unwrap().sample(rng);
@@ -85,13 +85,19 @@ fn bench_recover_erasure_shards_inner<K, const N: usize, const T: usize>(
             erasure_positions.sort_unstable();
 
             for &pos in &erasure_positions {
-                received[pos as usize * shard_len..(pos as usize + 1) * shard_len]
-                    .fill(Gf2p8_11d::zero());
+                received[pos * shard_len..(pos + 1) * shard_len].fill(Gf2p8_11d::zero());
             }
 
             let workspace = vec![Gf2p8_11d::zero(); shard_len * N];
 
-            (received, workspace, erasure_positions)
+            (
+                received,
+                workspace,
+                erasure_positions
+                    .iter()
+                    .map(|&p| p as u8)
+                    .collect::<Vec<u8>>(),
+            )
         },
         |(mut received, mut workspace, erasure_positions)| {
             rs.recover_erasure_shards(&mut received, &mut workspace, shard_len, &erasure_positions);
