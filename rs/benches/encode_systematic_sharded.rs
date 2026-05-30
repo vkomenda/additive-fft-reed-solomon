@@ -38,17 +38,14 @@ fn generate_random_message(
     t: usize,
     shard_len: usize,
     rng: &mut impl Rng,
-) -> Vec<Vec<Gf2p8_11d>>
+) -> Vec<Gf2p8_11d>
 where
 {
     let k = n - t;
-    let message: Vec<Vec<Gf2p8_11d>> = (0..k)
-        .map(|_| {
-            (0..shard_len)
-                .map(|_| Gf2p8_11d(rng.next_u32() as u8))
-                .collect()
-        })
-        .collect();
+    let mut message = vec![Gf2p8_11d::zero(); k * shard_len];
+    let bytes =
+        unsafe { std::slice::from_raw_parts_mut(message.as_mut_ptr() as *mut u8, message.len()) };
+    rng.fill_bytes(bytes);
     message
 }
 
@@ -63,14 +60,12 @@ fn bench_encode_systematic_sharded_inner<K, const N: usize, const T: usize>(
     let message = generate_random_message(N, T, shard_len, rng);
     b.iter_batched(
         || {
-            let parity = vec![vec![Gf2p8_11d::zero(); shard_len]; T];
-            parity
+            let parity = vec![Gf2p8_11d::zero(); shard_len * T];
+            let workspace = vec![Gf2p8_11d::zero(); shard_len * T];
+            (parity, workspace)
         },
-        |mut parity| {
-            let message_slices: Vec<&[Gf2p8_11d]> = message.iter().map(|s| s.as_ref()).collect();
-            let mut parity_slices: Vec<&mut [Gf2p8_11d]> =
-                parity.iter_mut().map(|s| s.as_mut()).collect();
-            rs.encode_systematic_sharded(&message_slices, &mut parity_slices);
+        |(mut parity, mut workspace)| {
+            rs.encode_systematic_sharded(&message, &mut parity, &mut workspace, shard_len);
         },
         BatchSize::LargeInput,
     );

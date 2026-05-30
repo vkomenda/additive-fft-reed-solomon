@@ -39,29 +39,25 @@ fn generate_random_codeword<B, K, const N: usize, const T: usize>(
     rs: &Codec<Gf2p8_11d, B, K, N, T>,
     shard_len: usize,
     rng: &mut impl Rng,
-) -> Vec<Vec<Gf2p8_11d>>
+) -> Vec<Gf2p8_11d>
 where
     B: CantorBasisLut<Gf2p8_11d> + Default,
     K: Kernel<Gf2p8_11d>,
 {
     let k = N - T;
-    let message: Vec<Vec<Gf2p8_11d>> = (0..k)
-        .map(|_| {
-            (0..shard_len)
-                .map(|_| Gf2p8_11d(rng.next_u32() as u8))
-                .collect()
-        })
-        .collect();
-    let mut parity = vec![vec![Gf2p8_11d::zero(); shard_len]; T];
+    let mut message = vec![Gf2p8_11d::zero(); k * shard_len];
+    let bytes =
+        unsafe { std::slice::from_raw_parts_mut(message.as_mut_ptr() as *mut u8, message.len()) };
+    rng.fill_bytes(bytes);
 
-    let message_slices: Vec<&[Gf2p8_11d]> = message.iter().map(|s| s.as_ref()).collect();
-    let mut parity_slices: Vec<&mut [Gf2p8_11d]> = parity.iter_mut().map(|s| s.as_mut()).collect();
+    let mut parity = vec![Gf2p8_11d::zero(); shard_len * T];
+    let mut workspace = vec![Gf2p8_11d::zero(); shard_len * T];
 
-    rs.encode_systematic_sharded(&message_slices, &mut parity_slices);
+    rs.encode_systematic_sharded(&message, &mut parity, &mut workspace, shard_len);
 
-    let mut codeword = vec![vec![Gf2p8_11d::zero(); shard_len]; N];
-    codeword[..T].clone_from_slice(&parity);
-    codeword[T..].clone_from_slice(&message);
+    let mut codeword = vec![Gf2p8_11d::zero(); shard_len * N];
+    codeword[..T * shard_len].clone_from_slice(&parity);
+    codeword[T * shard_len..].clone_from_slice(&message);
     codeword
 }
 
@@ -79,25 +75,26 @@ fn bench_recover_erasure_shards_inner<K, const N: usize, const T: usize>(
             let mut received = original.clone();
 
             // Choose T random distinct positions to erase
-            let mut positions: Vec<usize> = (0..N).collect();
+            let mut positions: Vec<u8> = (0..N as u8).collect();
             // partial Fisher-Yates shuffle for T elements
             for i in 0..T {
                 let j = Uniform::new(i, N).unwrap().sample(rng);
                 positions.swap(i, j);
             }
-            let mut erasure_positions: Vec<usize> = positions[..T].to_vec();
+            let mut erasure_positions = positions[..T].to_vec();
             erasure_positions.sort_unstable();
 
             for &pos in &erasure_positions {
-                received[pos].fill(Gf2p8_11d::zero());
+                received[pos as usize * shard_len..(pos as usize + 1) * shard_len]
+                    .fill(Gf2p8_11d::zero());
             }
 
-            (received, erasure_positions)
+            let workspace = vec![Gf2p8_11d::zero(); shard_len * N];
+
+            (received, workspace, erasure_positions)
         },
-        |(mut received, erasure_positions)| {
-            let mut received_slices: Vec<&mut [Gf2p8_11d]> =
-                received.iter_mut().map(|s| s.as_mut()).collect();
-            rs.recover_erasure_shards(&mut received_slices, &erasure_positions);
+        |(mut received, mut workspace, erasure_positions)| {
+            rs.recover_erasure_shards(&mut received, &mut workspace, shard_len, &erasure_positions);
         },
         BatchSize::LargeInput,
     );
