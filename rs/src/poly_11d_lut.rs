@@ -100,27 +100,23 @@ mod tests {
     fn generate_sharded_lch_codeword<const N: usize, const T: usize>(
         rs: &RsLut<N, T>,
         shard_len: usize,
-    ) -> Vec<Vec<Gf2p8_11d>> {
+    ) -> Vec<Gf2p8_11d> {
         let k = N - T;
-        let mut message = vec![vec![Gf2p8_11d::zero(); shard_len]; k];
-        let mut parity = vec![vec![Gf2p8_11d::zero(); shard_len]; T];
+        let mut message = vec![Gf2p8_11d::zero(); shard_len * k];
+        let mut parity = vec![Gf2p8_11d::zero(); shard_len * T];
+        let mut workspace = vec![Gf2p8_11d::zero(); shard_len * T];
 
         for i in 0..k {
             for j in 0..shard_len {
-                message[i][j] = Gf2p8_11d::from((T + i + j) as u8);
+                message[i * shard_len + j] = Gf2p8_11d::from((T + i + j) as u8);
             }
         }
 
-        let message_slices: Vec<&[Gf2p8_11d]> =
-            message.iter().map(|shard| shard.as_ref()).collect();
-        let mut parity_slices: Vec<&mut [Gf2p8_11d]> =
-            parity.iter_mut().map(|shard| shard.as_mut()).collect();
+        rs.encode_systematic_sharded(&message, &mut parity, &mut workspace, shard_len);
 
-        rs.encode_systematic_sharded(&message_slices, &mut parity_slices);
-
-        let mut codeword = vec![vec![Gf2p8_11d::zero(); shard_len]; N];
-        codeword[..T].clone_from_slice(&parity);
-        codeword[T..].clone_from_slice(&message);
+        let mut codeword = vec![Gf2p8_11d::zero(); shard_len * N];
+        codeword[..T * shard_len].clone_from_slice(&parity);
+        codeword[T * shard_len..].clone_from_slice(&message);
         codeword
     }
 
@@ -416,7 +412,6 @@ mod tests {
             let v_k_minus_1 = basis.get_subspace_point_lut(1 << (k - 1));
             let s_k_minus_1_v_k = basis.eval_subspace_poly_lut(k - 1, v_k);
             let s_k_minus_1_v_k_minus_1 = basis.eval_subspace_poly_lut(k - 1, v_k_minus_1);
-            let k_minus_1 = k - 1;
             assert_ne!(s_k_minus_1_v_k_minus_1, s_k_minus_1_v_k);
         }
     }
@@ -449,13 +444,10 @@ mod tests {
         let rs = RsLut::<N, T>::new();
         let codeword = generate_sharded_lch_codeword(&rs, SHARD_LEN);
         // Verify that the parity shards have been written into.
-        for j in 0..T {
-            assert_ne!(
-                codeword[j],
-                vec![Gf2p8_11d::zero(); SHARD_LEN],
-                "failed for N={N}, T={T}"
-            );
-        }
+        assert_ne!(
+            codeword[..T * SHARD_LEN],
+            vec![Gf2p8_11d::zero(); T * SHARD_LEN],
+        );
     }
 
     #[test]
@@ -473,7 +465,7 @@ mod tests {
         let rs = RsLut::<N, T>::new();
         let scalar = generate_lch_codeword(&rs);
         let sharded = generate_sharded_lch_codeword(&rs, 1);
-        assert_eq!(scalar, sharded.into_iter().flatten().collect::<Vec<_>>());
+        assert_eq!(scalar, sharded);
     }
 
     #[test]
@@ -494,13 +486,10 @@ mod tests {
         let mut received = original.clone();
 
         // Corrupt data
-        for r in received.iter_mut().skip(T) {
-            r.fill(Gf2p8_11d::zero());
-        }
+        received[T * SHARD_LEN..].fill(Gf2p8_11d::zero());
 
-        let mut received_slices: Vec<&mut [Gf2p8_11d]> =
-            received.iter_mut().map(|shard| shard.as_mut()).collect();
-        rs.recompute_data_from_parity_sharded(&mut received_slices);
+        let mut workspace = vec![Gf2p8_11d::zero(); T * SHARD_LEN];
+        rs.recompute_data_from_parity_sharded(&mut received, &mut workspace, SHARD_LEN);
         assert_eq!(received, original);
     }
 
@@ -555,20 +544,24 @@ mod tests {
         let mut erasure_positions = Vec::new();
 
         for (i, shard) in received
-            .iter_mut()
+            .chunks_mut(SHARD_LEN)
             .enumerate()
             .skip(1)
             .take(T * 2 - 1)
             .step_by(2)
         {
-            *shard = zero_shard.clone();
-            erasure_positions.push(i);
+            shard.clone_from_slice(&zero_shard);
+            erasure_positions.push(i as u8);
         }
 
-        let mut received_slices: Vec<&mut [Gf2p8_11d]> =
-            received.iter_mut().map(|shard| shard.as_mut()).collect();
+        let mut workspace = vec![Gf2p8_11d::zero(); N * SHARD_LEN];
 
-        assert!(rs.recover_erasure_shards(&mut received_slices, &erasure_positions));
+        assert!(rs.recover_erasure_shards(
+            &mut received,
+            &mut workspace,
+            SHARD_LEN,
+            &erasure_positions
+        ));
         assert_eq!(received, original, "N={N}, T={T}");
     }
 }

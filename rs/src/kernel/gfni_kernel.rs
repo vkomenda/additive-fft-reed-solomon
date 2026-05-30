@@ -59,7 +59,8 @@ unsafe fn butterfly_inv_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
 
 fn fft_sharded_gfni<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
-    shards: &mut [&mut [G]],
+    shards: &mut [G],
+    shard_len: usize,
     k: u8,
     beta: G,
 ) {
@@ -71,25 +72,38 @@ fn fft_sharded_gfni<G: Gf2p8Lut>(
     let mat = unsafe { _mm512_set1_epi64(twiddle.gfni_mul_matrix() as i64) };
 
     for i in 0..half {
-        let (left, right) = shards.split_at_mut(i + half);
+        let (left, right) = shards.split_at_mut((i + half) * shard_len);
         unsafe {
             butterfly_fwd_gfni(
-                left[i].as_mut_ptr() as *mut u8,
-                right[0].as_mut_ptr() as *mut u8,
-                left[i].len(),
+                left[i * shard_len..].as_mut_ptr() as *mut u8,
+                right[..shard_len].as_mut_ptr() as *mut u8,
+                shard_len,
                 mat,
             );
         }
     }
 
     let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
-    fft_sharded_gfni(basis, &mut shards[..half], k - 1, beta);
-    fft_sharded_gfni(basis, &mut shards[half..], k - 1, next_beta);
+    fft_sharded_gfni(
+        basis,
+        &mut shards[..half * shard_len],
+        shard_len,
+        k - 1,
+        beta,
+    );
+    fft_sharded_gfni(
+        basis,
+        &mut shards[half * shard_len..],
+        shard_len,
+        k - 1,
+        next_beta,
+    );
 }
 
 fn ifft_sharded_gfni<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
-    shards: &mut [&mut [G]],
+    shards: &mut [G],
+    shard_len: usize,
     k: u8,
     beta: G,
 ) {
@@ -99,19 +113,31 @@ fn ifft_sharded_gfni<G: Gf2p8Lut>(
     let half = 1usize << (k - 1);
 
     let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
-    ifft_sharded_gfni(basis, &mut shards[..half], k - 1, beta);
-    ifft_sharded_gfni(basis, &mut shards[half..], k - 1, next_beta);
+    ifft_sharded_gfni(
+        basis,
+        &mut shards[..half * shard_len],
+        shard_len,
+        k - 1,
+        beta,
+    );
+    ifft_sharded_gfni(
+        basis,
+        &mut shards[half * shard_len..],
+        shard_len,
+        k - 1,
+        next_beta,
+    );
 
     let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
     let mat = unsafe { _mm512_set1_epi64(twiddle.gfni_mul_matrix() as i64) };
 
     for i in 0..half {
-        let (left, right) = shards.split_at_mut(i + half);
+        let (left, right) = shards.split_at_mut((i + half) * shard_len);
         unsafe {
             butterfly_inv_gfni(
-                left[i].as_mut_ptr() as *mut u8,
-                right[0].as_mut_ptr() as *mut u8,
-                left[i].len(),
+                left[i * shard_len..].as_mut_ptr() as *mut u8,
+                right[..shard_len].as_mut_ptr() as *mut u8,
+                shard_len,
                 mat,
             )
         };
@@ -158,15 +184,28 @@ unsafe fn scale_in_place(dst: *mut u8, len: usize, mat: __m512i) {
     }
 }
 
+#[derive(Default)]
 pub struct GfniKernel<G: Gf2p8Lut>(PhantomData<G>);
 
 impl<G: Gf2p8Lut> Kernel<G> for GfniKernel<G> {
-    fn fft_sharded(basis: &impl CantorBasisLut<G>, shards: &mut [&mut [G]], k: u8, beta: G) {
-        fft_sharded_gfni(basis, shards, k, beta)
+    fn fft_sharded(
+        basis: &impl CantorBasisLut<G>,
+        shards: &mut [G],
+        shard_len: usize,
+        k: u8,
+        beta: G,
+    ) {
+        fft_sharded_gfni(basis, shards, shard_len, k, beta)
     }
 
-    fn ifft_sharded(basis: &impl CantorBasisLut<G>, shards: &mut [&mut [G]], k: u8, beta: G) {
-        ifft_sharded_gfni(basis, shards, k, beta)
+    fn ifft_sharded(
+        basis: &impl CantorBasisLut<G>,
+        shards: &mut [G],
+        shard_len: usize,
+        k: u8,
+        beta: G,
+    ) {
+        ifft_sharded_gfni(basis, shards, shard_len, k, beta)
     }
 
     fn scale(dst: &mut [G], src: &[G], scalar: G) {
@@ -194,15 +233,15 @@ impl<G: Gf2p8Lut> GfniKernel<G> {
 #[cfg(native_gfni)]
 mod tests {
     use super::*;
-    use crate::{RsLut, kernel::lut_kernel, poly_11d_lut::CantorBasisLut11d};
+    use crate::{kernel::lut_kernel, poly_11d_lut::CantorBasisLut11d};
     use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
 
     #[test]
     fn debug_gfni_cfg() {
         let target_arch_x86_64 = cfg!(target_arch = "x86_64");
-        let avx512f = cfg!(target_feature = "avx512f");
-        let avx512bw = cfg!(target_feature = "avx512bw");
-        let gfni = cfg!(target_feature = "gfni");
+        let avx512f = is_x86_feature_detected!("avx512f");
+        let avx512bw = is_x86_feature_detected!("avx512bw");
+        let gfni = is_x86_feature_detected!("gfni");
 
         assert!(target_arch_x86_64);
         assert!(avx512f);
@@ -210,12 +249,12 @@ mod tests {
         assert!(gfni);
     }
 
-    fn make_shards(n: usize, shard_len: usize) -> Vec<Vec<Gf2p8_11d>> {
+    fn make_shards(n: usize, shard_len: usize) -> Vec<Gf2p8_11d> {
         (0..n)
-            .map(|i| {
+            .flat_map(|i| {
                 (0..shard_len)
                     .map(|j| Gf2p8_11d::from((i * 37 + j * 13 + 1) as u8))
-                    .collect()
+                    .collect::<Vec<_>>()
             })
             .collect()
     }
@@ -233,13 +272,8 @@ mod tests {
                 let mut lut = make_shards(n, shard_len);
                 let mut gfni = lut.clone();
 
-                let mut lut_slices: Vec<&mut [Gf2p8_11d]> =
-                    lut.iter_mut().map(|s| s.as_mut_slice()).collect();
-                lut_kernel::fft_sharded(&basis, &mut lut_slices, k, beta);
-
-                let mut gfni_slices: Vec<&mut [Gf2p8_11d]> =
-                    gfni.iter_mut().map(|s| s.as_mut_slice()).collect();
-                fft_sharded_gfni(&basis, &mut gfni_slices, k, beta);
+                lut_kernel::fft_sharded(&basis, &mut lut, shard_len, k, beta);
+                fft_sharded_gfni(&basis, &mut gfni, shard_len, k, beta);
 
                 assert_eq!(lut, gfni, "k={k} shard_len={shard_len}");
             }
@@ -257,13 +291,8 @@ mod tests {
                 let mut lut = make_shards(n, shard_len);
                 let mut gfni = lut.clone();
 
-                let mut lut_slices: Vec<&mut [Gf2p8_11d]> =
-                    lut.iter_mut().map(|s| s.as_mut_slice()).collect();
-                lut_kernel::ifft_sharded(&basis, &mut lut_slices, k, beta);
-
-                let mut gfni_slices: Vec<&mut [Gf2p8_11d]> =
-                    gfni.iter_mut().map(|s| s.as_mut_slice()).collect();
-                ifft_sharded_gfni(&basis, &mut gfni_slices, k, beta);
+                lut_kernel::ifft_sharded(&basis, &mut lut, shard_len, k, beta);
+                ifft_sharded_gfni(&basis, &mut gfni, shard_len, k, beta);
 
                 assert_eq!(lut, gfni, "k={k} shard_len={shard_len}");
             }
@@ -281,10 +310,8 @@ mod tests {
                 let original = make_shards(n, shard_len);
                 let mut data = original.clone();
 
-                let mut slices: Vec<&mut [Gf2p8_11d]> =
-                    data.iter_mut().map(|s| s.as_mut_slice()).collect();
-                ifft_sharded_gfni(&basis, &mut slices, k, beta);
-                fft_sharded_gfni(&basis, &mut slices, k, beta);
+                ifft_sharded_gfni(&basis, &mut data, shard_len, k, beta);
+                fft_sharded_gfni(&basis, &mut data, shard_len, k, beta);
 
                 assert_eq!(data, original, "k={k} shard_len={shard_len}");
             }
