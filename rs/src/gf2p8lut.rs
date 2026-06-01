@@ -25,8 +25,8 @@ pub trait Gf2p8Lut: Gf2p8 {
 
     /// Precompute the 256-entry multiply table for a fixed scalar once per
     /// butterfly level.
-    fn make_mul_lut(self) -> [Self; FIELD_SIZE] {
-        std::array::from_fn(|i| self.mul_lut(Self::from(i as u8)))
+    fn make_mul_lut(self) -> [u8; FIELD_SIZE] {
+        std::array::from_fn(|i| self.mul_lut(Self::from(i as u8)).into())
     }
 
     fn gfni_mul_matrix(self) -> u64;

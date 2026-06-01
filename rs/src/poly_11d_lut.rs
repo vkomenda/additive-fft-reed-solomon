@@ -451,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn encode_sharded_injective() {
+    fn encode_sharded_generalizes_scalar() {
         encode_sharded_generalizes_scalar_t::<4, 2>();
         encode_sharded_generalizes_scalar_t::<8, 4>();
         encode_sharded_generalizes_scalar_t::<16, 8>();

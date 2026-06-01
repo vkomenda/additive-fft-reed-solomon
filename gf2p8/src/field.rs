@@ -36,6 +36,30 @@ pub trait Gf2p8: Sized + Copy + From<u8> + Into<u8> + PartialEq {
         (res as u8).into()
     }
 
+    fn mul_with_tables(
+        self,
+        other: Self,
+        exp: &[u8; EXP_TABLE_SIZE],
+        log: &[u8; FIELD_SIZE],
+    ) -> Self {
+        if self == Self::zero() || other == Self::zero() {
+            return Self::zero();
+        }
+        exp[log[self.into_usize()] as usize + log[other.into_usize()] as usize].into()
+    }
+
+    fn make_mul_table(
+        self,
+        exp: &[u8; EXP_TABLE_SIZE],
+        log: &[u8; FIELD_SIZE],
+    ) -> [u8; FIELD_SIZE] {
+        let mut mul_table = [0u8; 256];
+        for x in 0..=255u8 {
+            mul_table[x as usize] = self.mul_with_tables(x.into(), exp, log).into();
+        }
+        mul_table
+    }
+
     fn into_usize(self) -> usize {
         let byte: u8 = self.into();
         byte as usize
