@@ -116,7 +116,7 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
                 6 => unrolled_11d::fft_sharded_lut_64(shards, shard_len),
                 7 => unrolled_11d::fft_sharded_lut_128(shards, shard_len),
                 8 => unrolled_11d::fft_sharded_lut_256(shards, shard_len),
-                _ => unreachable!("k={k} must be in 2..=8"),
+                _ => unreachable!("k={k} must be in 0..=8"),
             }
         } else {
             fft_sharded(basis, shards, shard_len, k, beta);
@@ -130,7 +130,22 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
         k: u8,
         beta: Gf2p8_11d,
     ) {
-        ifft_sharded(basis, shards, shard_len, k, beta)
+        if beta == Gf2p8::zero() {
+            match k {
+                0 => {}
+                1 => unrolled_11d::ifft_sharded_lut_2(shards, shard_len),
+                2 => unrolled_11d::ifft_sharded_lut_4(shards, shard_len),
+                3 => unrolled_11d::ifft_sharded_lut_8(shards, shard_len),
+                4 => unrolled_11d::ifft_sharded_lut_16(shards, shard_len),
+                5 => unrolled_11d::ifft_sharded_lut_32(shards, shard_len),
+                6 => unrolled_11d::ifft_sharded_lut_64(shards, shard_len),
+                7 => unrolled_11d::ifft_sharded_lut_128(shards, shard_len),
+                8 => unrolled_11d::ifft_sharded_lut_256(shards, shard_len),
+                _ => unreachable!("k={k} must be in 0..=8"),
+            }
+        } else {
+            ifft_sharded(basis, shards, shard_len, k, beta);
+        }
     }
 
     fn scale(dst: &mut [Gf2p8_11d], src: &[Gf2p8_11d], scalar: Gf2p8_11d) {

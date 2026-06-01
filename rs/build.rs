@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
 
-fn write_butterfly<G: Gf2p8 + fmt::Debug>(
+fn write_butterfly_fwd<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
     exp: &[u8; EXP_TABLE_SIZE],
     log: &[u8; FIELD_SIZE],
@@ -62,6 +62,59 @@ fn write_butterfly<G: Gf2p8 + fmt::Debug>(
     Ok(())
 }
 
+fn write_butterfly_inv<G: Gf2p8 + fmt::Debug>(
+    f: &mut impl Write,
+    exp: &[u8; EXP_TABLE_SIZE],
+    log: &[u8; FIELD_SIZE],
+    twiddle: G,
+    offset: usize,
+    half: usize,
+) -> io::Result<()> {
+    let end = offset + half * 2;
+    writeln!(f, "    {{")?;
+    let mul_lut = twiddle.make_mul_table(exp, log);
+    writeln!(f, "        let lut: [u8; FIELD_SIZE] = [")?;
+    for (i, &b) in mul_lut.iter().enumerate() {
+        if i % 16 == 0 {
+            write!(f, "            ")?;
+        }
+        write!(f, "0x{b:02X},")?;
+        if i % 16 == 15 {
+            writeln!(f)?;
+        }
+    }
+    writeln!(f, "        ];")?;
+    if half == 1 {
+        writeln!(
+            f,
+            "        let (lo, hi) = shards[{offset} * shard_len..].split_at_mut(shard_len);"
+        )?;
+        writeln!(
+            f,
+            "        butterfly_inv(&mut lo[..shard_len], &mut hi[..shard_len], &lut);"
+        )?;
+    } else {
+        writeln!(
+            f,
+            "        let block = &mut shards[{offset} * shard_len..{end} * shard_len];"
+        )?;
+        writeln!(f, "        for i in 0..{half} {{")?;
+        writeln!(
+            f,
+            "            let (left, right) = block.split_at_mut((i + {half}) * shard_len);"
+        )?;
+        writeln!(
+            f,
+            "            let a = &mut left[i * shard_len..(i + 1) * shard_len];"
+        )?;
+        writeln!(f, "            let b = &mut right[..shard_len];")?;
+        writeln!(f, "            butterfly_inv(a, b, &lut);")?;
+        writeln!(f, "        }}")?;
+    }
+    writeln!(f, "    }}")?;
+    Ok(())
+}
+
 fn write_fft_lut<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
     basis: &[G],
@@ -72,14 +125,14 @@ fn write_fft_lut<G: Gf2p8 + fmt::Debug>(
     beta: G,
     offset: usize,
 ) -> io::Result<()> {
-    let half = 1usize << l;
+    let half = 1 << l;
     let twiddle = if l == 0 {
         beta
     } else {
         lut[l as usize][beta.into_usize()]
     };
 
-    write_butterfly(f, exp, log, twiddle, offset, half)?;
+    write_butterfly_fwd(f, exp, log, twiddle, offset, half)?;
 
     if l == 0 {
         return Ok(());
@@ -91,6 +144,32 @@ fn write_fft_lut<G: Gf2p8 + fmt::Debug>(
     Ok(())
 }
 
+fn write_ifft_lut<G: Gf2p8 + fmt::Debug>(
+    f: &mut impl Write,
+    basis: &[G],
+    lut: &[[G; FIELD_SIZE]; 8],
+    exp: &[u8; EXP_TABLE_SIZE],
+    log: &[u8; FIELD_SIZE],
+    l: u8,
+    beta: G,
+    offset: usize,
+) -> io::Result<()> {
+    let half = 1 << l;
+    if l == 0 {
+        let twiddle = beta;
+        write_butterfly_inv(f, exp, log, twiddle, offset, half)?;
+        return Ok(());
+    }
+
+    let next_beta = beta.add(basis[l as usize]);
+    write_ifft_lut(f, basis, lut, exp, log, l - 1, beta, offset)?;
+    write_ifft_lut(f, basis, lut, exp, log, l - 1, next_beta, offset + (1 << l))?;
+
+    let twiddle = lut[l as usize][beta.into_usize()];
+    write_butterfly_inv(f, exp, log, twiddle, offset, 1 << l)?;
+    Ok(())
+}
+
 fn write_fft_lut_case<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
     basis: &[G],
@@ -99,13 +178,19 @@ fn write_fft_lut_case<G: Gf2p8 + fmt::Debug>(
     log: &[u8; FIELD_SIZE],
     n: usize,
     k: u8,
+    is_ifft: bool,
 ) -> io::Result<()> {
     writeln!(
         f,
-        "pub fn fft_sharded_lut_{n}<G: Gf2p8>(shards: &mut [G], shard_len: usize) {{"
+        "pub fn {}fft_sharded_lut_{n}<G: Gf2p8>(shards: &mut [G], shard_len: usize) {{",
+        if is_ifft { "i" } else { "" }
     )?;
     writeln!(f, "    debug_assert_eq!(shards.len(), {n} * shard_len);")?;
-    write_fft_lut(f, basis, lut, exp, log, k - 1, G::zero(), 0)?;
+    if !is_ifft {
+        write_fft_lut(f, basis, lut, exp, log, k - 1, G::zero(), 0)?;
+    } else {
+        write_ifft_lut(f, basis, lut, exp, log, k - 1, G::zero(), 0)?;
+    }
     writeln!(f, "}}")?;
     writeln!(f)?;
     Ok(())
@@ -125,13 +210,14 @@ where
         f,
         "use additive_fft_reed_solomon_gf2p8::{{FIELD_SIZE, Gf2p8}};"
     )?;
-    writeln!(f, "use super::butterfly_fwd;")?;
+    writeln!(f, "use super::{{butterfly_fwd, butterfly_inv}};")?;
     writeln!(f)?;
 
     let cases: Vec<(usize, u8)> = (1..9).map(|a| (1usize << a, a)).collect();
 
     for (n, k) in cases {
-        write_fft_lut_case(f, basis, sub_poly_luts, exp, log, n, k)?;
+        write_fft_lut_case(f, basis, sub_poly_luts, exp, log, n, k, false)?;
+        write_fft_lut_case(f, basis, sub_poly_luts, exp, log, n, k, true)?;
     }
 
     Ok(())
