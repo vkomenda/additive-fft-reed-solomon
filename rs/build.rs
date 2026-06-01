@@ -7,20 +7,9 @@ use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
 
-fn write_butterfly_fwd<G: Gf2p8 + fmt::Debug>(
-    f: &mut impl Write,
-    exp: &[u8; EXP_TABLE_SIZE],
-    log: &[u8; FIELD_SIZE],
-    twiddle: G,
-    offset: usize,
-    half: usize,
-) -> io::Result<()> {
-    let end = offset + half * 2;
-
-    writeln!(f, "    {{")?;
-    let mul_lut = twiddle.make_mul_table(exp, log);
+fn write_lut(f: &mut impl Write, lut: &[u8; FIELD_SIZE]) -> io::Result<()> {
     writeln!(f, "        let lut: [u8; FIELD_SIZE] = [")?;
-    for (i, &b) in mul_lut.iter().enumerate() {
+    for (i, &b) in lut.iter().enumerate() {
         if i % 16 == 0 {
             write!(f, "            ")?;
         }
@@ -31,34 +20,56 @@ fn write_butterfly_fwd<G: Gf2p8 + fmt::Debug>(
     }
     writeln!(f, "        ];")?;
 
+    Ok(())
+}
+
+fn write_butterfly_fwd<G: Gf2p8 + fmt::Debug>(
+    f: &mut impl Write,
+    exp: &[u8; EXP_TABLE_SIZE],
+    log: &[u8; FIELD_SIZE],
+    twiddle: G,
+    offset: usize,
+    half: usize,
+) -> io::Result<()> {
+    let end = offset + half * 2;
+
+    let fwd_op = if twiddle == G::zero() {
+        "            for (ai, bi) in a.iter().zip(b.iter_mut()) { *bi = bi.add(*ai); }"
+    } else {
+        "            butterfly_fwd(a, b, &lut);"
+    };
+
+    let fwd_op_half1 = if twiddle == G::zero() {
+        "        for (ai, bi) in lo.iter().zip(hi.iter_mut()) { *bi = bi.add(*ai); }"
+    } else {
+        "        butterfly_fwd(&mut lo[..shard_len], &mut hi[..shard_len], &lut);"
+    };
+
+    writeln!(f, "    {{")?;
+    if twiddle != G::zero() {
+        write_lut(f, &twiddle.make_mul_table(exp, log))?;
+    }
+
     if half == 1 {
-        writeln!(
+        write!(
             f,
-            "        let (lo, hi) = shards[{offset} * shard_len..].split_at_mut(shard_len);"
-        )?;
-        writeln!(
-            f,
-            "        butterfly_fwd(&mut lo[..shard_len], &mut hi[..shard_len], &lut);"
+            "        let (lo, hi) = shards[{offset} * shard_len..].split_at_mut(shard_len);
+{fwd_op_half1}
+    }}\n"
         )?;
     } else {
-        writeln!(
+        write!(
             f,
-            "        let block = &mut shards[{offset} * shard_len..{end} * shard_len];"
+            "        let block = &mut shards[{offset} * shard_len..{end} * shard_len];
+        for i in 0..{half} {{
+            let (left, right) = block.split_at_mut((i + {half}) * shard_len);
+            let a = &mut left[i * shard_len..(i + 1) * shard_len];
+            let b = &mut right[..shard_len];
+{fwd_op}
+        }}
+    }}\n"
         )?;
-        writeln!(f, "        for i in 0..{half} {{")?;
-        writeln!(
-            f,
-            "            let (left, right) = block.split_at_mut((i + {half}) * shard_len);"
-        )?;
-        writeln!(
-            f,
-            "            let a = &mut left[i * shard_len..(i + 1) * shard_len];"
-        )?;
-        writeln!(f, "            let b = &mut right[..shard_len];")?;
-        writeln!(f, "            butterfly_fwd(a, b, &lut);")?;
-        writeln!(f, "        }}")?;
     }
-    writeln!(f, "    }}")?;
     Ok(())
 }
 
@@ -71,47 +82,44 @@ fn write_butterfly_inv<G: Gf2p8 + fmt::Debug>(
     half: usize,
 ) -> io::Result<()> {
     let end = offset + half * 2;
+
+    let inv_op = if twiddle == G::zero() {
+        "            for (ai, bi) in a.iter().zip(b.iter_mut()) { *bi = ai.add(*bi); }"
+    } else {
+        "            butterfly_inv(a, b, &lut);"
+    };
+
+    let inv_op_half1 = if twiddle == G::zero() {
+        "        for (ai, bi) in lo.iter().zip(hi.iter_mut()) { *bi = ai.add(*bi); }"
+    } else {
+        "        butterfly_inv(&mut lo[..shard_len], &mut hi[..shard_len], &lut);"
+    };
+
     writeln!(f, "    {{")?;
-    let mul_lut = twiddle.make_mul_table(exp, log);
-    writeln!(f, "        let lut: [u8; FIELD_SIZE] = [")?;
-    for (i, &b) in mul_lut.iter().enumerate() {
-        if i % 16 == 0 {
-            write!(f, "            ")?;
-        }
-        write!(f, "0x{b:02X},")?;
-        if i % 16 == 15 {
-            writeln!(f)?;
-        }
+    if twiddle != G::zero() {
+        write_lut(f, &twiddle.make_mul_table(exp, log))?;
     }
-    writeln!(f, "        ];")?;
+
     if half == 1 {
-        writeln!(
+        write!(
             f,
-            "        let (lo, hi) = shards[{offset} * shard_len..].split_at_mut(shard_len);"
-        )?;
-        writeln!(
-            f,
-            "        butterfly_inv(&mut lo[..shard_len], &mut hi[..shard_len], &lut);"
+            "        let (lo, hi) = shards[{offset} * shard_len..].split_at_mut(shard_len);
+{inv_op_half1}
+    }}\n"
         )?;
     } else {
-        writeln!(
+        write!(
             f,
-            "        let block = &mut shards[{offset} * shard_len..{end} * shard_len];"
+            "        let block = &mut shards[{offset} * shard_len..{end} * shard_len];
+        for i in 0..{half} {{
+            let (left, right) = block.split_at_mut((i + {half}) * shard_len);
+            let a = &mut left[i * shard_len..(i + 1) * shard_len];
+            let b = &mut right[..shard_len];
+{inv_op}
+        }}
+    }}\n"
         )?;
-        writeln!(f, "        for i in 0..{half} {{")?;
-        writeln!(
-            f,
-            "            let (left, right) = block.split_at_mut((i + {half}) * shard_len);"
-        )?;
-        writeln!(
-            f,
-            "            let a = &mut left[i * shard_len..(i + 1) * shard_len];"
-        )?;
-        writeln!(f, "            let b = &mut right[..shard_len];")?;
-        writeln!(f, "            butterfly_inv(a, b, &lut);")?;
-        writeln!(f, "        }}")?;
     }
-    writeln!(f, "    }}")?;
     Ok(())
 }
 
