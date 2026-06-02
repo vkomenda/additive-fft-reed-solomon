@@ -201,9 +201,9 @@ fn write_fft_lut_case<G: Gf2p8 + fmt::Debug>(
     )?;
     writeln!(f, "    debug_assert_eq!(shards.len(), {n} * shard_len);")?;
     if !is_ifft {
-        write_fft_lut(f, basis, lut, exp, log, k - 1, beta, 0)?;
+        write_fft_lut(f, basis, lut, exp, log, k, beta, 0)?;
     } else {
-        write_ifft_lut(f, basis, lut, exp, log, k - 1, beta, 0)?;
+        write_ifft_lut(f, basis, lut, exp, log, k, beta, 0)?;
     }
     writeln!(f, "}}")?;
     writeln!(f)?;
@@ -228,16 +228,15 @@ where
     writeln!(f, "use super::{{butterfly_fwd, butterfly_inv}};")?;
     writeln!(f)?;
 
-    let cases: Vec<(usize, u8)> = (1..9).map(|a| (1usize << a, a)).collect();
+    let cases: Vec<(usize, u8)> = (0..8).map(|a| (2usize << a, a)).collect();
 
     for (n, k) in cases {
         write_fft_lut_case(f, basis, sub_poly_luts, exp, log, n, k, G::zero(), false)?;
         write_fft_lut_case(f, basis, sub_poly_luts, exp, log, n, k, G::zero(), true)?;
     }
 
-    let omega_cases: Vec<(usize, u8, usize)> = (1..9)
-        .map(|a| (1usize << a, a, 1usize << (a - 1)))
-        .collect();
+    let omega_cases: Vec<(usize, u8, usize)> =
+        (0..8).map(|a| (2usize << a, a, 1usize << a)).collect();
 
     for (n, k, t) in omega_cases {
         let omega = subspace_points[t];
