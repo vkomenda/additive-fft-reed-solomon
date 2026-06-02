@@ -13,7 +13,7 @@ fn write_lut(f: &mut impl Write, lut: &[u8; FIELD_SIZE]) -> io::Result<()> {
         if i % 16 == 0 {
             write!(f, "            ")?;
         }
-        write!(f, "0x{b:02X},")?;
+        write!(f, "0x{b:02x},")?;
         if i % 16 == 15 {
             writeln!(f)?;
         }
@@ -186,18 +186,24 @@ fn write_fft_lut_case<G: Gf2p8 + fmt::Debug>(
     log: &[u8; FIELD_SIZE],
     n: usize,
     k: u8,
+    beta: G,
     is_ifft: bool,
 ) -> io::Result<()> {
     writeln!(
         f,
-        "pub fn {}fft_sharded_lut_{n}<G: Gf2p8>(shards: &mut [G], shard_len: usize) {{",
-        if is_ifft { "i" } else { "" }
+        "pub fn {}fft_sharded_lut_{n}{}<G: Gf2p8>(shards: &mut [G], shard_len: usize) {{",
+        if is_ifft { "i" } else { "" },
+        if beta != G::zero() {
+            format!("_{:02x}", beta.into())
+        } else {
+            "".to_string()
+        }
     )?;
     writeln!(f, "    debug_assert_eq!(shards.len(), {n} * shard_len);")?;
     if !is_ifft {
-        write_fft_lut(f, basis, lut, exp, log, k - 1, G::zero(), 0)?;
+        write_fft_lut(f, basis, lut, exp, log, k - 1, beta, 0)?;
     } else {
-        write_ifft_lut(f, basis, lut, exp, log, k - 1, G::zero(), 0)?;
+        write_ifft_lut(f, basis, lut, exp, log, k - 1, beta, 0)?;
     }
     writeln!(f, "}}")?;
     writeln!(f)?;
@@ -208,6 +214,7 @@ fn write_unrolled_kernel_lut<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
     basis: &[G],
     sub_poly_luts: &[[G; FIELD_SIZE]; 8],
+    subspace_points: &[G; FIELD_SIZE],
     exp: &[u8; EXP_TABLE_SIZE],
     log: &[u8; FIELD_SIZE],
 ) -> io::Result<()>
@@ -224,8 +231,17 @@ where
     let cases: Vec<(usize, u8)> = (1..9).map(|a| (1usize << a, a)).collect();
 
     for (n, k) in cases {
-        write_fft_lut_case(f, basis, sub_poly_luts, exp, log, n, k, false)?;
-        write_fft_lut_case(f, basis, sub_poly_luts, exp, log, n, k, true)?;
+        write_fft_lut_case(f, basis, sub_poly_luts, exp, log, n, k, G::zero(), false)?;
+        write_fft_lut_case(f, basis, sub_poly_luts, exp, log, n, k, G::zero(), true)?;
+    }
+
+    let omega_cases: Vec<(usize, u8, usize)> = (1..9)
+        .map(|a| (1usize << a, a, 1usize << (a - 1)))
+        .collect();
+
+    for (n, k, t) in omega_cases {
+        let omega = subspace_points[t];
+        write_fft_lut_case(f, basis, sub_poly_luts, exp, log, n, k, omega, true)?;
     }
 
     Ok(())
@@ -279,9 +295,11 @@ fn main() {
     writeln!(f, "];").unwrap();
 
     let (num_points, points_iter) = basis.iter_subspace_points();
+    let subspace_points: [Gf2p8_11d; FIELD_SIZE] =
+        points_iter.collect::<Vec<_>>().try_into().unwrap();
 
     write!(f, "\npub const CANTOR_SUBSPACE: [u8; {}] = [", num_points).unwrap();
-    write_points(&mut f, points_iter, false);
+    write_points(&mut f, subspace_points.into_iter(), false);
 
     let sub_poly_luts = basis.gen_all_subspace_poly_luts();
 
@@ -310,6 +328,7 @@ fn main() {
         &mut fkl,
         basis.as_ref(),
         sub_poly_luts8,
+        &subspace_points,
         &exp_table,
         &log_table,
     )

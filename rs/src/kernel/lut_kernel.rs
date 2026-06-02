@@ -1,5 +1,6 @@
 use super::Kernel;
 use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
+use crate::poly_11d_lut::generated::CANTOR_SUBSPACE;
 use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8, Gf2p8_11d};
 use std::marker::PhantomData;
 
@@ -144,7 +145,34 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
                 _ => unreachable!("k={k} must be in 0..=8"),
             }
         } else {
-            ifft_sharded(basis, shards, shard_len, k, beta);
+            match (k, u8::from(beta)) {
+                (0, _) => {}
+                (1, b) if b == CANTOR_SUBSPACE[1] => {
+                    unrolled_11d::ifft_sharded_lut_2_01(shards, shard_len)
+                }
+                (2, b) if b == CANTOR_SUBSPACE[2] => {
+                    unrolled_11d::ifft_sharded_lut_4_d6(shards, shard_len)
+                }
+                (3, b) if b == CANTOR_SUBSPACE[4] => {
+                    unrolled_11d::ifft_sharded_lut_8_98(shards, shard_len)
+                }
+                (4, b) if b == CANTOR_SUBSPACE[8] => {
+                    unrolled_11d::ifft_sharded_lut_16_92(shards, shard_len)
+                }
+                (5, b) if b == CANTOR_SUBSPACE[16] => {
+                    unrolled_11d::ifft_sharded_lut_32_56(shards, shard_len)
+                }
+                (6, b) if b == CANTOR_SUBSPACE[32] => {
+                    unrolled_11d::ifft_sharded_lut_64_c8(shards, shard_len)
+                }
+                (7, b) if b == CANTOR_SUBSPACE[64] => {
+                    unrolled_11d::ifft_sharded_lut_128_58(shards, shard_len)
+                }
+                (8, b) if b == CANTOR_SUBSPACE[128] => {
+                    unrolled_11d::ifft_sharded_lut_256_e7(shards, shard_len)
+                }
+                _ => ifft_sharded(basis, shards, shard_len, k, beta),
+            }
         }
     }
 
