@@ -290,19 +290,13 @@ fn write_butterfly_fwd_gfni<G: Gf2p8 + fmt::Debug>(
     let fwd_op = if twiddle == G::zero() {
         "for (ai, bi) in a.iter().zip(b.iter_mut()) { *bi = bi.add(*ai); }"
     } else {
-        "\
-            unsafe {
-                butterfly_fwd_gfni(a.as_mut_ptr() as *mut u8, b.as_mut_ptr() as *mut u8, shard_len, mat);
-            }"
+        "            butterfly_fwd_gfni(a, b, shard_len, mat);"
     };
 
     let fwd_op_half1 = if twiddle == G::zero() {
         "for (ai, bi) in lo.iter().zip(hi.iter_mut()) { *bi = bi.add(*ai); }"
     } else {
-        "\
-        unsafe {
-            butterfly_fwd_gfni(lo.as_mut_ptr() as *mut u8, hi.as_mut_ptr() as *mut u8, shard_len, mat);
-        }"
+        "        butterfly_fwd_gfni(lo, hi, shard_len, mat);"
     };
 
     writeln!(f, "    {{")?;
@@ -349,19 +343,13 @@ fn write_butterfly_inv_gfni<G: Gf2p8 + fmt::Debug>(
     let inv_op = if twiddle == G::zero() {
         "for (ai, bi) in a.iter().zip(b.iter_mut()) { *bi = ai.add(*bi); }"
     } else {
-        "\
-            unsafe {
-                butterfly_inv_gfni(a.as_mut_ptr() as *mut u8, b.as_mut_ptr() as *mut u8, shard_len, mat);
-            }"
+        "            butterfly_inv_gfni(a, b, shard_len, mat);"
     };
 
     let inv_op_half1 = if twiddle == G::zero() {
         "for (ai, bi) in lo.iter().zip(hi.iter_mut()) { *bi = ai.add(*bi); }"
     } else {
-        "\
-        unsafe {
-            butterfly_inv_gfni(lo.as_mut_ptr() as *mut u8, hi.as_mut_ptr() as *mut u8, shard_len, mat);
-        }"
+        "        butterfly_inv_gfni(lo, hi, shard_len, mat);"
     };
 
     writeln!(f, "    {{")?;

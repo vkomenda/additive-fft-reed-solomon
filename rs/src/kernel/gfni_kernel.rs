@@ -12,10 +12,12 @@ pub mod unrolled_11d {
 }
 
 /// Forward butterfly transforming (a, b) into (a + T·b, b + a + T·b).
-unsafe fn butterfly_fwd_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
-    unsafe {
-        let mut i = 0;
-        while i + 64 <= len {
+fn butterfly_fwd_gfni<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, mat: __m512i) {
+    let a = a.as_mut_ptr();
+    let b = b.as_mut_ptr();
+    let mut i = 0;
+    while i + 64 <= len {
+        unsafe {
             let va = _mm512_loadu_si512(a.add(i) as *const __m512i);
             let vb = _mm512_loadu_si512(b.add(i) as *const __m512i);
             let t = _mm512_gf2p8affine_epi64_epi8(vb, mat, 0); // T·b
@@ -23,10 +25,12 @@ unsafe fn butterfly_fwd_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
             let vb = _mm512_xor_si512(vb, va); // b + g0   = g1
             _mm512_storeu_si512(a.add(i) as *mut __m512i, va);
             _mm512_storeu_si512(b.add(i) as *mut __m512i, vb);
-            i += 64;
         }
-        if i < len {
-            let k = (1u64 << (len - i)) - 1;
+        i += 64;
+    }
+    if i < len {
+        let k = (1u64 << (len - i)) - 1;
+        unsafe {
             let va = _mm512_maskz_loadu_epi8(k, a.add(i) as *const i8);
             let vb = _mm512_maskz_loadu_epi8(k, b.add(i) as *const i8);
             let t = _mm512_gf2p8affine_epi64_epi8(vb, mat, 0);
@@ -39,10 +43,12 @@ unsafe fn butterfly_fwd_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
 }
 
 /// Inverse butterfly transforming (g0, g1) into (g0 + T·(g0+g1), g0+g1).
-unsafe fn butterfly_inv_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
-    unsafe {
-        let mut i = 0;
-        while i + 64 <= len {
+fn butterfly_inv_gfni<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, mat: __m512i) {
+    let a = a.as_mut_ptr();
+    let b = b.as_mut_ptr();
+    let mut i = 0;
+    while i + 64 <= len {
+        unsafe {
             let va = _mm512_loadu_si512(a.add(i) as *const __m512i);
             let vb = _mm512_loadu_si512(b.add(i) as *const __m512i);
             let vb = _mm512_xor_si512(vb, va); // d' = g0 + g1
@@ -50,10 +56,12 @@ unsafe fn butterfly_inv_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
             let va = _mm512_xor_si512(va, t); // d  = g0 + T·d'
             _mm512_storeu_si512(a.add(i) as *mut __m512i, va);
             _mm512_storeu_si512(b.add(i) as *mut __m512i, vb);
-            i += 64;
         }
-        if i < len {
-            let k = (1u64 << (len - i)) - 1;
+        i += 64;
+    }
+    if i < len {
+        let k = (1u64 << (len - i)) - 1;
+        unsafe {
             let va = _mm512_maskz_loadu_epi8(k, a.add(i) as *const i8);
             let vb = _mm512_maskz_loadu_epi8(k, b.add(i) as *const i8);
             let vb = _mm512_xor_si512(vb, va);
@@ -81,31 +89,18 @@ fn fft_sharded_gfni<G: Gf2p8Lut>(
 
     for i in 0..half {
         let (left, right) = shards.split_at_mut((i + half) * shard_len);
-        unsafe {
-            butterfly_fwd_gfni(
-                left[i * shard_len..].as_mut_ptr() as *mut u8,
-                right[..shard_len].as_mut_ptr() as *mut u8,
-                shard_len,
-                mat,
-            );
-        }
+        butterfly_fwd_gfni(
+            &mut left[i * shard_len..],
+            &mut right[..shard_len],
+            shard_len,
+            mat,
+        );
     }
 
     let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
-    fft_sharded_gfni(
-        basis,
-        &mut shards[..half * shard_len],
-        shard_len,
-        k - 1,
-        beta,
-    );
-    fft_sharded_gfni(
-        basis,
-        &mut shards[half * shard_len..],
-        shard_len,
-        k - 1,
-        next_beta,
-    );
+    let h = half * shard_len;
+    fft_sharded_gfni(basis, &mut shards[..h], shard_len, k - 1, beta);
+    fft_sharded_gfni(basis, &mut shards[h..], shard_len, k - 1, next_beta);
 }
 
 fn ifft_sharded_gfni<G: Gf2p8Lut>(
@@ -141,30 +136,30 @@ fn ifft_sharded_gfni<G: Gf2p8Lut>(
 
     for i in 0..half {
         let (left, right) = shards.split_at_mut((i + half) * shard_len);
-        unsafe {
-            butterfly_inv_gfni(
-                left[i * shard_len..].as_mut_ptr() as *mut u8,
-                right[..shard_len].as_mut_ptr() as *mut u8,
-                shard_len,
-                mat,
-            )
-        };
+        butterfly_inv_gfni(
+            &mut left[i * shard_len..],
+            &mut right[..shard_len],
+            shard_len,
+            mat,
+        )
     }
 }
 
-unsafe fn scale_gfni(dst: *mut u8, src: *const u8, len: usize, mat: __m512i) {
+fn scale_gfni<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, mat: __m512i) {
+    let src = src.as_ptr();
+    let dst = dst.as_mut_ptr();
     let mut i = 0;
     while i + 64 <= len {
         unsafe {
             let v = _mm512_loadu_si512(src.add(i) as *const __m512i);
             let r = _mm512_gf2p8affine_epi64_epi8(v, mat, 0);
             _mm512_storeu_si512(dst.add(i) as *mut __m512i, r);
-            i += 64;
         }
+        i += 64;
     }
     if i < len {
+        let k = (1u64 << (len - i)) - 1;
         unsafe {
-            let k = (1u64 << (len - i)) - 1;
             let v = _mm512_maskz_loadu_epi8(k, src.add(i) as *const i8);
             let r = _mm512_gf2p8affine_epi64_epi8(v, mat, 0);
             _mm512_mask_storeu_epi8(dst.add(i) as *mut i8, k, r);
@@ -172,7 +167,8 @@ unsafe fn scale_gfni(dst: *mut u8, src: *const u8, len: usize, mat: __m512i) {
     }
 }
 
-unsafe fn scale_in_place(dst: *mut u8, len: usize, mat: __m512i) {
+fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, mat: __m512i) {
+    let dst = dst.as_mut_ptr();
     let mut i = 0;
     while i + 64 <= len {
         unsafe {
@@ -183,8 +179,8 @@ unsafe fn scale_in_place(dst: *mut u8, len: usize, mat: __m512i) {
         i += 64;
     }
     if i < len {
+        let k = (1u64 << (len - i)) - 1;
         unsafe {
-            let k = (1u64 << (len - i)) - 1;
             let v = _mm512_maskz_loadu_epi8(k, dst.add(i) as *const i8);
             let v = _mm512_gf2p8affine_epi64_epi8(v, mat, 0);
             _mm512_mask_storeu_epi8(dst.add(i) as *mut i8, k, v);
@@ -273,18 +269,14 @@ impl Kernel<Gf2p8_11d> for GfniKernel<Gf2p8_11d> {
         }
     }
 
-    fn scale(dst: &mut [Gf2p8_11d], src: &[Gf2p8_11d], scalar: Gf2p8_11d) {
-        unsafe {
-            let mat = _mm512_set1_epi64(scalar.gfni_mul_matrix() as i64);
-            scale_gfni(dst.as_mut_ptr() as _, src.as_ptr() as _, dst.len(), mat)
-        }
+    fn scale(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
+        let mat = unsafe { _mm512_set1_epi64(scalar.gfni_mul_matrix() as i64) };
+        scale_gfni(src, dst, dst.len(), mat)
     }
 
     fn scale_in_place(dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
-        unsafe {
-            let mat = _mm512_set1_epi64(scalar.gfni_mul_matrix() as i64);
-            scale_in_place(dst.as_mut_ptr() as _, dst.len(), mat)
-        }
+        let mat = unsafe { _mm512_set1_epi64(scalar.gfni_mul_matrix() as i64) };
+        scale_in_place(dst, dst.len(), mat)
     }
 }
 

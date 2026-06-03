@@ -19,6 +19,6 @@ pub trait Kernel<G: Gf2p8Lut> {
         k: u8,
         beta: G,
     );
-    fn scale(dst: &mut [G], src: &[G], scalar: G);
+    fn scale(src: &[G], dst: &mut [G], scalar: G);
     fn scale_in_place(dst: &mut [G], scalar: G);
 }

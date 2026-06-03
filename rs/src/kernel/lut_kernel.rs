@@ -81,7 +81,7 @@ pub fn ifft_sharded<G: Gf2p8Lut>(
     }
 }
 
-pub fn scale<G: Gf2p8Lut>(dst: &mut [G], src: &[G], scalar: G) {
+pub fn scale<G: Gf2p8Lut>(src: &[G], dst: &mut [G], scalar: G) {
     let lut = scalar.make_mul_lut();
     for (d, s) in dst.iter_mut().zip(src.iter()) {
         *d = G::from(lut[s.into_usize()]);
@@ -175,8 +175,8 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
         }
     }
 
-    fn scale(dst: &mut [Gf2p8_11d], src: &[Gf2p8_11d], scalar: Gf2p8_11d) {
-        scale(dst, src, scalar)
+    fn scale(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
+        scale(src, dst, scalar)
     }
 
     fn scale_in_place(dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {

@@ -470,7 +470,7 @@ where
         out: &mut [&mut [G]], // one shard per erased position, in order
     ) {
         for (k, (&pos, &d)) in erasure_positions.iter().zip(denoms).enumerate() {
-            K::scale(out[k], q[pos as usize], d.inv_lut());
+            K::scale(q[pos as usize], out[k], d.inv_lut());
         }
     }
 
@@ -557,8 +557,8 @@ where
         // (Forney) Eq 78: u(ω_i) = q(ω_i) / λ'(ω_i)
         for (&pos, d) in erasure_positions.iter().zip(denoms) {
             K::scale(
-                &mut received[pos as usize * shard_len..(pos as usize + 1) * shard_len],
                 &workspace[pos as usize * shard_len..(pos as usize + 1) * shard_len],
+                &mut received[pos as usize * shard_len..(pos as usize + 1) * shard_len],
                 d.inv_lut(),
             );
         }
