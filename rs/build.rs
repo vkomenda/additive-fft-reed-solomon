@@ -210,6 +210,37 @@ fn write_fft_lut_case<G: Gf2p8 + fmt::Debug>(
     Ok(())
 }
 
+fn _write_ifft_lut_dispatch<G: Gf2p8>(
+    f: &mut impl Write,
+    subspace_points: &[G; FIELD_SIZE],
+    omega_cases: &[(usize, u8, usize)],
+) -> io::Result<()> {
+    writeln!(
+        f,
+        "#[inline(always)]
+pub fn dispatch_ifft_lut<G: Gf2p8>(
+    basis: &impl CantorBasisLut<G>,
+    shards: &mut [G], shard_len: usize, k: u8, beta: G
+) {{
+    match (k, u8::from(beta)) {{
+        (0, _) => {{}}"
+    )?;
+    for &(n, k, t) in omega_cases {
+        let omega = subspace_points[t].into();
+        writeln!(
+            f,
+            "        ({k}, b) if b == CANTOR_SUBSPACE[{t}] => ifft_sharded_lut_{n}_{omega:02x}(shards, shard_len),"
+        )?;
+    }
+    writeln!(
+        f,
+        "        _ => super::ifft_sharded_lut(basis, shards, shard_len, k, beta),
+    }}
+}}"
+    )?;
+    Ok(())
+}
+
 fn write_unrolled_kernel_lut<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
     basis: &[G],
@@ -239,7 +270,7 @@ use super::{{butterfly_fwd, butterfly_inv}};
     let omega_cases: Vec<(usize, u8, usize)> =
         (0..8).map(|a| (2usize << a, a, 1usize << a)).collect();
 
-    for (n, k, t) in omega_cases {
+    for &(n, k, t) in &omega_cases {
         let omega = subspace_points[t];
         write_fft_lut_case(f, basis, sub_poly_luts, exp, log, n, k, omega, true)?;
     }
