@@ -1,7 +1,15 @@
 use super::Kernel;
-use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
+use crate::{
+    gf2p8lut::{CantorBasisLut, Gf2p8Lut},
+    poly_11d_lut::generated::CANTOR_SUBSPACE,
+};
+use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d};
 use core::arch::x86_64::*;
 use std::marker::PhantomData;
+
+pub mod unrolled_11d {
+    include!(concat!(env!("OUT_DIR"), "/unrolled_gfni_kernel_11d.rs"));
+}
 
 /// Forward butterfly transforming (a, b) into (a + T·b, b + a + T·b).
 unsafe fn butterfly_fwd_gfni(a: *mut u8, b: *mut u8, len: usize, mat: __m512i) {
@@ -187,35 +195,92 @@ unsafe fn scale_in_place(dst: *mut u8, len: usize, mat: __m512i) {
 #[derive(Default)]
 pub struct GfniKernel<G: Gf2p8Lut>(PhantomData<G>);
 
-impl<G: Gf2p8Lut> Kernel<G> for GfniKernel<G> {
+impl Kernel<Gf2p8_11d> for GfniKernel<Gf2p8_11d> {
     fn fft_sharded(
-        basis: &impl CantorBasisLut<G>,
-        shards: &mut [G],
+        basis: &impl CantorBasisLut<Gf2p8_11d>,
+        shards: &mut [Gf2p8_11d],
         shard_len: usize,
         k: u8,
-        beta: G,
+        beta: Gf2p8_11d,
     ) {
-        fft_sharded_gfni(basis, shards, shard_len, k, beta)
+        if beta == Gf2p8_11d::zero() {
+            match k {
+                0 => {}
+                1 => unrolled_11d::fft_sharded_gfni_2(shards, shard_len),
+                2 => unrolled_11d::fft_sharded_gfni_4(shards, shard_len),
+                3 => unrolled_11d::fft_sharded_gfni_8(shards, shard_len),
+                4 => unrolled_11d::fft_sharded_gfni_16(shards, shard_len),
+                5 => unrolled_11d::fft_sharded_gfni_32(shards, shard_len),
+                6 => unrolled_11d::fft_sharded_gfni_64(shards, shard_len),
+                7 => unrolled_11d::fft_sharded_gfni_128(shards, shard_len),
+                8 => unrolled_11d::fft_sharded_gfni_256(shards, shard_len),
+                _ => unreachable!("k={k} must be in 0..=8"),
+            }
+        } else {
+            fft_sharded_gfni(basis, shards, shard_len, k, beta);
+        }
     }
 
     fn ifft_sharded(
-        basis: &impl CantorBasisLut<G>,
-        shards: &mut [G],
+        basis: &impl CantorBasisLut<Gf2p8_11d>,
+        shards: &mut [Gf2p8_11d],
         shard_len: usize,
         k: u8,
-        beta: G,
+        beta: Gf2p8_11d,
     ) {
-        ifft_sharded_gfni(basis, shards, shard_len, k, beta)
+        if beta == Gf2p8_11d::zero() {
+            match k {
+                0 => {}
+                1 => unrolled_11d::ifft_sharded_gfni_2(shards, shard_len),
+                2 => unrolled_11d::ifft_sharded_gfni_4(shards, shard_len),
+                3 => unrolled_11d::ifft_sharded_gfni_8(shards, shard_len),
+                4 => unrolled_11d::ifft_sharded_gfni_16(shards, shard_len),
+                5 => unrolled_11d::ifft_sharded_gfni_32(shards, shard_len),
+                6 => unrolled_11d::ifft_sharded_gfni_64(shards, shard_len),
+                7 => unrolled_11d::ifft_sharded_gfni_128(shards, shard_len),
+                8 => unrolled_11d::ifft_sharded_gfni_256(shards, shard_len),
+                _ => unreachable!("k={k} must be in 0..=8"),
+            }
+        } else {
+            match (k, u8::from(beta)) {
+                (0, _) => {}
+                (1, b) if b == CANTOR_SUBSPACE[1] => {
+                    unrolled_11d::ifft_sharded_gfni_2_01(shards, shard_len)
+                }
+                (2, b) if b == CANTOR_SUBSPACE[2] => {
+                    unrolled_11d::ifft_sharded_gfni_4_d6(shards, shard_len)
+                }
+                (3, b) if b == CANTOR_SUBSPACE[4] => {
+                    unrolled_11d::ifft_sharded_gfni_8_98(shards, shard_len)
+                }
+                (4, b) if b == CANTOR_SUBSPACE[8] => {
+                    unrolled_11d::ifft_sharded_gfni_16_92(shards, shard_len)
+                }
+                (5, b) if b == CANTOR_SUBSPACE[16] => {
+                    unrolled_11d::ifft_sharded_gfni_32_56(shards, shard_len)
+                }
+                (6, b) if b == CANTOR_SUBSPACE[32] => {
+                    unrolled_11d::ifft_sharded_gfni_64_c8(shards, shard_len)
+                }
+                (7, b) if b == CANTOR_SUBSPACE[64] => {
+                    unrolled_11d::ifft_sharded_gfni_128_58(shards, shard_len)
+                }
+                (8, b) if b == CANTOR_SUBSPACE[128] => {
+                    unrolled_11d::ifft_sharded_gfni_256_e7(shards, shard_len)
+                }
+                _ => ifft_sharded_gfni(basis, shards, shard_len, k, beta),
+            }
+        }
     }
 
-    fn scale(dst: &mut [G], src: &[G], scalar: G) {
+    fn scale(dst: &mut [Gf2p8_11d], src: &[Gf2p8_11d], scalar: Gf2p8_11d) {
         unsafe {
             let mat = _mm512_set1_epi64(scalar.gfni_mul_matrix() as i64);
             scale_gfni(dst.as_mut_ptr() as _, src.as_ptr() as _, dst.len(), mat)
         }
     }
 
-    fn scale_in_place(dst: &mut [G], scalar: G) {
+    fn scale_in_place(dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
         unsafe {
             let mat = _mm512_set1_epi64(scalar.gfni_mul_matrix() as i64);
             scale_in_place(dst.as_mut_ptr() as _, dst.len(), mat)

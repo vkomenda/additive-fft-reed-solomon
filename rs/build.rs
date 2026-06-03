@@ -181,7 +181,7 @@ fn write_ifft_lut<G: Gf2p8 + fmt::Debug>(
 fn write_fft_lut_case<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
     basis: &[G],
-    lut: &[[G; 256]; 8],
+    lut: &[[G; FIELD_SIZE]; 8],
     exp: &[u8; EXP_TABLE_SIZE],
     log: &[u8; FIELD_SIZE],
     n: usize,
@@ -223,10 +223,11 @@ where
 {
     writeln!(
         f,
-        "use additive_fft_reed_solomon_gf2p8::{{FIELD_SIZE, Gf2p8}};"
+        "\
+use additive_fft_reed_solomon_gf2p8::{{FIELD_SIZE, Gf2p8}};
+use super::{{butterfly_fwd, butterfly_inv}};
+"
     )?;
-    writeln!(f, "use super::{{butterfly_fwd, butterfly_inv}};")?;
-    writeln!(f)?;
 
     let cases: Vec<(usize, u8)> = (0..8).map(|a| (2usize << a, a)).collect();
 
@@ -241,6 +242,265 @@ where
     for (n, k, t) in omega_cases {
         let omega = subspace_points[t];
         write_fft_lut_case(f, basis, sub_poly_luts, exp, log, n, k, omega, true)?;
+    }
+
+    Ok(())
+}
+
+fn write_butterfly_fwd_gfni<G: Gf2p8 + fmt::Debug>(
+    f: &mut impl Write,
+    mats: &[u64; FIELD_SIZE],
+    twiddle: G,
+    offset: usize,
+    half: usize,
+) -> io::Result<()> {
+    let end = offset + half * 2;
+
+    let fwd_op = if twiddle == G::zero() {
+        "for (ai, bi) in a.iter().zip(b.iter_mut()) { *bi = bi.add(*ai); }"
+    } else {
+        "\
+            unsafe {
+                butterfly_fwd_gfni(a.as_mut_ptr() as *mut u8, b.as_mut_ptr() as *mut u8, shard_len, mat);
+            }"
+    };
+
+    let fwd_op_half1 = if twiddle == G::zero() {
+        "for (ai, bi) in lo.iter().zip(hi.iter_mut()) { *bi = bi.add(*ai); }"
+    } else {
+        "\
+        unsafe {
+            butterfly_fwd_gfni(lo.as_mut_ptr() as *mut u8, hi.as_mut_ptr() as *mut u8, shard_len, mat);
+        }"
+    };
+
+    writeln!(f, "    {{")?;
+    if twiddle != G::zero() {
+        let mat = mats[twiddle.into_usize()];
+        writeln!(
+            f,
+            "        let mat = unsafe {{ _mm512_set1_epi64(0x{mat:016x}u64 as i64) }};"
+        )?;
+    }
+
+    if half == 1 {
+        writeln!(
+            f,
+            "        let (lo, hi) = shards[{offset} * shard_len..].split_at_mut(shard_len);
+        {fwd_op_half1}
+    }}"
+        )?;
+    } else {
+        writeln!(
+            f,
+            "        let block = &mut shards[{offset} * shard_len..{end} * shard_len];
+        for i in 0..{half} {{
+            let (left, right) = block.split_at_mut((i + {half}) * shard_len);
+            let a = &mut left[i * shard_len..(i + 1) * shard_len];
+            let b = &mut right[..shard_len];
+            {fwd_op}
+        }}
+    }}"
+        )?;
+    }
+    Ok(())
+}
+
+fn write_butterfly_inv_gfni<G: Gf2p8 + fmt::Debug>(
+    f: &mut impl Write,
+    mats: &[u64; FIELD_SIZE],
+    twiddle: G,
+    offset: usize,
+    half: usize,
+) -> io::Result<()> {
+    let end = offset + half * 2;
+
+    let inv_op = if twiddle == G::zero() {
+        "for (ai, bi) in a.iter().zip(b.iter_mut()) { *bi = ai.add(*bi); }"
+    } else {
+        "\
+            unsafe {
+                butterfly_inv_gfni(a.as_mut_ptr() as *mut u8, b.as_mut_ptr() as *mut u8, shard_len, mat);
+            }"
+    };
+
+    let inv_op_half1 = if twiddle == G::zero() {
+        "for (ai, bi) in lo.iter().zip(hi.iter_mut()) { *bi = ai.add(*bi); }"
+    } else {
+        "\
+        unsafe {
+            butterfly_inv_gfni(lo.as_mut_ptr() as *mut u8, hi.as_mut_ptr() as *mut u8, shard_len, mat);
+        }"
+    };
+
+    writeln!(f, "    {{")?;
+    if twiddle != G::zero() {
+        let mat = mats[twiddle.into_usize()];
+        writeln!(
+            f,
+            "        let mat = unsafe {{ _mm512_set1_epi64(0x{mat:016x}u64 as i64) }};"
+        )?;
+    }
+
+    if half == 1 {
+        writeln!(
+            f,
+            "        let (lo, hi) = shards[{offset} * shard_len..].split_at_mut(shard_len);
+        {inv_op_half1}
+    }}"
+        )?;
+    } else {
+        writeln!(
+            f,
+            "        let block = &mut shards[{offset} * shard_len..{end} * shard_len];
+        for i in 0..{half} {{
+            let (left, right) = block.split_at_mut((i + {half}) * shard_len);
+            let a = &mut left[i * shard_len..(i + 1) * shard_len];
+            let b = &mut right[..shard_len];
+            {inv_op}
+        }}
+    }}"
+        )?;
+    }
+    Ok(())
+}
+
+fn write_fft_gfni<G: Gf2p8 + fmt::Debug>(
+    f: &mut impl Write,
+    basis: &[G],
+    lut: &[[G; FIELD_SIZE]; 8],
+    mats: &[u64; FIELD_SIZE],
+    l: u8,
+    beta: G,
+    offset: usize,
+) -> io::Result<()> {
+    let half = 1 << l;
+    let twiddle = if l == 0 {
+        beta
+    } else {
+        lut[l as usize][beta.into_usize()]
+    };
+
+    write_butterfly_fwd_gfni(f, mats, twiddle, offset, half)?;
+
+    if l == 0 {
+        return Ok(());
+    }
+
+    let next_beta = beta.add(basis[l as usize]);
+    write_fft_gfni(f, basis, lut, mats, l - 1, beta, offset)?;
+    write_fft_gfni(f, basis, lut, mats, l - 1, next_beta, offset + half)?;
+    Ok(())
+}
+
+fn write_ifft_gfni<G: Gf2p8 + fmt::Debug>(
+    f: &mut impl Write,
+    basis: &[G],
+    lut: &[[G; FIELD_SIZE]; 8],
+    mats: &[u64; FIELD_SIZE],
+    l: u8,
+    beta: G,
+    offset: usize,
+) -> io::Result<()> {
+    let half = 1 << l;
+    if l == 0 {
+        let twiddle = beta;
+        write_butterfly_inv_gfni(f, mats, twiddle, offset, half)?;
+        return Ok(());
+    }
+
+    let next_beta = beta.add(basis[l as usize]);
+    write_ifft_gfni(f, basis, lut, mats, l - 1, beta, offset)?;
+    write_ifft_gfni(f, basis, lut, mats, l - 1, next_beta, offset + (1 << l))?;
+
+    let twiddle = lut[l as usize][beta.into_usize()];
+    write_butterfly_inv_gfni(f, mats, twiddle, offset, 1 << l)?;
+    Ok(())
+}
+
+fn write_fft_gfni_case<G: Gf2p8 + fmt::Debug>(
+    f: &mut impl Write,
+    basis: &[G],
+    lut: &[[G; FIELD_SIZE]; 8],
+    mats: &[u64; FIELD_SIZE],
+    n: usize,
+    k: u8,
+    beta: G,
+    is_ifft: bool,
+) -> io::Result<()> {
+    writeln!(f, "#[cfg(any(native_gfni, feature = \"compile_gfni\"))]")?;
+    //    writeln!(f, "#[target_feature(enable = \"avx512f,avx512bw,gfni\")]")?;
+    writeln!(
+        f,
+        "pub fn {}fft_sharded_gfni_{n}{}<G: Gf2p8>(shards: &mut [G], shard_len: usize) {{",
+        if is_ifft { "i" } else { "" },
+        if beta != G::zero() {
+            format!("_{:02x}", beta.into())
+        } else {
+            "".to_string()
+        }
+    )?;
+    writeln!(f, "    debug_assert_eq!(shards.len(), {n} * shard_len);")?;
+    if !is_ifft {
+        write_fft_gfni(f, basis, lut, mats, k, beta, 0)?;
+    } else {
+        write_ifft_gfni(f, basis, lut, mats, k, beta, 0)?;
+    }
+    writeln!(f, "}}")?;
+    writeln!(f)?;
+    Ok(())
+}
+
+fn write_unrolled_kernel_gfni<G: Gf2p8 + fmt::Debug>(
+    f: &mut impl Write,
+    basis: &[G],
+    sub_poly_luts: &[[G; FIELD_SIZE]; 8],
+    subspace_points: &[G; FIELD_SIZE],
+    gfni_mul_mats: &[u64; FIELD_SIZE],
+) -> io::Result<()>
+where
+    u8: From<G>,
+{
+    writeln!(
+        f,
+        "\
+        use additive_fft_reed_solomon_gf2p8::Gf2p8;
+use super::{{butterfly_fwd_gfni, butterfly_inv_gfni}};
+use std::arch::x86_64::*;
+"
+    )?;
+
+    let cases: Vec<(usize, u8)> = (0..8).map(|a| (2usize << a, a)).collect();
+
+    for (n, k) in cases {
+        write_fft_gfni_case(
+            f,
+            basis,
+            sub_poly_luts,
+            gfni_mul_mats,
+            n,
+            k,
+            G::zero(),
+            false,
+        )?;
+        write_fft_gfni_case(
+            f,
+            basis,
+            sub_poly_luts,
+            gfni_mul_mats,
+            n,
+            k,
+            G::zero(),
+            true,
+        )?;
+    }
+
+    let omega_cases: Vec<(usize, u8, usize)> =
+        (0..8).map(|a| (2usize << a, a, 1usize << a)).collect();
+
+    for (n, k, t) in omega_cases {
+        let omega = subspace_points[t];
+        write_fft_gfni_case(f, basis, sub_poly_luts, gfni_mul_mats, n, k, omega, true)?;
     }
 
     Ok(())
@@ -286,9 +546,10 @@ fn main() {
     write_points(&mut f, basis.into_iter(), false);
 
     let gfni_mul_iter = Gf2p8_11d::iter_gfni_mul_matrices();
+    let gfni_mul_mats: [u64; FIELD_SIZE] = gfni_mul_iter.collect::<Vec<_>>().try_into().unwrap();
 
     writeln!(f, "\npub const GFNI_MUL_TABLE: [u64; {}] = [", FIELD_SIZE).unwrap();
-    for mat in gfni_mul_iter {
+    for mat in gfni_mul_mats {
         writeln!(f, "    0x{:016x},", mat).unwrap();
     }
     writeln!(f, "];").unwrap();
@@ -332,6 +593,17 @@ fn main() {
         &log_table,
     )
     .expect("LUT kernel");
+
+    let dest_kernel_gfni = Path::new(&out_dir).join("unrolled_gfni_kernel_11d.rs");
+    let mut fkg = BufWriter::new(File::create(&dest_kernel_gfni).unwrap());
+    write_unrolled_kernel_gfni(
+        &mut fkg,
+        basis.as_ref(),
+        sub_poly_luts8,
+        &subspace_points,
+        &gfni_mul_mats,
+    )
+    .expect("GFNI kernel");
 
     // CPU feature detection
     #[cfg(target_arch = "x86_64")]
