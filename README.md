@@ -51,10 +51,6 @@ Here is a representative set of results, time and throughput, obtained on an AMD
 
 ### Not a good fit
 
-- Small n, e.g. n ≤ 16. The FFT setup overhead can dominate.
-
-- Small shards - tens of bytes. Per-butterfly ovehead dominates.
-
 - Wire compatibility required. The crate is not Cauchy implementation compatible.
 
 - Non-x86 accelerated targets. We have no support for ARM NEON or RISC-V RVV acceleration yet.

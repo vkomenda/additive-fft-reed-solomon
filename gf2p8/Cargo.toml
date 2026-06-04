@@ -1,6 +1,11 @@
 [package]
 name = "additive-fft-reed-solomon-gf2p8"
 version = "0.1.0"
+license = "MIT"
+description = "GF(2^8) field structure for additive FFTs (Lin, Al Naffouri, Han)"
+repository = "https://github.com/vkomenda/additive-fft-reed-solomon"
+keywords = ["Galois field", "Cantor basis", "FFT"]
+categories = ["mathematics"]
 edition = "2024"
 
 [dependencies]
