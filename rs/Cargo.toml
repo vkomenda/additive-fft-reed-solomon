@@ -1,9 +1,10 @@
 [package]
 name = "additive-fft-reed-solomon"
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT"
 description = "Fast Reed-Solomon encode and decode algorithms based on additive FFT (Lin, Al Naffouri, Han)"
 repository = "https://github.com/vkomenda/additive-fft-reed-solomon"
+readme = "../README.md"
 keywords = ["Reed-Solomon", "erasure", "error-correcting", "FEC", "FFT"]
 categories = ["encoding"]
 edition = "2024"
