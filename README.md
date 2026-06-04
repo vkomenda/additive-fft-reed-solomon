@@ -24,6 +24,19 @@ Additive RS codes evaluate the message polynomial at all 256 elements of the add
 |error correction | ❌    |O(n·T) |O(n log(T) + T log(log(T))) |
 
 
+## Benchmarks
+
+Results are dependent on hardware, so you are advised to run `cargo bench`.
+
+Here is a representative set of results, time and throughput, obtained on an AMD EPYC 9575F for n=64 and k=32.
+
+|shard length, bytes|encode 32 message shards|recover 32 random shard erasures|
+|---|---|---|
+| 64 | 385ns, 10GiB/s | 7.7µs, 510MiB/s |
+| 1k | 2.4µs, 25GiB/s | 14.µs, 4.1GiB/s |
+| 64k | 192µs, 20GiB/s | 740µs, 5.3GiB/s |
+
+
 ## Possible usecases
 
 ### Best fit
