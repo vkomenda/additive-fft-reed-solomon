@@ -4,7 +4,7 @@ version = "0.1.0"
 license = "MIT"
 description = "GF(2^8) field structure for additive FFTs (Lin, Al Naffouri, Han)"
 repository = "https://github.com/vkomenda/additive-fft-reed-solomon"
-keywords = ["Galois field", "Cantor basis", "FFT"]
+keywords = ["Galois", "Cantor", "FFT", "Reed-Solomon"]
 categories = ["mathematics"]
 edition = "2024"
 
