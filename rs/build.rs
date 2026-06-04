@@ -304,7 +304,7 @@ fn write_butterfly_fwd_gfni<G: Gf2p8 + fmt::Debug>(
         let mat = mats[twiddle.into_usize()];
         writeln!(
             f,
-            "        let mat = unsafe {{ _mm512_set1_epi64(0x{mat:016x}u64 as i64) }};"
+            "        let mat = _mm512_set1_epi64(0x{mat:016x}u64 as i64);"
         )?;
     }
 
@@ -357,7 +357,7 @@ fn write_butterfly_inv_gfni<G: Gf2p8 + fmt::Debug>(
         let mat = mats[twiddle.into_usize()];
         writeln!(
             f,
-            "        let mat = unsafe {{ _mm512_set1_epi64(0x{mat:016x}u64 as i64) }};"
+            "        let mat = _mm512_set1_epi64(0x{mat:016x}u64 as i64);"
         )?;
     }
 
@@ -451,7 +451,8 @@ fn write_fft_gfni_case<G: Gf2p8 + fmt::Debug>(
     //    writeln!(f, "#[target_feature(enable = \"avx512f,avx512bw,gfni\")]")?;
     writeln!(
         f,
-        "pub fn {}fft_sharded_gfni_{n}{}<G: Gf2p8>(shards: &mut [G], shard_len: usize) {{",
+        "#[target_feature(enable = \"avx512f,avx512bw,gfni\")]
+pub fn {}fft_sharded_gfni_{n}{}<G: Gf2p8>(shards: &mut [G], shard_len: usize) {{",
         if is_ifft { "i" } else { "" },
         if beta != G::zero() {
             format!("_{:02x}", beta.into())

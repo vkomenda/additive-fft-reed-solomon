@@ -128,6 +128,7 @@ fn bench_recover_erasure_shards(c: &mut Criterion) {
             LutKernel<Gf2p8_11d>,
             "lut",
             [
+                (2, 1),
                 (4, 1),
                 (4, 2),
                 (8, 2),
@@ -153,6 +154,7 @@ fn bench_recover_erasure_shards(c: &mut Criterion) {
             GfniKernel<Gf2p8_11d>,
             "gfni",
             [
+                (2, 1),
                 (4, 1),
                 (4, 2),
                 (8, 2),
