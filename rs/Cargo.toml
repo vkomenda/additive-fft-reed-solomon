@@ -9,11 +9,11 @@ categories = ["encoding"]
 edition = "2024"
 
 [dependencies]
-additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8" }
+additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8", version = "0.1.0" }
 cfg-if = "1.0"
 
 [build-dependencies]
-additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8" }
+additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8", version = "0.1.0" }
 
 [dev-dependencies]
 criterion = "0.8"
