@@ -76,30 +76,30 @@ fn bench_encode_systematic_sharded(c: &mut Criterion) {
     let mut rng = SmallRng::seed_from_u64(42);
 
     for shard_len in [64, 1024, 65536] {
-        // bench_params!(
-        //     group,
-        //     shard_len,
-        //     &mut rng,
-        //     LutKernel<Gf2p8_11d>,
-        //     "lut",
-        //     [
-        //         (2, 1),
-        //         (4, 1),
-        //         (4, 2),
-        //         (8, 2),
-        //         (8, 4),
-        //         (16, 4),
-        //         (16, 8),
-        //         (32, 8),
-        //         (32, 16),
-        //         (64, 16),
-        //         (64, 32),
-        //         (128, 32),
-        //         (128, 64),
-        //         (256, 64),
-        //         (256, 128),
-        //     ]
-        // );
+        bench_params!(
+            group,
+            shard_len,
+            &mut rng,
+            LutKernel<Gf2p8_11d>,
+            "lut",
+            [
+                (2, 1),
+                (4, 1),
+                (4, 2),
+                (8, 2),
+                (8, 4),
+                (16, 4),
+                (16, 8),
+                (32, 8),
+                (32, 16),
+                (64, 16),
+                (64, 32),
+                (128, 32),
+                (128, 64),
+                (256, 64),
+                (256, 128),
+            ]
+        );
 
         #[cfg(native_gfni)]
         bench_params!(
