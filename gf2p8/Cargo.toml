@@ -1,6 +1,6 @@
 [package]
 name = "additive-fft-reed-solomon-gf2p8"
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT"
 description = "GF(2^8) field structure for additive FFTs (Lin, Al Naffouri, Han)"
 repository = "https://github.com/vkomenda/additive-fft-reed-solomon"

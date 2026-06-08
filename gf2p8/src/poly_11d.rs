@@ -1,6 +1,6 @@
 pub use crate::field::{CantorBasis, Gf2p8};
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Gf2p8_11d(pub u8);
 
 impl From<u8> for Gf2p8_11d {

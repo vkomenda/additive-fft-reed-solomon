@@ -7,7 +7,7 @@ use crate::{
 };
 use std::marker::PhantomData;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct Codec<G, B, K, const N: usize, const T: usize> {
     basis: B,
     _kernel: PhantomData<(G, K)>,

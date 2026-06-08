@@ -291,12 +291,6 @@ impl Kernel<Gf2p8_11d> for GfniKernel<Gf2p8_11d> {
     }
 }
 
-impl<G: Gf2p8Lut> GfniKernel<G> {
-    pub fn new() -> Self {
-        Self(PhantomData)
-    }
-}
-
 #[cfg(test)]
 #[cfg(native_gfni)]
 mod tests {

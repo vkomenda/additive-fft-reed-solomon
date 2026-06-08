@@ -23,7 +23,7 @@ macro_rules! bench_params {
      $kernel_name:expr,
      [$(($n:expr, $t:expr)),* $(,)?]) => {
         $({
-            let rs = Codec::<Gf2p8_11d, CantorBasisLut11d, $kernel, $n, $t>::new();
+            let rs = Codec::<Gf2p8_11d, CantorBasisLut11d, $kernel, $n, $t>::default();
             $group.throughput(Throughput::Bytes(($n * $shard_len) as u64));
             $group.bench_with_input(
                 BenchmarkId::new(format!("N{}_T{}_{}", $n, $t, $kernel_name), $shard_len),
