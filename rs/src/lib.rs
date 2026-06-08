@@ -33,12 +33,12 @@ pub type RsGfni<const N: usize, const T: usize> =
 cfg_if::cfg_if! {
     if #[cfg(feature = "compile_gfni")] {
         pub type Rs<const N: usize, const T: usize> = RsGfni<N, T>;
-    } else if #[cfg(feature = "compile_avx2")] {
-        todo!();
+    // } else if #[cfg(feature = "compile_avx2")] {
+    //     todo!();
     } else if #[cfg(native_gfni)] {
         pub type Rs<const N: usize, const T: usize> = RsGfni<N, T>;
-    } else if #[cfg(native_avx2)] {
-        todo!();
+    // } else if #[cfg(native_avx2)] {
+    //     todo!();
     } else {
         pub type Rs<const N: usize, const T: usize> = RsLut<N, T>;
     }

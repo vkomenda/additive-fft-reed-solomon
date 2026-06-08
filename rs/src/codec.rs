@@ -26,6 +26,7 @@ where
         }
     }
 
+    #[allow(unused)]
     pub(crate) fn solve_key_equation_eea(&self, syndrome: &[G; N]) -> Option<([G; N], [G; N])> {
         let mut st = [G::zero(); N];
         st[T] = G::one();
@@ -463,6 +464,7 @@ where
         (lambda, denoms)
     }
 
+    #[allow(unused)]
     pub(crate) fn forney_sharded(
         q: &[&[G]],
         erasure_positions: &[u8],

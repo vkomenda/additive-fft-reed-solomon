@@ -20,6 +20,10 @@ additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8", version = "0.1.0" }
 criterion = "0.8"
 rand = "0.10"
 
+[profile.bench]
+lto = true
+codegen-units = 1
+
 [[bench]]
 name = "recover_erasure_shards"
 harness = false
@@ -32,6 +36,3 @@ harness = false
 default = ["compile_gfni"]
 compile_gfni = []
 compile_avx2 = []
-
-# [lints.rust]
-# unexpected_cfgs = { level = "warn", check-cfg = ["cfg(native_gfni)"] }
