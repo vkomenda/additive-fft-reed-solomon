@@ -26,10 +26,17 @@ macro_rules! bench_params {
             let rs = Codec::<Gf2p8_11d, CantorBasisLut11d, $kernel, $n, $t>::default();
             $group.throughput(Throughput::Bytes(($n * $shard_len) as u64));
             $group.bench_with_input(
-                BenchmarkId::new(format!("N{}_T{}_{}", $n, $t, $kernel_name), $shard_len),
+                BenchmarkId::new(format!("N{}_T{}_{}_aligned", $n, $t, $kernel_name), $shard_len),
                 &$shard_len,
                 |mut b, &shard_len| {
-                    bench_recover_erasure_shards_inner(&mut b, &rs, shard_len, &mut $rng);
+                    bench_recover_erasure_shards_inner(&mut b, &rs, shard_len, &mut $rng, true);
+                },
+            );
+            $group.bench_with_input(
+                BenchmarkId::new(format!("N{}_T{}_{}_unaligned", $n, $t, $kernel_name), $shard_len),
+                &$shard_len,
+                |mut b, &shard_len| {
+                    bench_recover_erasure_shards_inner(&mut b, &rs, shard_len, &mut $rng, false);
                 },
             );
         })*
@@ -43,17 +50,41 @@ fn aligned_buffer(len: usize) -> Vec<Gf2p8_11d> {
     codeword
 }
 
+fn create_buffer(
+    num_shards: usize,
+    shard_len: usize,
+    rng: &mut impl Rng,
+    is_aligned: bool,
+) -> (Vec<Gf2p8_11d>, usize) {
+    let mut backing = vec![Gf2p8_11d::zero(); (num_shards + 1) * shard_len];
+    let aligned_off = (64 - (backing.as_ptr() as usize % 64)) % 64;
+    let start = if is_aligned {
+        aligned_off
+    } else {
+        aligned_off + 1
+    };
+
+    let buffer = &mut backing[start..][..num_shards * shard_len];
+    let bytes =
+        unsafe { std::slice::from_raw_parts_mut(buffer.as_mut_ptr() as *mut u8, buffer.len()) };
+    rng.fill_bytes(bytes);
+
+    (backing, start)
+}
+
 fn generate_random_codeword<B, K, const N: usize, const T: usize>(
     rs: &Codec<Gf2p8_11d, B, K, N, T>,
     shard_len: usize,
     rng: &mut impl Rng,
-) -> Vec<Gf2p8_11d>
+    is_aligned: bool,
+) -> (Vec<Gf2p8_11d>, usize)
 where
     B: CantorBasisLut<Gf2p8_11d> + Default,
     K: Kernel<Gf2p8_11d>,
 {
     let k = N - T;
-    let mut message = vec![Gf2p8_11d::zero(); k * shard_len];
+    let message_len = k * shard_len;
+    let mut message = vec![Gf2p8_11d::zero(); message_len];
     let bytes =
         unsafe { std::slice::from_raw_parts_mut(message.as_mut_ptr() as *mut u8, message.len()) };
     rng.fill_bytes(bytes);
@@ -64,11 +95,11 @@ where
 
     rs.encode_systematic_sharded(&message, &mut parity, &mut workspace, shard_len);
 
-    let mut codeword = aligned_buffer(N * shard_len);
+    let (mut codeword, start) = create_buffer(N, shard_len, rng, is_aligned);
 
-    codeword[..parity_len].clone_from_slice(&parity);
-    codeword[parity_len..].clone_from_slice(&message);
-    codeword
+    codeword[start..start + parity_len].clone_from_slice(&parity);
+    codeword[start + parity_len..start + parity_len + message_len].clone_from_slice(&message);
+    (codeword, start)
 }
 
 fn bench_recover_erasure_shards_inner<K, const N: usize, const T: usize>(
@@ -76,14 +107,14 @@ fn bench_recover_erasure_shards_inner<K, const N: usize, const T: usize>(
     rs: &Codec<Gf2p8_11d, CantorBasisLut11d, K, N, T>,
     shard_len: usize,
     rng: &mut impl Rng,
+    is_aligned: bool,
 ) where
     K: Kernel<Gf2p8_11d>,
 {
-    let original = generate_random_codeword(rs, shard_len, rng);
     b.iter_batched(
         || {
-            let mut received = original.clone();
-
+            let (mut codeword_backing, codeword_start) =
+                generate_random_codeword(rs, shard_len, rng, is_aligned);
             // Choose T random distinct positions to erase
             let mut positions: Vec<usize> = (0..N).collect();
             // partial Fisher-Yates shuffle for T elements
@@ -95,13 +126,16 @@ fn bench_recover_erasure_shards_inner<K, const N: usize, const T: usize>(
             erasure_positions.sort_unstable();
 
             for &pos in &erasure_positions {
-                received[pos * shard_len..(pos + 1) * shard_len].fill(Gf2p8_11d::zero());
+                codeword_backing
+                    [codeword_start + pos * shard_len..codeword_start + (pos + 1) * shard_len]
+                    .fill(Gf2p8_11d::zero());
             }
 
             let workspace = aligned_buffer(N * shard_len);
 
             (
-                received,
+                codeword_backing,
+                codeword_start,
                 workspace,
                 erasure_positions
                     .iter()
@@ -109,8 +143,13 @@ fn bench_recover_erasure_shards_inner<K, const N: usize, const T: usize>(
                     .collect::<Vec<u8>>(),
             )
         },
-        |(mut received, mut workspace, erasure_positions)| {
-            rs.recover_erasure_shards(&mut received, &mut workspace, shard_len, &erasure_positions);
+        |(mut codeword_backing, codeword_start, mut workspace, erasure_positions)| {
+            rs.recover_erasure_shards(
+                &mut codeword_backing[codeword_start..][..N * shard_len],
+                &mut workspace,
+                shard_len,
+                &erasure_positions,
+            );
         },
         BatchSize::LargeInput,
     );
