@@ -21,7 +21,8 @@ criterion = "0.8"
 rand = "0.10"
 
 [profile.bench]
-lto = true
+inherits = "release"
+lto = "fat"
 codegen-units = 1
 
 [[bench]]

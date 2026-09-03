@@ -107,6 +107,27 @@ fn fft_sharded_gfni<G: Gf2p8Lut>(
 }
 
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
+fn fft_sharded_half_zero_gfni<G: Gf2p8Lut>(
+    basis: &impl CantorBasisLut<G>,
+    shards: &mut [G],
+    shard_len: usize,
+    k: u8,
+    beta: G,
+) {
+    if k == 0 {
+        return;
+    }
+    let half = 1usize << (k - 1);
+    let h = half * shard_len;
+    let (left, right) = shards.split_at_mut(h);
+    right.copy_from_slice(left);
+
+    let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
+    fft_sharded_gfni(basis, left, shard_len, k - 1, beta);
+    fft_sharded_gfni(basis, right, shard_len, k - 1, next_beta);
+}
+
+#[target_feature(enable = "avx512f,avx512bw,gfni")]
 fn ifft_sharded_gfni<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [G],
@@ -222,6 +243,18 @@ impl Kernel<Gf2p8_11d> for GfniKernel<Gf2p8_11d> {
             } else {
                 fft_sharded_gfni(basis, shards, shard_len, k, beta);
             }
+        }
+    }
+
+    fn fft_sharded_half_zero(
+        basis: &impl CantorBasisLut<Gf2p8_11d>,
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        beta: Gf2p8_11d,
+    ) {
+        unsafe {
+            fft_sharded_half_zero_gfni(basis, shards, shard_len, k, beta);
         }
     }
 

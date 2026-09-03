@@ -40,6 +40,7 @@ impl<G: Gf2p8Lut, T: AsRef<[G]>> PolySliceArith<G> for T {}
 
 /// Basis-independent arithmetic on mutable slices as polynomials.
 pub trait PolyMutSliceArith<G: Gf2p8>: AsMut<[G]> {
+    #[inline]
     fn poly_add_in_place(&mut self, b: &[G]) {
         for (ai, bi) in self.as_mut().iter_mut().zip(b.iter()) {
             *ai = ai.add(*bi);

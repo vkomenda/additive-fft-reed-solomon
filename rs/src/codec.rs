@@ -549,12 +549,12 @@ where
         // X-basis coefficients of (s·λ); q is in work[T .. T+e]
         K::ifft_sharded(&self.basis, workspace, shard_len, n_log, G::zero());
 
-        // Shift q from work[T..T+e] down to work[0..e], zero everything else
+        // Shift q from work[T..T+e] down to work[0..e], zero work[e..N/2]
         workspace.copy_within(T * shard_len..(T + e) * shard_len, 0);
-        workspace[e * shard_len..].fill(G::zero());
+        workspace[e * shard_len..(N / 2) * shard_len].fill(G::zero());
 
-        // Evaluate q at all n points
-        K::fft_sharded(&self.basis, workspace, shard_len, n_log, G::zero());
+        // Evaluate q at all n points while treating work[N/2..] as zeros
+        K::fft_sharded_half_zero(&self.basis, workspace, shard_len, n_log, G::zero());
 
         // (Forney) Eq 78: u(ω_i) = q(ω_i) / λ'(ω_i)
         for (&pos, d) in erasure_positions.iter().zip(denoms) {
