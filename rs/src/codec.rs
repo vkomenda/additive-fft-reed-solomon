@@ -223,11 +223,19 @@ where
         let t_log = T.trailing_zeros() as u8;
         let k_msg = N - T;
 
-        // Compute parity image (v0') using LNH Eq 68
-        parity.fill(G::zero());
+        debug_assert_eq!(message.len(), k_msg);
+        debug_assert_eq!(parity.len(), T);
+        debug_assert!(k_msg >= T);
+
         let mut workspace = [G::zero(); T];
 
-        for i in 0..k_msg / T {
+        // Compute parity image (v0') using LNH Eq 68
+        // The first message chunk accumulates in parity.
+        parity.copy_from_slice(&message[..T]);
+        self.basis
+            .ifft_scalar(parity, t_log, self.basis.get_subspace_point_lut(T as u8));
+
+        for i in 1..k_msg / T {
             workspace[..T].copy_from_slice(&message[i * T..(i + 1) * T]);
             let omega = self.basis.get_subspace_point_lut(((i + 1) * T) as u8);
             self.basis.ifft_scalar(&mut workspace[..T], t_log, omega);
@@ -266,26 +274,24 @@ where
 
     /// Syndrome calculation (scalar).
     /// Computes s = sum_{i=0}^{n/T-1} IFFT(r_i, t, omega_{i*T})
+    ///
+    /// Precondition: `received.len() == N`.
     fn compute_syndrome_scalar(
         &self,
         received: &[G], // Size n (e.g., 256)
     ) -> [G; N] {
+        debug_assert_eq!(received.len(), N);
+
         // Reserve the extra bit for the key equation solver (EEA requirement).
         let mut syndrome = [G::zero(); N];
         let mut workspace = [G::zero(); T];
 
         for (i, chunk) in received.chunks(T).enumerate() {
+            workspace.copy_from_slice(chunk);
+
             // beta corresponds to the starting point of the i-th chunk: omega_{i*T}
             let omega_idx = (i * T) as u8;
             let beta = self.basis.get_subspace_point_lut(omega_idx);
-
-            // Copy received chunk into workspace
-            // Pad with zeros if the last chunk is partial (Eq 63)
-            workspace[..T].fill(G::zero());
-            for (w, &r) in workspace[..T].iter_mut().zip(chunk.iter()) {
-                *w = r;
-            }
-
             let t_log = T.trailing_zeros() as u8;
             // Perform the partial IFFT (Algorithm 2)
             // This moves the chunk from evaluation space to basis X coefficients
