@@ -258,6 +258,15 @@ impl Kernel<Gf2p8_11d> for GfniKernel<Gf2p8_11d> {
         }
     }
 
+    fn fft_sharded_zero_padded(
+        _shards: &mut [Gf2p8_11d],
+        _shard_len: usize,
+        _k: u8,
+        _log_support: u8,
+    ) {
+        todo!();
+    }
+
     fn ifft_sharded(
         basis: &impl CantorBasisLut<Gf2p8_11d>,
         shards: &mut [Gf2p8_11d],
