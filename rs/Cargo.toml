@@ -26,7 +26,7 @@ lto = "fat"
 codegen-units = 1
 
 [[bench]]
-name = "recover_erasure_shards"
+name = "recover_erasures_sharded"
 harness = false
 
 [[bench]]
