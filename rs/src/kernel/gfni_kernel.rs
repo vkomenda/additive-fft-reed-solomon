@@ -258,13 +258,46 @@ impl Kernel<Gf2p8_11d> for GfniKernel<Gf2p8_11d> {
         }
     }
 
-    fn fft_sharded_zero_padded(
-        _shards: &mut [Gf2p8_11d],
-        _shard_len: usize,
-        _k: u8,
-        _log_support: u8,
-    ) {
-        todo!();
+    fn fft_sharded_zero_padded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, log_support: u8) {
+        match (k, log_support) {
+            (1, 0) => unrolled_11d::fft_sharded_zero_padded_gfni_2_1(shards, shard_len),
+            (2, 0) => unrolled_11d::fft_sharded_zero_padded_gfni_4_1(shards, shard_len),
+            (2, 1) => unrolled_11d::fft_sharded_zero_padded_gfni_4_2(shards, shard_len),
+            (3, 0) => unrolled_11d::fft_sharded_zero_padded_gfni_8_1(shards, shard_len),
+            (3, 1) => unrolled_11d::fft_sharded_zero_padded_gfni_8_2(shards, shard_len),
+            (3, 2) => unrolled_11d::fft_sharded_zero_padded_gfni_8_4(shards, shard_len),
+            (4, 0) => unrolled_11d::fft_sharded_zero_padded_gfni_16_1(shards, shard_len),
+            (4, 1) => unrolled_11d::fft_sharded_zero_padded_gfni_16_2(shards, shard_len),
+            (4, 2) => unrolled_11d::fft_sharded_zero_padded_gfni_16_4(shards, shard_len),
+            (4, 3) => unrolled_11d::fft_sharded_zero_padded_gfni_16_8(shards, shard_len),
+            (5, 0) => unrolled_11d::fft_sharded_zero_padded_gfni_32_1(shards, shard_len),
+            (5, 1) => unrolled_11d::fft_sharded_zero_padded_gfni_32_2(shards, shard_len),
+            (5, 2) => unrolled_11d::fft_sharded_zero_padded_gfni_32_4(shards, shard_len),
+            (5, 3) => unrolled_11d::fft_sharded_zero_padded_gfni_32_8(shards, shard_len),
+            (5, 4) => unrolled_11d::fft_sharded_zero_padded_gfni_32_16(shards, shard_len),
+            (6, 0) => unrolled_11d::fft_sharded_zero_padded_gfni_64_1(shards, shard_len),
+            (6, 1) => unrolled_11d::fft_sharded_zero_padded_gfni_64_2(shards, shard_len),
+            (6, 2) => unrolled_11d::fft_sharded_zero_padded_gfni_64_4(shards, shard_len),
+            (6, 3) => unrolled_11d::fft_sharded_zero_padded_gfni_64_8(shards, shard_len),
+            (6, 4) => unrolled_11d::fft_sharded_zero_padded_gfni_64_16(shards, shard_len),
+            (6, 5) => unrolled_11d::fft_sharded_zero_padded_gfni_64_32(shards, shard_len),
+            (7, 0) => unrolled_11d::fft_sharded_zero_padded_gfni_128_1(shards, shard_len),
+            (7, 1) => unrolled_11d::fft_sharded_zero_padded_gfni_128_2(shards, shard_len),
+            (7, 2) => unrolled_11d::fft_sharded_zero_padded_gfni_128_4(shards, shard_len),
+            (7, 3) => unrolled_11d::fft_sharded_zero_padded_gfni_128_8(shards, shard_len),
+            (7, 4) => unrolled_11d::fft_sharded_zero_padded_gfni_128_16(shards, shard_len),
+            (7, 5) => unrolled_11d::fft_sharded_zero_padded_gfni_128_32(shards, shard_len),
+            (7, 6) => unrolled_11d::fft_sharded_zero_padded_gfni_128_64(shards, shard_len),
+            (8, 0) => unrolled_11d::fft_sharded_zero_padded_gfni_256_1(shards, shard_len),
+            (8, 1) => unrolled_11d::fft_sharded_zero_padded_gfni_256_2(shards, shard_len),
+            (8, 2) => unrolled_11d::fft_sharded_zero_padded_gfni_256_4(shards, shard_len),
+            (8, 3) => unrolled_11d::fft_sharded_zero_padded_gfni_256_8(shards, shard_len),
+            (8, 4) => unrolled_11d::fft_sharded_zero_padded_gfni_256_16(shards, shard_len),
+            (8, 5) => unrolled_11d::fft_sharded_zero_padded_gfni_256_32(shards, shard_len),
+            (8, 6) => unrolled_11d::fft_sharded_zero_padded_gfni_256_64(shards, shard_len),
+            (8, 7) => unrolled_11d::fft_sharded_zero_padded_gfni_256_128(shards, shard_len),
+            _ => unreachable!("k={k} must be in 1..=8 and log_support must be < k"),
+        }
     }
 
     fn ifft_sharded(

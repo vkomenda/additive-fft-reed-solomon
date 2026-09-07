@@ -193,7 +193,7 @@ where
     }
 
     /// This is functionally equivalent to `solve_key_equation_eea` and is what the LNH paper
-    /// has.
+    /// have.
     pub(crate) fn solve_key_equation_hgcd(
         &self,
         syndrome: &[G; N],
@@ -246,6 +246,15 @@ where
         self.basis.fft_scalar(parity, t_log, G::zero());
     }
 
+    /// Computes the `parity` shards from `message` shards. The initial contents of neither `parity`
+    /// nor `workspace` matter. The scratch buffer `workspace` is used to eliminate unnecessary
+    /// memory allocations. The caller must maintain this buffer and must reuse it in order to take
+    /// advantage of the savings in the memory allocator.
+    ///
+    /// # Preconditions
+    /// - `(N - T) / T >= 1`
+    /// - `message` is of length `(N - T) * shard_len`.
+    /// - `parity` and `workspace` are both of length `T * shard_len`.
     pub fn encode_systematic_sharded(
         &self,
         message: &[G],
@@ -254,14 +263,29 @@ where
         shard_len: usize,
     ) {
         debug_assert_eq!(message.len(), (N - T) * shard_len);
-        debug_assert_eq!(parity.len(), T * shard_len);
-        debug_assert_eq!(workspace.len(), T * shard_len);
+
+        let parity_len = T * shard_len;
+
+        debug_assert_eq!(parity.len(), parity_len);
+        debug_assert_eq!(workspace.len(), parity_len);
 
         let t_log = T.trailing_zeros() as u8;
         let k = N - T;
 
-        for i in 0..k / T {
-            workspace.copy_from_slice(&message[i * T * shard_len..(i + 1) * T * shard_len]);
+        debug_assert!(k / T >= 1);
+
+        // The first chunk seeds the accumulator, so parity needs no zeroing.
+        parity.copy_from_slice(&message[..parity_len]);
+        K::ifft_sharded(
+            &self.basis,
+            parity,
+            shard_len,
+            t_log,
+            self.basis.get_subspace_point_lut(T as u8),
+        );
+
+        for i in 1..k / T {
+            workspace.copy_from_slice(&message[i * parity_len..(i + 1) * parity_len]);
             let omega = self.basis.get_subspace_point_lut(((i + 1) * T) as u8);
             K::ifft_sharded(&self.basis, workspace, shard_len, t_log, omega);
             for (p, w) in parity.iter_mut().zip(workspace.iter()) {
@@ -482,7 +506,18 @@ where
         }
     }
 
-    pub fn recover_erasure_shards(
+    /// Recovers the shards in `received` with indices in `erasure_positions` using all the other
+    /// `received` shards as support. The initial contents of the shards at `erasure_positions` do
+    /// not matter. Neither do the initial contents of `workspace`.
+    ///
+    /// # Preconditions
+    /// - All `erasure_positions` are unique.
+    /// - `received` and `workspace` are both of length `N * shard_len`.
+    ///
+    /// # Returns
+    /// * `true`     - if recovery succeeded
+    /// * `false`    - if recovery failed
+    pub fn recover_erasures_sharded(
         &self,
         received: &mut [G],
         workspace: &mut [G],
@@ -528,8 +563,6 @@ where
             }
         }
 
-        workspace[T * shard_len..].fill(G::zero());
-
         // Horner evaluation of λ in the monomial basis at all N Cantor subspace points
         let mut lambda_evals = [G::zero(); N];
         for (i, u) in lambda_evals.iter_mut().enumerate() {
@@ -541,8 +574,8 @@ where
             *u = v;
         }
 
-        // Evaluate s at all n points
-        K::fft_sharded(&self.basis, workspace, shard_len, n_log, G::zero());
+        // Evaluate s at all n points treating shards work[T..] as zeros.
+        K::fft_sharded_zero_padded(workspace, shard_len, n_log, t_log);
 
         // Pointwise multiply: work[i] := work[i] · λ(ω_i)
         for i in 0..N {
@@ -555,12 +588,14 @@ where
         // X-basis coefficients of (s·λ); q is in work[T .. T+e]
         K::ifft_sharded(&self.basis, workspace, shard_len, n_log, G::zero());
 
-        // Shift q from work[T..T+e] down to work[0..e], zero work[e..N/2]
+        // Shift q from work[T..T+e] down to work[0..e], zero work shards from e to next pow2
         workspace.copy_within(T * shard_len..(T + e) * shard_len, 0);
-        workspace[e * shard_len..(N / 2) * shard_len].fill(G::zero());
+        let support = e.next_power_of_two();
+        workspace[e * shard_len..support * shard_len].fill(G::zero());
+        let log_support = support.trailing_zeros() as u8;
 
-        // Evaluate q at all n points while treating work[N/2..] as zeros
-        K::fft_sharded_half_zero(&self.basis, workspace, shard_len, n_log, G::zero());
+        // Evaluate q at all n points while treating work[1 << log_support..] as zeros
+        K::fft_sharded_zero_padded(workspace, shard_len, n_log, log_support);
 
         // (Forney) Eq 78: u(ω_i) = q(ω_i) / λ'(ω_i)
         for (&pos, d) in erasure_positions.iter().zip(denoms) {

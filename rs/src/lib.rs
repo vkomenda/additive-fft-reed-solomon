@@ -10,7 +10,7 @@ use kernel::gfni_kernel::GfniKernel;
 use kernel::lut_kernel::LutKernel;
 use poly_11d_lut::CantorBasisLut11d;
 
-pub use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
+pub use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d};
 
 /// Reed-Solomon codec interface type with precomputed lookup tables.
 ///

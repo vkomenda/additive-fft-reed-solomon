@@ -513,7 +513,6 @@ fn write_fft_gfni_case<G: Gf2p8 + fmt::Debug>(
     is_ifft: bool,
 ) -> io::Result<()> {
     writeln!(f, "#[cfg(any(native_gfni, feature = \"compile_gfni\"))]")?;
-    //    writeln!(f, "#[target_feature(enable = \"avx512f,avx512bw,gfni\")]")?;
     writeln!(
         f,
         "#[target_feature(enable = \"avx512f,avx512bw,gfni\")]
@@ -531,6 +530,57 @@ pub fn {}fft_sharded_gfni_{n}{}<G: Gf2p8>(shards: &mut [G], shard_len: usize) {{
     } else {
         write_ifft_gfni(f, basis, lut, mats, k, beta, 0)?;
     }
+    writeln!(f, "}}")?;
+    writeln!(f)?;
+    Ok(())
+}
+
+fn write_fft_zero_padded_gfni<G: Gf2p8 + fmt::Debug>(
+    f: &mut impl Write,
+    basis: &[G],
+    lut: &[[G; FIELD_SIZE]; 8],
+    mats: &[u64; FIELD_SIZE],
+    l: u8,
+    beta: G,
+    offset: usize,
+    log_support: u8,
+) -> io::Result<()> {
+    if log_support > l {
+        return write_fft_gfni(f, basis, lut, mats, l, beta, offset);
+    }
+
+    let half = 1 << l;
+    write_copy_half(f, offset, half)?;
+
+    if l == 0 {
+        return Ok(());
+    }
+
+    let next_beta = beta.add(basis[l as usize]);
+    write_fft_zero_padded_gfni(f, basis, lut, mats, l - 1, beta, offset, log_support)?;
+    let o2 = offset + half;
+    write_fft_zero_padded_gfni(f, basis, lut, mats, l - 1, next_beta, o2, log_support)?;
+    Ok(())
+}
+
+fn write_fft_zero_padded_gfni_case<G: Gf2p8 + fmt::Debug>(
+    f: &mut impl Write,
+    basis: &[G],
+    lut: &[[G; FIELD_SIZE]; 8],
+    mats: &[u64; FIELD_SIZE],
+    k: u8,
+    log_support: u8,
+) -> io::Result<()> {
+    let n = 2 << k;
+    let support = 1 << log_support;
+    writeln!(f, "#[cfg(any(native_gfni, feature = \"compile_gfni\"))]")?;
+    writeln!(
+        f,
+        "#[target_feature(enable = \"avx512f,avx512bw,gfni\")]
+pub fn fft_sharded_zero_padded_gfni_{n}_{support}<G: Gf2p8>(shards: &mut [G], shard_len: usize) {{",
+    )?;
+    writeln!(f, "    debug_assert_eq!(shards.len(), {n} * shard_len);")?;
+    write_fft_zero_padded_gfni(f, basis, lut, mats, k, G::zero(), 0, log_support)?;
     writeln!(f, "}}")?;
     writeln!(f)?;
     Ok(())
@@ -555,9 +605,8 @@ use std::arch::x86_64::*;
 "
     )?;
 
-    let cases: Vec<(usize, u8)> = (0..8).map(|a| (2usize << a, a)).collect();
-
-    for (n, k) in cases {
+    for k in 0..8 {
+        let n = 2usize << k;
         write_fft_gfni_case(
             f,
             basis,
@@ -580,12 +629,24 @@ use std::arch::x86_64::*;
         )?;
     }
 
-    let omega_cases: Vec<(usize, u8, usize)> =
-        (0..8).map(|a| (2usize << a, a, 1usize << a)).collect();
-
-    for (n, k, t) in omega_cases {
+    for k in 0..8 {
+        let n = 2usize << k;
+        let t = 1usize << k;
         let omega = subspace_points[t];
         write_fft_gfni_case(f, basis, sub_poly_luts, gfni_mul_mats, n, k, omega, true)?;
+    }
+
+    for k in 0..8 {
+        for log_support in 0..=k {
+            write_fft_zero_padded_gfni_case(
+                f,
+                basis,
+                sub_poly_luts,
+                gfni_mul_mats,
+                k,
+                log_support,
+            )?;
+        }
     }
 
     Ok(())
