@@ -28,13 +28,15 @@ Additive RS codes evaluate the message polynomial at all 256 elements of the add
 
 Results are dependent on hardware, so you are advised to run `cargo bench`.
 
-Here is a representative set of results, time and throughput, obtained on an AMD EPYC 9575F for n=64 and k=32.
+Here is a representative set of results, time and throughput, obtained on an AMD EPYC 9575F for n=64, k=32 and input-output buffers aligned to 64 bytes:
 
 |shard length, bytes|encode 32 message shards|recover 32 random shard erasures|
 |---|---|---|
-| 64 | 385ns, 10GiB/s | 7.7µs, 510MiB/s |
-| 1k | 2.4µs, 25GiB/s | 14.µs, 4.1GiB/s |
-| 64k | 192µs, 20GiB/s | 740µs, 5.3GiB/s |
+| 64 | 328ns, 5.8GiB/s | 7.5µs, 261MiB/s |
+| 1k | 1.54µs, 19.7GiB/s | 14.3µs, 2.12GiB/s |
+| 64k | 142µs, 13.7GiB/s | 717µs, 2.72GiB/s |
+
+Throughput is measured in the number of message input payload bytes. Aligned input-output buffers are noticeably faster to encode - by about 20%. By contrast, erasure recovery has not demonstrated a similar advantage of alignment of buffers.
 
 
 ## Possible usecases
