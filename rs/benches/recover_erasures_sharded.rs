@@ -29,14 +29,14 @@ macro_rules! bench_params {
                 BenchmarkId::new(format!("N{}_T{}_{}_aligned", $n, $t, $kernel_name), $shard_len),
                 &$shard_len,
                 |mut b, &shard_len| {
-                    bench_recover_erasure_shards_inner(&mut b, &rs, shard_len, &mut $rng, true);
+                    bench_recover_erasures_sharded_inner(&mut b, &rs, shard_len, &mut $rng, true);
                 },
             );
             $group.bench_with_input(
                 BenchmarkId::new(format!("N{}_T{}_{}_unaligned", $n, $t, $kernel_name), $shard_len),
                 &$shard_len,
                 |mut b, &shard_len| {
-                    bench_recover_erasure_shards_inner(&mut b, &rs, shard_len, &mut $rng, false);
+                    bench_recover_erasures_sharded_inner(&mut b, &rs, shard_len, &mut $rng, false);
                 },
             );
         })*
@@ -102,7 +102,7 @@ where
     (codeword, start)
 }
 
-fn bench_recover_erasure_shards_inner<K, const N: usize, const T: usize>(
+fn bench_recover_erasures_sharded_inner<K, const N: usize, const T: usize>(
     b: &mut Bencher<'_>,
     rs: &Codec<Gf2p8_11d, CantorBasisLut11d, K, N, T>,
     shard_len: usize,
@@ -144,7 +144,7 @@ fn bench_recover_erasure_shards_inner<K, const N: usize, const T: usize>(
             )
         },
         |(mut codeword_backing, codeword_start, mut workspace, erasure_positions)| {
-            rs.recover_erasure_shards(
+            rs.recover_erasures_sharded(
                 &mut codeword_backing[codeword_start..][..N * shard_len],
                 &mut workspace,
                 shard_len,
@@ -155,8 +155,8 @@ fn bench_recover_erasure_shards_inner<K, const N: usize, const T: usize>(
     );
 }
 
-fn bench_recover_erasure_shards(c: &mut Criterion) {
-    let mut group = c.benchmark_group("recover_erasure_shards");
+fn bench_recover_erasures_sharded(c: &mut Criterion) {
+    let mut group = c.benchmark_group("recover_erasures_sharded");
     let mut rng = SmallRng::seed_from_u64(42);
 
     for shard_len in [64, 1024, 65536] {
@@ -214,5 +214,5 @@ fn bench_recover_erasure_shards(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_recover_erasure_shards);
+criterion_group!(benches, bench_recover_erasures_sharded);
 criterion_main!(benches);
