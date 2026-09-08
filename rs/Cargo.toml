@@ -36,3 +36,4 @@ harness = false
 [features]
 default = []
 compile_gfni = []
+compile_neon = []

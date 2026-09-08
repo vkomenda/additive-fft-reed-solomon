@@ -767,14 +767,17 @@ fn main() {
         }
     }
 
+    #[cfg(target_arch = "aarch64")]
+    {
+        println!("cargo:rustc-cfg=native_neon");
+    }
+
     // Emit the lint checker tweaks on all platforms.
     println!("cargo:rustc-check-cfg=cfg(native_gfni)");
     println!("cargo:rustc-check-cfg=cfg(native_avx2)");
+    println!("cargo:rustc-check-cfg=cfg(native_neon)");
 
     println!("cargo:rerun-if-changed=src/lib.rs");
-    println!("cargo:rerun-if-changed=src/gf2p8/mod.rs");
-    println!("cargo:rerun-if-changed=src/gf2p8/avx512_impl.rs");
-    println!("cargo:rerun-if-changed=src/gf2p8/generic.rs");
-    println!("cargo:rerun-if-changed=src/gf2p8/bit_matrix.rs");
-    println!("cargo:rerun-if-changed=src/poly_11d/field_defs.rs");
+    println!("cargo:rerun-if-changed=src/gf2p8lut.rs");
+    println!("cargo:rerun-if-changed=src/poly_11d_lut.rs");
 }
