@@ -1,11 +1,17 @@
 use additive_fft_reed_solomon_gf2p8::{
     CantorBasis, CantorBasis11d, EXP_TABLE_SIZE, FIELD_SIZE, Gf2p8, Gf2p8_11d,
 };
+use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::env;
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
+
+thread_local! {
+    static TOUCHED_MULTIPLIERS: RefCell<BTreeSet<u8>> = const { RefCell::new(BTreeSet::new()) };
+}
 
 fn write_lut(f: &mut impl Write, lut: &[u8; FIELD_SIZE]) -> io::Result<()> {
     writeln!(f, "        const LUT: [u8; FIELD_SIZE] = [")?;
@@ -31,6 +37,8 @@ fn write_butterfly_fwd<G: Gf2p8 + fmt::Debug>(
     offset: usize,
     half: usize,
 ) -> io::Result<()> {
+    TOUCHED_MULTIPLIERS.with_borrow_mut(|t| t.insert(twiddle.into()));
+
     let end = offset + half * 2;
 
     let fwd_op = if twiddle == G::zero() {
@@ -81,6 +89,8 @@ fn write_butterfly_inv<G: Gf2p8 + fmt::Debug>(
     offset: usize,
     half: usize,
 ) -> io::Result<()> {
+    TOUCHED_MULTIPLIERS.with_borrow_mut(|t| t.insert(twiddle.into()));
+
     let end = offset + half * 2;
 
     let inv_op = if twiddle == G::zero() {
@@ -339,6 +349,15 @@ use super::{{butterfly_fwd, butterfly_inv}};
             write_fft_zero_padded_lut_case(f, basis, sub_poly_luts, exp, log, k, log_support)?;
         }
     }
+
+    write!(f, "\nstatic TOUCHED_MULTIPLIERS: &[u8] = &[")?;
+    TOUCHED_MULTIPLIERS.with_borrow(|t| {
+        for x in t {
+            write!(f, "0x{:02x}, ", x)?;
+        }
+        Ok::<(), io::Error>(())
+    })?;
+    writeln!(f, "];")?;
 
     Ok(())
 }
