@@ -1,7 +1,7 @@
 use super::Kernel;
 use crate::{
     gf2p8lut::{CantorBasisLut, Gf2p8Lut},
-    poly_11d_lut::generated::CANTOR_SUBSPACE,
+    poly_11d_lut::generated::{CANTOR_SUBSPACE, EXP_TABLE, LOG_TABLE},
 };
 use additive_fft_reed_solomon_gf2p8::{EXP_TABLE_SIZE, FIELD_SIZE, Gf2p8, Gf2p8_11d};
 use core::arch::aarch64::*;
@@ -23,8 +23,8 @@ fn make_mul_table<G: Gf2p8Lut>(
     let mut lo = [0u8; 16];
     let mut hi = [0u8; 16];
     for i in 0..16u8 {
-        lo[i as usize] = i.into::<G>().mul_lut(p).0;
-        hi[i as usize] = (i << 4).into::<G>().mul_lut(p).0;
+        lo[i as usize] = G::from(i).mul_lut(p).0;
+        hi[i as usize] = G::from(i << 4).mul_lut(p).0;
     }
     MulTable { lo, hi }
 }
@@ -86,7 +86,7 @@ fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: MulTable) {
                 let vb = vld1q_u8(b.add(i));
                 let vb = veorq_u8(vb, va);
                 let t = veorq_u8(va, mul_vec(vb, m));
-                let va = veorq_u8(va, m);
+                let va = veorq_u8(va, t);
                 vst1q_u8(a.add(i), va);
                 vst1q_u8(b.add(i), vb);
             }

@@ -700,6 +700,29 @@ fn main() {
     }
     writeln!(f, "];").unwrap();
 
+    let nibble_mul_iter = Gf2p8_11d::iter_nibble_mul_tables();
+    let nibble_mul_tables: [([u8; 16], [u8; 16]); FIELD_SIZE] =
+        nibble_mul_iter.collect::<Vec<_>>().try_into().unwrap();
+
+    writeln!(
+        f,
+        "\npub const NIBBLE_MUL_TABLE: [([u8; 16], [u8; 16]); {}] = [",
+        FIELD_SIZE
+    )
+    .unwrap();
+    for t in nibble_mul_tables {
+        write!(f, "    ([").unwrap();
+        for i in 0..16 {
+            write!(f, "0x{:02x},", t.0[i]).unwrap();
+        }
+        write!(f, "],\n     [").unwrap();
+        for i in 0..16 {
+            write!(f, "0x{:02x},", t.1[i]).unwrap();
+        }
+        writeln!(f, "]),").unwrap();
+    }
+    writeln!(f, "];").unwrap();
+
     let (num_points, points_iter) = basis.iter_subspace_points();
     let subspace_points: [Gf2p8_11d; FIELD_SIZE] =
         points_iter.collect::<Vec<_>>().try_into().unwrap();

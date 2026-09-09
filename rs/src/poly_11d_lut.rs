@@ -23,6 +23,10 @@ impl Gf2p8Lut for Gf2p8_11d {
     fn gfni_mul_matrix(self) -> u64 {
         generated::GFNI_MUL_TABLE[self.into_usize()]
     }
+
+    fn nibble_mul_table(self) -> ([u8; 16], [u8; 16]) {
+        generated::NIBBLE_MUL_TABLE[self.into_usize()]
+    }
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]

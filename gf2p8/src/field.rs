@@ -3,6 +3,12 @@ use super::bit_matrix::BitMatrix;
 pub const FIELD_SIZE: usize = 256;
 pub const EXP_TABLE_SIZE: usize = FIELD_SIZE * 2 - 2;
 
+#[derive(Copy, Clone, Default, PartialEq, Eq)]
+pub struct NibbleMulTable {
+    lo: [u8; 16],
+    hi: [u8; 16],
+}
+
 pub trait Gf2p8: Sized + Copy + From<u8> + Into<u8> + PartialEq {
     const POLY: u16;
     const PRIM_ELEM: Self;
@@ -158,6 +164,20 @@ pub trait Gf2p8: Sized + Copy + From<u8> + Into<u8> + PartialEq {
 
     fn iter_gfni_mul_matrices() -> impl Iterator<Item = u64> {
         (0..FIELD_SIZE).map(|i| Self::from(i as u8).into_mul_matrix().to_gfni_u64())
+    }
+
+    fn nibble_mul_table(self) -> ([u8; 16], [u8; 16]) {
+        let mut lo = [0u8; 16];
+        let mut hi = [0u8; 16];
+        for i in 0..16u8 {
+            lo[i as usize] = Self::from(i).mul(self).into();
+            hi[i as usize] = Self::from(i << 4).mul(self).into();
+        }
+        (lo, hi)
+    }
+
+    fn iter_nibble_mul_tables() -> impl Iterator<Item = ([u8; 16], [u8; 16])> {
+        (0..FIELD_SIZE).map(|i| Self::from(i as u8).nibble_mul_table())
     }
 
     // TODO: vectorized ops need to move to a dedicated trait.

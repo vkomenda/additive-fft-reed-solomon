@@ -30,6 +30,10 @@ pub trait Gf2p8Lut: Gf2p8 {
     }
 
     fn gfni_mul_matrix(self) -> u64;
+
+    /// Low and high nibble multiplication table for NEON `tbl` and AVX2 `pshufb` lookups:
+    /// `lo[i] = i * self`, `hi[i] = (i << 4) * self`.
+    fn nibble_mul_table(self) -> ([u8; 16], [u8; 16]);
 }
 
 /// Precompted lookup table operations on the Cantor basis subspace.
