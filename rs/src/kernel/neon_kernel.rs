@@ -3,38 +3,44 @@ use crate::{
     gf2p8lut::{CantorBasisLut, Gf2p8Lut},
     poly_11d_lut::generated::CANTOR_SUBSPACE,
 };
-use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d};
+use additive_fft_reed_solomon_gf2p8::{EXP_TABLE_SIZE, FIELD_SIZE, Gf2p8, Gf2p8_11d};
 use core::arch::aarch64::*;
 use std::marker::PhantomData;
 
 /// Low and high nibble multiplication table for a given field element.
 /// A table is constructed for a given p from the decomposition x·p = lo(x)·p + hi(x)·p.
-#[derive(Copy, Clone, Default, PartialEq, Eq)]
+#[derive(Copy, Clone)]
 struct MulTable {
-    lo: uint8x16_t,
-    hi: uint8x16_t,
+    lo: [u8; 16],
+    hi: [u8; 16],
 }
 
-fn make_mul_table(p: Gf2p8_11d, exp: &[u8; EXP_TABLE_SIZE], log: &[u8; FIELD_SIZE]) -> MulTable {
+fn make_mul_table<G: Gf2p8Lut>(
+    p: G,
+    exp: &[u8; EXP_TABLE_SIZE],
+    log: &[u8; FIELD_SIZE],
+) -> MulTable {
     let mut lo = [0u8; 16];
     let mut hi = [0u8; 16];
     for i in 0..16u8 {
-        lo[i as usize] = Gf2p8_11d(i).mul_lut(p).0;
-        hi[i as usize] = Gf2p8_11d(i << 4).mul_lut(p).0;
+        lo[i as usize] = i.into().mul_lut(p).0;
+        hi[i as usize] = (i << 4).into().mul_lut(p).0;
     }
-    unsafe { MulTable(vld1q_u8(lo.as_ptr()), vld1q_u8(hi.as_ptr())) }
+    MulTable { lo, hi }
 }
 
 #[inline]
 unsafe fn mul_vec(v: uint8x16_t, m: MulTable) -> uint8x16_t {
+    let lo_v = vld1q_u8(m.lo.as_ptr());
+    let hi_v = vld1q_u8(m.hi.as_ptr());
     let mask = vdupq_n_u8(0x0f);
-    let lo = vqtbl1q_u8(m.hi, vandq_u8(v, mask));
-    let hi = vqtbl1q_u8(m.lo, vshrq_n_u8(v, 4));
+    let lo = vqtbl1q_u8(lo_v, vandq_u8(v, mask));
+    let hi = vqtbl1q_u8(hi_v, vshrq_n_u8(v, 4));
     veorq_u8(lo, hi)
 }
 
 #[inline]
-fn mul_scalar(x: Gf2p8_11d, m: MulTable) -> Gf2p8_11d {
+fn mul_scalar<G: Gf2p8>(x: G, m: MulTable) -> G {
     (m.hi[x.into_usize() >> 4] ^ m.lo[x.into_usize() & 0xf]).into()
 }
 
@@ -111,7 +117,7 @@ fn fft_sharded<G: Gf2p8Lut>(
     }
     let half = 1usize << (k - 1);
     let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
-    let t = make_mul_table(twiddle);
+    let m = make_mul_table(twiddle);
 
     for i in 0..half {
         let (left, right) = shards.split_at_mut((i + half) * shard_len);
@@ -119,7 +125,7 @@ fn fft_sharded<G: Gf2p8Lut>(
             &mut left[i * shard_len..],
             &mut right[..shard_len],
             shard_len,
-            t,
+            m,
         );
     }
 
@@ -159,7 +165,7 @@ fn ifft_sharded<G: Gf2p8Lut>(
     );
 
     let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
-    let t = make_mul_table(twiddle);
+    let m = make_mul_table(twiddle);
 
     for i in 0..half {
         let (left, right) = shards.split_at_mut((i + half) * shard_len);
@@ -167,7 +173,7 @@ fn ifft_sharded<G: Gf2p8Lut>(
             &mut left[i * shard_len..],
             &mut right[..shard_len],
             shard_len,
-            t,
+            m,
         )
     }
 }
@@ -295,7 +301,7 @@ mod tests {
                 // Non-zero beta so twiddles are not trivially zero.
                 let beta = basis.get_subspace_point_lut(n as u8);
                 let mut expected = make_shards(n, shard_len);
-                let mut actual = lut.clone();
+                let mut actual = expected.clone();
 
                 lut_kernel::fft_sharded(&basis, &mut expected, shard_len, k, beta);
                 unsafe {
@@ -316,7 +322,7 @@ mod tests {
                 let n = 1 << k;
                 let beta = basis.get_subspace_point_lut(n as u8);
                 let mut expected = make_shards(n, shard_len);
-                let mut actual = lut.clone();
+                let mut actual = expected.clone();
 
                 lut_kernel::ifft_sharded(&basis, &mut expected, shard_len, k, beta);
                 unsafe {
