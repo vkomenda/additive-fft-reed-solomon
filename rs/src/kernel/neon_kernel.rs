@@ -23,8 +23,8 @@ fn make_mul_table<G: Gf2p8Lut>(
     let mut lo = [0u8; 16];
     let mut hi = [0u8; 16];
     for i in 0..16u8 {
-        lo[i as usize] = i.into().mul_lut(p).0;
-        hi[i as usize] = (i << 4).into().mul_lut(p).0;
+        lo[i as usize] = i.into::<G>().mul_lut(p).0;
+        hi[i as usize] = (i << 4).into::<G>().mul_lut(p).0;
     }
     MulTable { lo, hi }
 }
@@ -78,8 +78,8 @@ fn butterfly_fwd<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: MulTable) {
 fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: MulTable) {
     let mut i = 0;
     {
-        let a = a.as_mut_ptr();
-        let b = b.as_mut_ptr();
+        let a = a.as_mut_ptr() as *mut u8;
+        let b = b.as_mut_ptr() as *mut u8;
         while i + 16 <= len {
             unsafe {
                 let va = vld1q_u8(a.add(i));
