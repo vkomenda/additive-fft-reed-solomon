@@ -122,6 +122,8 @@ pub fn scale_in_place<G: Gf2p8Lut>(dst: &mut [G], scalar: G) {
 pub struct LutKernel<G: Gf2p8Lut>(PhantomData<G>);
 
 impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
+    const SHARD_ALIGN: usize = 1;
+
     fn fft_sharded(
         basis: &impl CantorBasisLut<Gf2p8_11d>,
         shards: &mut [Gf2p8_11d],

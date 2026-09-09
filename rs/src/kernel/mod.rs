@@ -7,6 +7,12 @@ pub mod neon_kernel;
 use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
 
 pub trait Kernel<G: Gf2p8Lut> {
+    /// Shard buffer byte alignment multiple to maximize SIMD performance. Every buffer must start
+    /// at an address which is a multiple of this constant. Every shard in the buffer must start at
+    /// an offset which is also a multiple of this constant. Unaligned buffers will work but may be
+    /// noticeably slower.
+    const SHARD_ALIGN: usize;
+
     /// Forward transform.
     fn fft_sharded(
         basis: &impl CantorBasisLut<G>,
