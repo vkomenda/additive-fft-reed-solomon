@@ -51,11 +51,11 @@ Throughput is measured in the number of message input payload bytes. Aligned inp
 
 - x86-64 with AVX-512 GFNI. The GFNI FFT butterfly gives the largest absolute throughput.
 
+- Aarch64 NEON. Field multiply via 128-bit wide nibble table lookups.
+
 ### Not a good fit
 
 - Wire compatibility required. The crate is not Cauchy implementation compatible.
-
-- Non-x86 accelerated targets. We have no support for ARM NEON or RISC-V RVV acceleration yet.
 
 - Correction of quietly corrupted shards. Sharded error correction is not implemented yet.
 
