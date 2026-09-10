@@ -1,9 +1,9 @@
 #[cfg(native_gfni)]
-use additive_fft_reed_solomon::kernel::gfni_kernel::GfniKernel;
+use additive_fft_reed_solomon::GfniKernel;
+#[cfg(native_neon)]
+use additive_fft_reed_solomon::NeonKernel;
 use additive_fft_reed_solomon::{
-    codec::Codec,
-    kernel::{Kernel, lut_kernel::LutKernel},
-    poly_11d_lut::CantorBasisLut11d,
+    LutKernel, codec::Codec, kernel::Kernel, poly_11d_lut::CantorBasisLut11d,
 };
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d};
 use criterion::{
@@ -137,6 +137,32 @@ fn bench_encode_systematic_sharded(c: &mut Criterion) {
             &mut rng,
             GfniKernel<Gf2p8_11d>,
             "gfni",
+            [
+                (2, 1),
+                (4, 1),
+                (4, 2),
+                (8, 2),
+                (8, 4),
+                (16, 4),
+                (16, 8),
+                (32, 8),
+                (32, 16),
+                (64, 16),
+                (64, 32),
+                (128, 32),
+                (128, 64),
+                (256, 64),
+                (256, 128),
+            ]
+        );
+
+        #[cfg(native_neon)]
+        bench_params!(
+            group,
+            shard_len,
+            &mut rng,
+            NeonKernel<Gf2p8_11d>,
+            "neon",
             [
                 (2, 1),
                 (4, 1),

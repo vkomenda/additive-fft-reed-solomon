@@ -8,6 +8,8 @@ use codec::Codec;
 #[cfg(any(native_gfni, feature = "compile_gfni"))]
 use kernel::gfni_kernel::GfniKernel;
 use kernel::lut_kernel::LutKernel;
+#[cfg(any(native_neon, feature = "compile_neon"))]
+use kernel::neon_kernel::NeonKernel;
 use poly_11d_lut::CantorBasisLut11d;
 
 pub use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d};
@@ -30,15 +32,23 @@ pub type RsLut<const N: usize, const T: usize> =
 pub type RsGfni<const N: usize, const T: usize> =
     Codec<Gf2p8_11d, CantorBasisLut11d, GfniKernel<Gf2p8_11d>, N, T>;
 
+#[cfg(any(native_neon, feature = "compile_neon"))]
+pub type RsNeon<const N: usize, const T: usize> =
+    Codec<Gf2p8_11d, CantorBasisLut11d, NeonKernel<Gf2p8_11d>, N, T>;
+
 cfg_if::cfg_if! {
     if #[cfg(feature = "compile_gfni")] {
         pub type Rs<const N: usize, const T: usize> = RsGfni<N, T>;
     // } else if #[cfg(feature = "compile_avx2")] {
     //     todo!();
+    } else if #[cfg(feature = "compile_neon")] {
+        pub type Rs<const N: usize, const T: usize> = RsNeon<N, T>;
     } else if #[cfg(native_gfni)] {
         pub type Rs<const N: usize, const T: usize> = RsGfni<N, T>;
     // } else if #[cfg(native_avx2)] {
     //     todo!();
+    } else if #[cfg(native_neon)] {
+        pub type Rs<const N: usize, const T: usize> = RsNeon<N, T>;
     } else {
         pub type Rs<const N: usize, const T: usize> = RsLut<N, T>;
     }
