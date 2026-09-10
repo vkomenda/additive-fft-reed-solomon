@@ -3,11 +3,9 @@ use super::bit_matrix::BitMatrix;
 pub const FIELD_SIZE: usize = 256;
 pub const EXP_TABLE_SIZE: usize = FIELD_SIZE * 2 - 2;
 
-#[derive(Copy, Clone, Default, PartialEq, Eq)]
-pub struct NibbleMulTable {
-    lo: [u8; 16],
-    hi: [u8; 16],
-}
+/// Low and high nibble multiplication table for a given field element.
+/// A table is constructed for a given p from the decomposition x·p = lo(x)·p + hi(x)·p.
+pub type NibbleMulTable = ([u8; 16], [u8; 16]);
 
 pub trait Gf2p8: Sized + Copy + From<u8> + Into<u8> + PartialEq {
     const POLY: u16;
@@ -166,7 +164,7 @@ pub trait Gf2p8: Sized + Copy + From<u8> + Into<u8> + PartialEq {
         (0..FIELD_SIZE).map(|i| Self::from(i as u8).into_mul_matrix().to_gfni_u64())
     }
 
-    fn nibble_mul_table(self) -> ([u8; 16], [u8; 16]) {
+    fn nibble_mul_table(self) -> NibbleMulTable {
         let mut lo = [0u8; 16];
         let mut hi = [0u8; 16];
         for i in 0..16u8 {

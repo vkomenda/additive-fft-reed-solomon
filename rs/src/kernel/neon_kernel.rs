@@ -1,38 +1,16 @@
 use super::Kernel;
 use crate::{
     gf2p8lut::{CantorBasisLut, Gf2p8Lut},
-    poly_11d_lut::generated::{CANTOR_SUBSPACE, EXP_TABLE, LOG_TABLE},
+    poly_11d_lut::generated::NIBBLE_MUL_TABLE,
 };
-use additive_fft_reed_solomon_gf2p8::{EXP_TABLE_SIZE, FIELD_SIZE, Gf2p8, Gf2p8_11d};
+use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, NibbleMulTable};
 use core::arch::aarch64::*;
 use std::marker::PhantomData;
 
-/// Low and high nibble multiplication table for a given field element.
-/// A table is constructed for a given p from the decomposition x·p = lo(x)·p + hi(x)·p.
-#[derive(Copy, Clone)]
-struct MulTable {
-    lo: [u8; 16],
-    hi: [u8; 16],
-}
-
-fn make_mul_table<G: Gf2p8Lut>(
-    p: G,
-    exp: &[u8; EXP_TABLE_SIZE],
-    log: &[u8; FIELD_SIZE],
-) -> MulTable {
-    let mut lo = [0u8; 16];
-    let mut hi = [0u8; 16];
-    for i in 0..16u8 {
-        lo[i as usize] = G::from(i).mul_lut(p).0;
-        hi[i as usize] = G::from(i << 4).mul_lut(p).0;
-    }
-    MulTable { lo, hi }
-}
-
 #[inline]
-unsafe fn mul_vec(v: uint8x16_t, m: MulTable) -> uint8x16_t {
-    let lo_v = vld1q_u8(m.lo.as_ptr());
-    let hi_v = vld1q_u8(m.hi.as_ptr());
+unsafe fn mul_vec(v: uint8x16_t, m: &NibbleMulTable) -> uint8x16_t {
+    let lo_v = vld1q_u8(m.0.as_ptr());
+    let hi_v = vld1q_u8(m.1.as_ptr());
     let mask = vdupq_n_u8(0x0f);
     let lo = vqtbl1q_u8(lo_v, vandq_u8(v, mask));
     let hi = vqtbl1q_u8(hi_v, vshrq_n_u8(v, 4));
@@ -40,12 +18,12 @@ unsafe fn mul_vec(v: uint8x16_t, m: MulTable) -> uint8x16_t {
 }
 
 #[inline]
-fn mul_scalar<G: Gf2p8>(x: G, m: MulTable) -> G {
-    (m.hi[x.into_usize() >> 4] ^ m.lo[x.into_usize() & 0xf]).into()
+fn mul_scalar<G: Gf2p8>(x: G, m: &NibbleMulTable) -> G {
+    (m.1[x.into_usize() >> 4] ^ m.0[x.into_usize() & 0xf]).into()
 }
 
-#[target_feature(enable = "neon")]
-fn butterfly_fwd<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: MulTable) {
+#[inline]
+fn butterfly_fwd<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: &NibbleMulTable) {
     let mut i = 0;
     {
         let a = a.as_mut_ptr() as *mut u8;
@@ -74,8 +52,8 @@ fn butterfly_fwd<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: MulTable) {
     }
 }
 
-#[target_feature(enable = "neon")]
-fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: MulTable) {
+#[inline]
+fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: &NibbleMulTable) {
     let mut i = 0;
     {
         let a = a.as_mut_ptr() as *mut u8;
@@ -93,7 +71,7 @@ fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: MulTable) {
             i += 16;
         }
     }
-    if i < len {
+    while i < len {
         let x = a[i];
         let y = b[i];
         let y = x.add(y);
@@ -104,7 +82,6 @@ fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: MulTable) {
     }
 }
 
-#[target_feature(enable = "neon")]
 fn fft_sharded<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [G],
@@ -117,7 +94,7 @@ fn fft_sharded<G: Gf2p8Lut>(
     }
     let half = 1usize << (k - 1);
     let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
-    let m = make_mul_table(twiddle);
+    let m = &NIBBLE_MUL_TABLE[twiddle.into_usize()];
 
     for i in 0..half {
         let (left, right) = shards.split_at_mut((i + half) * shard_len);
@@ -135,7 +112,6 @@ fn fft_sharded<G: Gf2p8Lut>(
     fft_sharded(basis, &mut shards[h..], shard_len, k - 1, next_beta);
 }
 
-#[target_feature(enable = "neon")]
 fn ifft_sharded<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [G],
@@ -165,7 +141,7 @@ fn ifft_sharded<G: Gf2p8Lut>(
     );
 
     let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
-    let m = make_mul_table(twiddle);
+    let m = &NIBBLE_MUL_TABLE[twiddle.into_usize()];
 
     for i in 0..half {
         let (left, right) = shards.split_at_mut((i + half) * shard_len);
@@ -178,12 +154,11 @@ fn ifft_sharded<G: Gf2p8Lut>(
     }
 }
 
-#[target_feature(enable = "neon")]
-fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: MulTable) {
+fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: &NibbleMulTable) {
     let mut i = 0;
     {
-        let src = src.as_ptr();
-        let dst = dst.as_mut_ptr();
+        let src = src.as_ptr() as *const u8;
+        let dst = dst.as_mut_ptr() as *mut u8;
         while i + 16 <= len {
             unsafe {
                 let v = vld1q_u8(src.add(i));
@@ -201,11 +176,10 @@ fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: MulTable) {
     }
 }
 
-#[target_feature(enable = "neon")]
-fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: MulTable) {
+fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: &NibbleMulTable) {
     let mut i = 0;
     {
-        let dst = dst.as_mut_ptr();
+        let dst = dst.as_mut_ptr() as *mut u8;
         while i + 16 <= len {
             unsafe {
                 let v = vld1q_u8(dst.add(i));
