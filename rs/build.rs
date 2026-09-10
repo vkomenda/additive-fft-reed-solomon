@@ -13,26 +13,8 @@ thread_local! {
     static TOUCHED_MULTIPLIERS: RefCell<BTreeSet<u8>> = const { RefCell::new(BTreeSet::new()) };
 }
 
-fn write_lut(f: &mut impl Write, lut: &[u8; FIELD_SIZE]) -> io::Result<()> {
-    writeln!(f, "        const LUT: [u8; FIELD_SIZE] = [")?;
-    for (i, &b) in lut.iter().enumerate() {
-        if i % 16 == 0 {
-            write!(f, "            ")?;
-        }
-        write!(f, "0x{b:02x},")?;
-        if i % 16 == 15 {
-            writeln!(f)?;
-        }
-    }
-    writeln!(f, "        ];")?;
-
-    Ok(())
-}
-
 fn write_butterfly_fwd<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
-    exp: &[u8; EXP_TABLE_SIZE],
-    log: &[u8; FIELD_SIZE],
     twiddle: G,
     offset: usize,
     half: usize,
@@ -44,18 +26,18 @@ fn write_butterfly_fwd<G: Gf2p8 + fmt::Debug>(
     let fwd_op = if twiddle == G::zero() {
         "            for (ai, bi) in a.iter().zip(b.iter_mut()) { *bi = bi.add(*ai); }"
     } else {
-        "            butterfly_fwd(a, b, &LUT);"
+        "            butterfly_fwd(a, b, lut);"
     };
 
     let fwd_op_half1 = if twiddle == G::zero() {
         "        for (ai, bi) in lo.iter().zip(hi.iter_mut()) { *bi = bi.add(*ai); }"
     } else {
-        "        butterfly_fwd(&mut lo[..shard_len], &mut hi[..shard_len], &LUT);"
+        "        butterfly_fwd(&mut lo[..shard_len], &mut hi[..shard_len], lut);"
     };
 
     writeln!(f, "    {{")?;
     if twiddle != G::zero() {
-        write_lut(f, &twiddle.make_mul_table(exp, log))?;
+        writeln!(f, "        let lut = &MUL_TABLE[{}];", twiddle.into_usize())?;
     }
 
     if half == 1 {
@@ -83,8 +65,6 @@ fn write_butterfly_fwd<G: Gf2p8 + fmt::Debug>(
 
 fn write_butterfly_inv<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
-    exp: &[u8; EXP_TABLE_SIZE],
-    log: &[u8; FIELD_SIZE],
     twiddle: G,
     offset: usize,
     half: usize,
@@ -96,18 +76,18 @@ fn write_butterfly_inv<G: Gf2p8 + fmt::Debug>(
     let inv_op = if twiddle == G::zero() {
         "            for (ai, bi) in a.iter().zip(b.iter_mut()) { *bi = ai.add(*bi); }"
     } else {
-        "            butterfly_inv(a, b, &LUT);"
+        "            butterfly_inv(a, b, lut);"
     };
 
     let inv_op_half1 = if twiddle == G::zero() {
         "        for (ai, bi) in lo.iter().zip(hi.iter_mut()) { *bi = ai.add(*bi); }"
     } else {
-        "        butterfly_inv(&mut lo[..shard_len], &mut hi[..shard_len], &LUT);"
+        "        butterfly_inv(&mut lo[..shard_len], &mut hi[..shard_len], lut);"
     };
 
     writeln!(f, "    {{")?;
     if twiddle != G::zero() {
-        write_lut(f, &twiddle.make_mul_table(exp, log))?;
+        writeln!(f, "        let lut = &MUL_TABLE[{}];", twiddle.into_usize())?;
     }
 
     if half == 1 {
@@ -136,9 +116,7 @@ fn write_butterfly_inv<G: Gf2p8 + fmt::Debug>(
 fn write_fft_lut<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
     basis: &[G],
-    lut: &[[G; FIELD_SIZE]; 8],
-    exp: &[u8; EXP_TABLE_SIZE],
-    log: &[u8; FIELD_SIZE],
+    sub_poly_luts: &[[G; FIELD_SIZE]; 8],
     l: u8,
     beta: G,
     offset: usize,
@@ -147,27 +125,25 @@ fn write_fft_lut<G: Gf2p8 + fmt::Debug>(
     let twiddle = if l == 0 {
         beta
     } else {
-        lut[l as usize][beta.into_usize()]
+        sub_poly_luts[l as usize][beta.into_usize()]
     };
 
-    write_butterfly_fwd(f, exp, log, twiddle, offset, half)?;
+    write_butterfly_fwd(f, twiddle, offset, half)?;
 
     if l == 0 {
         return Ok(());
     }
 
     let next_beta = beta.add(basis[l as usize]);
-    write_fft_lut(f, basis, lut, exp, log, l - 1, beta, offset)?;
-    write_fft_lut(f, basis, lut, exp, log, l - 1, next_beta, offset + half)?;
+    write_fft_lut(f, basis, sub_poly_luts, l - 1, beta, offset)?;
+    write_fft_lut(f, basis, sub_poly_luts, l - 1, next_beta, offset + half)?;
     Ok(())
 }
 
 fn write_ifft_lut<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
     basis: &[G],
-    lut: &[[G; FIELD_SIZE]; 8],
-    exp: &[u8; EXP_TABLE_SIZE],
-    log: &[u8; FIELD_SIZE],
+    sub_poly_luts: &[[G; FIELD_SIZE]; 8],
     l: u8,
     beta: G,
     offset: usize,
@@ -175,25 +151,23 @@ fn write_ifft_lut<G: Gf2p8 + fmt::Debug>(
     let half = 1 << l;
     if l == 0 {
         let twiddle = beta;
-        write_butterfly_inv(f, exp, log, twiddle, offset, half)?;
+        write_butterfly_inv(f, twiddle, offset, half)?;
         return Ok(());
     }
 
     let next_beta = beta.add(basis[l as usize]);
-    write_ifft_lut(f, basis, lut, exp, log, l - 1, beta, offset)?;
-    write_ifft_lut(f, basis, lut, exp, log, l - 1, next_beta, offset + (1 << l))?;
+    write_ifft_lut(f, basis, sub_poly_luts, l - 1, beta, offset)?;
+    write_ifft_lut(f, basis, sub_poly_luts, l - 1, next_beta, offset + (1 << l))?;
 
-    let twiddle = lut[l as usize][beta.into_usize()];
-    write_butterfly_inv(f, exp, log, twiddle, offset, 1 << l)?;
+    let twiddle = sub_poly_luts[l as usize][beta.into_usize()];
+    write_butterfly_inv(f, twiddle, offset, 1 << l)?;
     Ok(())
 }
 
 fn write_fft_lut_case<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
     basis: &[G],
-    lut: &[[G; FIELD_SIZE]; 8],
-    exp: &[u8; EXP_TABLE_SIZE],
-    log: &[u8; FIELD_SIZE],
+    sub_poly_luts: &[[G; FIELD_SIZE]; 8],
     k: u8,
     beta: G,
     is_ifft: bool,
@@ -211,9 +185,9 @@ fn write_fft_lut_case<G: Gf2p8 + fmt::Debug>(
     )?;
     writeln!(f, "    debug_assert_eq!(shards.len(), {n} * shard_len);")?;
     if !is_ifft {
-        write_fft_lut(f, basis, lut, exp, log, k, beta, 0)?;
+        write_fft_lut(f, basis, sub_poly_luts, k, beta, 0)?;
     } else {
-        write_ifft_lut(f, basis, lut, exp, log, k, beta, 0)?;
+        write_ifft_lut(f, basis, sub_poly_luts, k, beta, 0)?;
     }
     writeln!(f, "}}")?;
     writeln!(f)?;
@@ -267,15 +241,13 @@ fn write_fft_zero_padded_lut<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
     basis: &[G],
     lut: &[[G; FIELD_SIZE]; 8],
-    exp: &[u8; EXP_TABLE_SIZE],
-    log: &[u8; FIELD_SIZE],
     l: u8,
     beta: G,
     offset: usize,
     log_support: u8,
 ) -> io::Result<()> {
     if log_support > l {
-        return write_fft_lut(f, basis, lut, exp, log, l, beta, offset);
+        return write_fft_lut(f, basis, lut, l, beta, offset);
     }
 
     let half = 1 << l;
@@ -286,9 +258,9 @@ fn write_fft_zero_padded_lut<G: Gf2p8 + fmt::Debug>(
     }
 
     let next_beta = beta.add(basis[l as usize]);
-    write_fft_zero_padded_lut(f, basis, lut, exp, log, l - 1, beta, offset, log_support)?;
+    write_fft_zero_padded_lut(f, basis, lut, l - 1, beta, offset, log_support)?;
     let o2 = offset + half;
-    write_fft_zero_padded_lut(f, basis, lut, exp, log, l - 1, next_beta, o2, log_support)?;
+    write_fft_zero_padded_lut(f, basis, lut, l - 1, next_beta, o2, log_support)?;
     Ok(())
 }
 
@@ -296,8 +268,6 @@ fn write_fft_zero_padded_lut_case<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
     basis: &[G],
     lut: &[[G; FIELD_SIZE]; 8],
-    exp: &[u8; EXP_TABLE_SIZE],
-    log: &[u8; FIELD_SIZE],
     k: u8,
     log_support: u8,
 ) -> io::Result<()> {
@@ -308,7 +278,7 @@ fn write_fft_zero_padded_lut_case<G: Gf2p8 + fmt::Debug>(
         "pub fn fft_sharded_zero_padded_lut_{n}_{support}<G: Gf2p8>(shards: &mut [G], shard_len: usize) {{",
     )?;
     writeln!(f, "    debug_assert_eq!(shards.len(), {n} * shard_len);")?;
-    write_fft_zero_padded_lut(f, basis, lut, exp, log, k, G::zero(), 0, log_support)?;
+    write_fft_zero_padded_lut(f, basis, lut, k, G::zero(), 0, log_support)?;
     writeln!(f, "}}")?;
     writeln!(f)?;
     Ok(())
@@ -319,8 +289,6 @@ fn write_unrolled_kernel_lut<G: Gf2p8 + fmt::Debug>(
     basis: &[G],
     sub_poly_luts: &[[G; FIELD_SIZE]; 8],
     subspace_points: &[G; FIELD_SIZE],
-    exp: &[u8; EXP_TABLE_SIZE],
-    log: &[u8; FIELD_SIZE],
 ) -> io::Result<()>
 where
     u8: From<G>,
@@ -328,25 +296,25 @@ where
     writeln!(
         f,
         "\
-use additive_fft_reed_solomon_gf2p8::{{FIELD_SIZE, Gf2p8}};
-use super::{{butterfly_fwd, butterfly_inv}};
+use additive_fft_reed_solomon_gf2p8::Gf2p8;
+use super::{{butterfly_fwd, butterfly_inv, MUL_TABLE}};
 "
     )?;
 
     for k in 0..8 {
-        write_fft_lut_case(f, basis, sub_poly_luts, exp, log, k, G::zero(), false)?;
-        write_fft_lut_case(f, basis, sub_poly_luts, exp, log, k, G::zero(), true)?;
+        write_fft_lut_case(f, basis, sub_poly_luts, k, G::zero(), false)?;
+        write_fft_lut_case(f, basis, sub_poly_luts, k, G::zero(), true)?;
     }
 
     for k in 0..8 {
         let t = 1 << k;
         let omega = subspace_points[t];
-        write_fft_lut_case(f, basis, sub_poly_luts, exp, log, k, omega, true)?;
+        write_fft_lut_case(f, basis, sub_poly_luts, k, omega, true)?;
     }
 
     for k in 0..8 {
         for log_support in 0..=k {
-            write_fft_zero_padded_lut_case(f, basis, sub_poly_luts, exp, log, k, log_support)?;
+            write_fft_zero_padded_lut_case(f, basis, sub_poly_luts, k, log_support)?;
         }
     }
 
@@ -691,6 +659,23 @@ where
     }
 }
 
+fn write_bytes(f: &mut impl Write, it: impl Iterator<Item = u8>, has_subarrays: bool) {
+    for (i, b) in it.enumerate() {
+        if i % 16 == 0 {
+            write!(f, "\n    ").unwrap();
+            if has_subarrays {
+                write!(f, "    ").unwrap();
+            }
+        }
+        write!(f, "0x{:02x}, ", b).unwrap();
+    }
+    if has_subarrays {
+        writeln!(f, "\n    ],").unwrap();
+    } else {
+        writeln!(f, "\n];").unwrap();
+    }
+}
+
 fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("tables_11d.rs");
@@ -698,11 +683,11 @@ fn main() {
 
     let (exp_table, log_table) = Gf2p8_11d::exp_log_tables();
     let inv_table = Gf2p8_11d::inv_table(&exp_table, &log_table);
-    write!(f, "\npub const EXP_TABLE: [u8; {}] = [", EXP_TABLE_SIZE).unwrap();
+    write!(f, "\npub static EXP_TABLE: [u8; {}] = [", EXP_TABLE_SIZE).unwrap();
     write_points(&mut f, exp_table.into_iter(), false);
-    write!(f, "\npub const LOG_TABLE: [u8; {}] = [", FIELD_SIZE).unwrap();
+    write!(f, "\npub static LOG_TABLE: [u8; {}] = [", FIELD_SIZE).unwrap();
     write_points(&mut f, log_table.into_iter(), false);
-    write!(f, "\npub const INV_TABLE: [u8; {}] = [", FIELD_SIZE).unwrap();
+    write!(f, "\npub static INV_TABLE: [u8; {}] = [", FIELD_SIZE).unwrap();
     write_points(&mut f, inv_table.into_iter(), false);
 
     let basis = CantorBasis11d::new();
@@ -710,10 +695,23 @@ fn main() {
     write!(f, "\npub const CANTOR_BASIS: [u8; 8] = [").unwrap();
     write_points(&mut f, basis.into_iter(), false);
 
+    let mul_table_iter =
+        (0..FIELD_SIZE).map(|x| Gf2p8_11d(x as u8).make_mul_table(&exp_table, &log_table));
+    write!(
+        f,
+        "\npub static MUL_TABLE: [[u8; {FIELD_SIZE}]; {FIELD_SIZE}] = ["
+    )
+    .unwrap();
+    for t in mul_table_iter {
+        write!(f, "    [").unwrap();
+        write_bytes(&mut f, t.into_iter(), true);
+    }
+    writeln!(f, "];").unwrap();
+
     let gfni_mul_iter = Gf2p8_11d::iter_gfni_mul_matrices();
     let gfni_mul_mats: [u64; FIELD_SIZE] = gfni_mul_iter.collect::<Vec<_>>().try_into().unwrap();
 
-    writeln!(f, "\npub const GFNI_MUL_TABLE: [u64; {}] = [", FIELD_SIZE).unwrap();
+    writeln!(f, "\npub static GFNI_MUL_TABLE: [u64; {}] = [", FIELD_SIZE).unwrap();
     for mat in gfni_mul_mats {
         writeln!(f, "    0x{:016x},", mat).unwrap();
     }
@@ -725,18 +723,18 @@ fn main() {
 
     writeln!(
         f,
-        "\npub const NIBBLE_MUL_TABLE: [([u8; 16], [u8; 16]); {}] = [",
+        "\npub static NIBBLE_MUL_TABLE: [([u8; 16], [u8; 16]); {}] = [",
         FIELD_SIZE
     )
     .unwrap();
     for t in nibble_mul_tables {
         write!(f, "    ([").unwrap();
         for i in 0..16 {
-            write!(f, "0x{:02x},", t.0[i]).unwrap();
+            write!(f, "0x{:02x}, ", t.0[i]).unwrap();
         }
         write!(f, "],\n     [").unwrap();
         for i in 0..16 {
-            write!(f, "0x{:02x},", t.1[i]).unwrap();
+            write!(f, "0x{:02x}, ", t.1[i]).unwrap();
         }
         writeln!(f, "]),").unwrap();
     }
@@ -746,14 +744,14 @@ fn main() {
     let subspace_points: [Gf2p8_11d; FIELD_SIZE] =
         points_iter.collect::<Vec<_>>().try_into().unwrap();
 
-    write!(f, "\npub const CANTOR_SUBSPACE: [u8; {}] = [", num_points).unwrap();
+    write!(f, "\npub static CANTOR_SUBSPACE: [u8; {}] = [", num_points).unwrap();
     write_points(&mut f, subspace_points.into_iter(), false);
 
     let sub_poly_luts = basis.gen_all_subspace_poly_luts();
 
     writeln!(
         f,
-        "\npub const SUBSPACE_POLY_VALUES: [[u8; {}]; 9] = [",
+        "\npub static SUBSPACE_POLY_VALUES: [[u8; {}]; 9] = [",
         FIELD_SIZE,
     )
     .unwrap();
@@ -772,15 +770,8 @@ fn main() {
 
     let dest_kernel_lut = Path::new(&out_dir).join("unrolled_lut_kernel_11d.rs");
     let mut fkl = BufWriter::new(File::create(&dest_kernel_lut).unwrap());
-    write_unrolled_kernel_lut(
-        &mut fkl,
-        basis.as_ref(),
-        sub_poly_luts8,
-        &subspace_points,
-        &exp_table,
-        &log_table,
-    )
-    .expect("LUT kernel");
+    write_unrolled_kernel_lut(&mut fkl, basis.as_ref(), sub_poly_luts8, &subspace_points)
+        .expect("LUT kernel");
 
     let dest_kernel_gfni = Path::new(&out_dir).join("unrolled_gfni_kernel_11d.rs");
     let mut fkg = BufWriter::new(File::create(&dest_kernel_gfni).unwrap());

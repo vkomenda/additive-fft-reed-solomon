@@ -1,6 +1,6 @@
 use super::Kernel;
 use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
-use crate::poly_11d_lut::generated::CANTOR_SUBSPACE;
+use crate::poly_11d_lut::generated::{CANTOR_SUBSPACE, MUL_TABLE};
 use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8, Gf2p8_11d};
 use std::marker::PhantomData;
 
@@ -37,14 +37,14 @@ pub fn fft_sharded<G: Gf2p8Lut>(
     }
     let half = 1 << (k - 1);
     let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
-    let lut = twiddle.make_mul_lut();
+    let lut = &MUL_TABLE[twiddle.into_usize()];
 
     // Butterfly with one lut computed for the whole pass
     for i in 0..half {
         let (left, right) = shards.split_at_mut((i + half) * shard_len);
         let a = &mut left[i * shard_len..(i + 1) * shard_len];
         let b = &mut right[..shard_len];
-        butterfly_fwd(a, b, &lut);
+        butterfly_fwd(a, b, lut);
     }
 
     let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
@@ -94,25 +94,25 @@ pub fn ifft_sharded<G: Gf2p8Lut>(
     ifft_sharded(basis, &mut shards[h..], shard_len, k - 1, next_beta);
 
     let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
-    let lut = twiddle.make_mul_lut();
+    let lut = &MUL_TABLE[twiddle.into_usize()];
 
     for i in 0..half {
         let (left, right) = shards.split_at_mut((i + half) * shard_len);
         let a = &mut left[i * shard_len..(i + 1) * shard_len];
         let b = &mut right[..shard_len];
-        butterfly_inv(a, b, &lut);
+        butterfly_inv(a, b, lut);
     }
 }
 
 pub fn scale<G: Gf2p8Lut>(src: &[G], dst: &mut [G], scalar: G) {
-    let lut = scalar.make_mul_lut();
+    let lut = &MUL_TABLE[scalar.into_usize()];
     for (d, s) in dst.iter_mut().zip(src.iter()) {
         *d = G::from(lut[s.into_usize()]);
     }
 }
 
 pub fn scale_in_place<G: Gf2p8Lut>(dst: &mut [G], scalar: G) {
-    let lut = scalar.make_mul_lut();
+    let lut = &MUL_TABLE[scalar.into_usize()];
     for b in dst.iter_mut() {
         *b = G::from(lut[b.into_usize()]);
     }
