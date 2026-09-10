@@ -63,8 +63,7 @@ fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: &NibbleMulTa
                 let va = vld1q_u8(a.add(i));
                 let vb = vld1q_u8(b.add(i));
                 let vb = veorq_u8(vb, va);
-                let t = veorq_u8(va, mul_vec(vb, m));
-                let va = veorq_u8(va, t);
+                let va = veorq_u8(va, mul_vec(vb, m));
                 vst1q_u8(a.add(i), va);
                 vst1q_u8(b.add(i), vb);
             }
