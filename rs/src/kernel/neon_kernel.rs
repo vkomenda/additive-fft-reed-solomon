@@ -215,67 +215,63 @@ impl Kernel<Gf2p8_11d> for NeonKernel<Gf2p8_11d> {
         k: u8,
         beta: Gf2p8_11d,
     ) {
-        unsafe {
-            if beta == Gf2p8_11d::zero() {
-                match k {
-                    0 => {}
-                    1 => unrolled_11d::fft_sharded_neon_2(shards, shard_len),
-                    2 => unrolled_11d::fft_sharded_neon_4(shards, shard_len),
-                    3 => unrolled_11d::fft_sharded_neon_8(shards, shard_len),
-                    4 => unrolled_11d::fft_sharded_neon_16(shards, shard_len),
-                    5 => unrolled_11d::fft_sharded_neon_32(shards, shard_len),
-                    6 => unrolled_11d::fft_sharded_neon_64(shards, shard_len),
-                    7 => unrolled_11d::fft_sharded_neon_128(shards, shard_len),
-                    8 => unrolled_11d::fft_sharded_neon_256(shards, shard_len),
-                    _ => unreachable!("k={k} must be in 0..=8"),
-                }
-            } else {
-                fft_sharded(basis, shards, shard_len, k, beta);
+        if beta == Gf2p8_11d::zero() {
+            match k {
+                0 => {}
+                1 => unrolled_11d::fft_sharded_neon_2(shards, shard_len),
+                2 => unrolled_11d::fft_sharded_neon_4(shards, shard_len),
+                3 => unrolled_11d::fft_sharded_neon_8(shards, shard_len),
+                4 => unrolled_11d::fft_sharded_neon_16(shards, shard_len),
+                5 => unrolled_11d::fft_sharded_neon_32(shards, shard_len),
+                6 => unrolled_11d::fft_sharded_neon_64(shards, shard_len),
+                7 => unrolled_11d::fft_sharded_neon_128(shards, shard_len),
+                8 => unrolled_11d::fft_sharded_neon_256(shards, shard_len),
+                _ => unreachable!("k={k} must be in 0..=8"),
             }
+        } else {
+            fft_sharded(basis, shards, shard_len, k, beta);
         }
     }
 
     fn fft_sharded_zero_padded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, log_support: u8) {
-        unsafe {
-            match (k, log_support) {
-                (1, 0) => unrolled_11d::fft_sharded_zero_padded_neon_2_1(shards, shard_len),
-                (2, 0) => unrolled_11d::fft_sharded_zero_padded_neon_4_1(shards, shard_len),
-                (2, 1) => unrolled_11d::fft_sharded_zero_padded_neon_4_2(shards, shard_len),
-                (3, 0) => unrolled_11d::fft_sharded_zero_padded_neon_8_1(shards, shard_len),
-                (3, 1) => unrolled_11d::fft_sharded_zero_padded_neon_8_2(shards, shard_len),
-                (3, 2) => unrolled_11d::fft_sharded_zero_padded_neon_8_4(shards, shard_len),
-                (4, 0) => unrolled_11d::fft_sharded_zero_padded_neon_16_1(shards, shard_len),
-                (4, 1) => unrolled_11d::fft_sharded_zero_padded_neon_16_2(shards, shard_len),
-                (4, 2) => unrolled_11d::fft_sharded_zero_padded_neon_16_4(shards, shard_len),
-                (4, 3) => unrolled_11d::fft_sharded_zero_padded_neon_16_8(shards, shard_len),
-                (5, 0) => unrolled_11d::fft_sharded_zero_padded_neon_32_1(shards, shard_len),
-                (5, 1) => unrolled_11d::fft_sharded_zero_padded_neon_32_2(shards, shard_len),
-                (5, 2) => unrolled_11d::fft_sharded_zero_padded_neon_32_4(shards, shard_len),
-                (5, 3) => unrolled_11d::fft_sharded_zero_padded_neon_32_8(shards, shard_len),
-                (5, 4) => unrolled_11d::fft_sharded_zero_padded_neon_32_16(shards, shard_len),
-                (6, 0) => unrolled_11d::fft_sharded_zero_padded_neon_64_1(shards, shard_len),
-                (6, 1) => unrolled_11d::fft_sharded_zero_padded_neon_64_2(shards, shard_len),
-                (6, 2) => unrolled_11d::fft_sharded_zero_padded_neon_64_4(shards, shard_len),
-                (6, 3) => unrolled_11d::fft_sharded_zero_padded_neon_64_8(shards, shard_len),
-                (6, 4) => unrolled_11d::fft_sharded_zero_padded_neon_64_16(shards, shard_len),
-                (6, 5) => unrolled_11d::fft_sharded_zero_padded_neon_64_32(shards, shard_len),
-                (7, 0) => unrolled_11d::fft_sharded_zero_padded_neon_128_1(shards, shard_len),
-                (7, 1) => unrolled_11d::fft_sharded_zero_padded_neon_128_2(shards, shard_len),
-                (7, 2) => unrolled_11d::fft_sharded_zero_padded_neon_128_4(shards, shard_len),
-                (7, 3) => unrolled_11d::fft_sharded_zero_padded_neon_128_8(shards, shard_len),
-                (7, 4) => unrolled_11d::fft_sharded_zero_padded_neon_128_16(shards, shard_len),
-                (7, 5) => unrolled_11d::fft_sharded_zero_padded_neon_128_32(shards, shard_len),
-                (7, 6) => unrolled_11d::fft_sharded_zero_padded_neon_128_64(shards, shard_len),
-                (8, 0) => unrolled_11d::fft_sharded_zero_padded_neon_256_1(shards, shard_len),
-                (8, 1) => unrolled_11d::fft_sharded_zero_padded_neon_256_2(shards, shard_len),
-                (8, 2) => unrolled_11d::fft_sharded_zero_padded_neon_256_4(shards, shard_len),
-                (8, 3) => unrolled_11d::fft_sharded_zero_padded_neon_256_8(shards, shard_len),
-                (8, 4) => unrolled_11d::fft_sharded_zero_padded_neon_256_16(shards, shard_len),
-                (8, 5) => unrolled_11d::fft_sharded_zero_padded_neon_256_32(shards, shard_len),
-                (8, 6) => unrolled_11d::fft_sharded_zero_padded_neon_256_64(shards, shard_len),
-                (8, 7) => unrolled_11d::fft_sharded_zero_padded_neon_256_128(shards, shard_len),
-                _ => unreachable!("k={k} must be in 1..=8 and log_support must be < k"),
-            }
+        match (k, log_support) {
+            (1, 0) => unrolled_11d::fft_sharded_zero_padded_neon_2_1(shards, shard_len),
+            (2, 0) => unrolled_11d::fft_sharded_zero_padded_neon_4_1(shards, shard_len),
+            (2, 1) => unrolled_11d::fft_sharded_zero_padded_neon_4_2(shards, shard_len),
+            (3, 0) => unrolled_11d::fft_sharded_zero_padded_neon_8_1(shards, shard_len),
+            (3, 1) => unrolled_11d::fft_sharded_zero_padded_neon_8_2(shards, shard_len),
+            (3, 2) => unrolled_11d::fft_sharded_zero_padded_neon_8_4(shards, shard_len),
+            (4, 0) => unrolled_11d::fft_sharded_zero_padded_neon_16_1(shards, shard_len),
+            (4, 1) => unrolled_11d::fft_sharded_zero_padded_neon_16_2(shards, shard_len),
+            (4, 2) => unrolled_11d::fft_sharded_zero_padded_neon_16_4(shards, shard_len),
+            (4, 3) => unrolled_11d::fft_sharded_zero_padded_neon_16_8(shards, shard_len),
+            (5, 0) => unrolled_11d::fft_sharded_zero_padded_neon_32_1(shards, shard_len),
+            (5, 1) => unrolled_11d::fft_sharded_zero_padded_neon_32_2(shards, shard_len),
+            (5, 2) => unrolled_11d::fft_sharded_zero_padded_neon_32_4(shards, shard_len),
+            (5, 3) => unrolled_11d::fft_sharded_zero_padded_neon_32_8(shards, shard_len),
+            (5, 4) => unrolled_11d::fft_sharded_zero_padded_neon_32_16(shards, shard_len),
+            (6, 0) => unrolled_11d::fft_sharded_zero_padded_neon_64_1(shards, shard_len),
+            (6, 1) => unrolled_11d::fft_sharded_zero_padded_neon_64_2(shards, shard_len),
+            (6, 2) => unrolled_11d::fft_sharded_zero_padded_neon_64_4(shards, shard_len),
+            (6, 3) => unrolled_11d::fft_sharded_zero_padded_neon_64_8(shards, shard_len),
+            (6, 4) => unrolled_11d::fft_sharded_zero_padded_neon_64_16(shards, shard_len),
+            (6, 5) => unrolled_11d::fft_sharded_zero_padded_neon_64_32(shards, shard_len),
+            (7, 0) => unrolled_11d::fft_sharded_zero_padded_neon_128_1(shards, shard_len),
+            (7, 1) => unrolled_11d::fft_sharded_zero_padded_neon_128_2(shards, shard_len),
+            (7, 2) => unrolled_11d::fft_sharded_zero_padded_neon_128_4(shards, shard_len),
+            (7, 3) => unrolled_11d::fft_sharded_zero_padded_neon_128_8(shards, shard_len),
+            (7, 4) => unrolled_11d::fft_sharded_zero_padded_neon_128_16(shards, shard_len),
+            (7, 5) => unrolled_11d::fft_sharded_zero_padded_neon_128_32(shards, shard_len),
+            (7, 6) => unrolled_11d::fft_sharded_zero_padded_neon_128_64(shards, shard_len),
+            (8, 0) => unrolled_11d::fft_sharded_zero_padded_neon_256_1(shards, shard_len),
+            (8, 1) => unrolled_11d::fft_sharded_zero_padded_neon_256_2(shards, shard_len),
+            (8, 2) => unrolled_11d::fft_sharded_zero_padded_neon_256_4(shards, shard_len),
+            (8, 3) => unrolled_11d::fft_sharded_zero_padded_neon_256_8(shards, shard_len),
+            (8, 4) => unrolled_11d::fft_sharded_zero_padded_neon_256_16(shards, shard_len),
+            (8, 5) => unrolled_11d::fft_sharded_zero_padded_neon_256_32(shards, shard_len),
+            (8, 6) => unrolled_11d::fft_sharded_zero_padded_neon_256_64(shards, shard_len),
+            (8, 7) => unrolled_11d::fft_sharded_zero_padded_neon_256_128(shards, shard_len),
+            _ => unreachable!("k={k} must be in 1..=8 and log_support must be < k"),
         }
     }
 
@@ -286,50 +282,48 @@ impl Kernel<Gf2p8_11d> for NeonKernel<Gf2p8_11d> {
         k: u8,
         beta: Gf2p8_11d,
     ) {
-        unsafe {
-            if beta == Gf2p8_11d::zero() {
-                match k {
-                    0 => {}
-                    1 => unrolled_11d::ifft_sharded_neon_2(shards, shard_len),
-                    2 => unrolled_11d::ifft_sharded_neon_4(shards, shard_len),
-                    3 => unrolled_11d::ifft_sharded_neon_8(shards, shard_len),
-                    4 => unrolled_11d::ifft_sharded_neon_16(shards, shard_len),
-                    5 => unrolled_11d::ifft_sharded_neon_32(shards, shard_len),
-                    6 => unrolled_11d::ifft_sharded_neon_64(shards, shard_len),
-                    7 => unrolled_11d::ifft_sharded_neon_128(shards, shard_len),
-                    8 => unrolled_11d::ifft_sharded_neon_256(shards, shard_len),
-                    _ => unreachable!("k={k} must be in 0..=8"),
+        if beta == Gf2p8_11d::zero() {
+            match k {
+                0 => {}
+                1 => unrolled_11d::ifft_sharded_neon_2(shards, shard_len),
+                2 => unrolled_11d::ifft_sharded_neon_4(shards, shard_len),
+                3 => unrolled_11d::ifft_sharded_neon_8(shards, shard_len),
+                4 => unrolled_11d::ifft_sharded_neon_16(shards, shard_len),
+                5 => unrolled_11d::ifft_sharded_neon_32(shards, shard_len),
+                6 => unrolled_11d::ifft_sharded_neon_64(shards, shard_len),
+                7 => unrolled_11d::ifft_sharded_neon_128(shards, shard_len),
+                8 => unrolled_11d::ifft_sharded_neon_256(shards, shard_len),
+                _ => unreachable!("k={k} must be in 0..=8"),
+            }
+        } else {
+            match (k, u8::from(beta)) {
+                (0, _) => {}
+                (1, b) if b == CANTOR_SUBSPACE[1] => {
+                    unrolled_11d::ifft_sharded_neon_2_01(shards, shard_len)
                 }
-            } else {
-                match (k, u8::from(beta)) {
-                    (0, _) => {}
-                    (1, b) if b == CANTOR_SUBSPACE[1] => {
-                        unrolled_11d::ifft_sharded_neon_2_01(shards, shard_len)
-                    }
 
-                    (2, b) if b == CANTOR_SUBSPACE[2] => {
-                        unrolled_11d::ifft_sharded_neon_4_d6(shards, shard_len)
-                    }
-                    (3, b) if b == CANTOR_SUBSPACE[4] => {
-                        unrolled_11d::ifft_sharded_neon_8_98(shards, shard_len)
-                    }
-                    (4, b) if b == CANTOR_SUBSPACE[8] => {
-                        unrolled_11d::ifft_sharded_neon_16_92(shards, shard_len)
-                    }
-                    (5, b) if b == CANTOR_SUBSPACE[16] => {
-                        unrolled_11d::ifft_sharded_neon_32_56(shards, shard_len)
-                    }
-                    (6, b) if b == CANTOR_SUBSPACE[32] => {
-                        unrolled_11d::ifft_sharded_neon_64_c8(shards, shard_len)
-                    }
-                    (7, b) if b == CANTOR_SUBSPACE[64] => {
-                        unrolled_11d::ifft_sharded_neon_128_58(shards, shard_len)
-                    }
-                    (8, b) if b == CANTOR_SUBSPACE[128] => {
-                        unrolled_11d::ifft_sharded_neon_256_e7(shards, shard_len)
-                    }
-                    _ => ifft_sharded(basis, shards, shard_len, k, beta),
+                (2, b) if b == CANTOR_SUBSPACE[2] => {
+                    unrolled_11d::ifft_sharded_neon_4_d6(shards, shard_len)
                 }
+                (3, b) if b == CANTOR_SUBSPACE[4] => {
+                    unrolled_11d::ifft_sharded_neon_8_98(shards, shard_len)
+                }
+                (4, b) if b == CANTOR_SUBSPACE[8] => {
+                    unrolled_11d::ifft_sharded_neon_16_92(shards, shard_len)
+                }
+                (5, b) if b == CANTOR_SUBSPACE[16] => {
+                    unrolled_11d::ifft_sharded_neon_32_56(shards, shard_len)
+                }
+                (6, b) if b == CANTOR_SUBSPACE[32] => {
+                    unrolled_11d::ifft_sharded_neon_64_c8(shards, shard_len)
+                }
+                (7, b) if b == CANTOR_SUBSPACE[64] => {
+                    unrolled_11d::ifft_sharded_neon_128_58(shards, shard_len)
+                }
+                (8, b) if b == CANTOR_SUBSPACE[128] => {
+                    unrolled_11d::ifft_sharded_neon_256_e7(shards, shard_len)
+                }
+                _ => ifft_sharded(basis, shards, shard_len, k, beta),
             }
         }
     }

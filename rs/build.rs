@@ -868,7 +868,6 @@ where
         "\
         use additive_fft_reed_solomon_gf2p8::Gf2p8;
 use super::{{butterfly_fwd, butterfly_inv, NIBBLE_MUL_TABLE}};
-use std::arch::aarch64::*;
 "
     )?;
 
