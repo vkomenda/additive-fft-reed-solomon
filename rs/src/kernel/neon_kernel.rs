@@ -1,7 +1,7 @@
 use super::Kernel;
 use crate::{
     gf2p8lut::{CantorBasisLut, Gf2p8Lut},
-    poly_11d_lut::generated::NIBBLE_MUL_TABLE,
+    poly_11d_lut::generated::{CANTOR_SUBSPACE, NIBBLE_MUL_TABLE},
 };
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, NibbleMulTable};
 use core::arch::aarch64::*;
@@ -228,7 +228,7 @@ impl Kernel<Gf2p8_11d> for NeonKernel<Gf2p8_11d> {
                     _ => unreachable!("k={k} must be in 0..=8"),
                 }
             } else {
-                fft_sharded_neon(basis, shards, shard_len, k, beta);
+                fft_sharded(basis, shards, shard_len, k, beta);
             }
         }
     }
@@ -326,7 +326,7 @@ impl Kernel<Gf2p8_11d> for NeonKernel<Gf2p8_11d> {
                     (8, b) if b == CANTOR_SUBSPACE[128] => {
                         unrolled_11d::ifft_sharded_neon_256_e7(shards, shard_len)
                     }
-                    _ => ifft_sharded_neon(basis, shards, shard_len, k, beta),
+                    _ => ifft_sharded(basis, shards, shard_len, k, beta),
                 }
             }
         }
