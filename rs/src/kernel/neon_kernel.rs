@@ -254,6 +254,22 @@ mod tests {
         assert!(target_aarch64);
     }
 
+    #[test]
+    fn mul_vec_matches_mul_lut() {
+        for p in 0..=255u8 {
+            let m = &NIBBLE_MUL_TABLE[p as usize];
+            for x in 0..=255u8 {
+                let expected = Gf2p8_11d(x).mul_lut(Gf2p8_11d(p));
+
+                let actual = unsafe {
+                    let v = vdupq_n_u8(x); // copy x cross all 16 lanes
+                    Gf2p8_11d(vgetq_lane_u8::<0>(mul_vec(v, m)))
+                };
+                assert_eq!(expected, actual, "p={p:02x} x={x:02x}");
+            }
+        }
+    }
+
     fn make_shards(n: usize, shard_len: usize) -> Vec<Gf2p8_11d> {
         (0..n)
             .flat_map(|i| {
