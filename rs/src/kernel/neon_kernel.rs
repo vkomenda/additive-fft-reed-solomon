@@ -12,13 +12,15 @@ pub mod unrolled_11d {
 }
 
 #[inline]
-unsafe fn mul_vec(v: uint8x16_t, m: &NibbleMulTable) -> uint8x16_t {
-    let lo_v = vld1q_u8(m.0.as_ptr());
-    let hi_v = vld1q_u8(m.1.as_ptr());
-    let mask = vdupq_n_u8(0x0f);
-    let lo = vqtbl1q_u8(lo_v, vandq_u8(v, mask));
-    let hi = vqtbl1q_u8(hi_v, vshrq_n_u8(v, 4));
-    veorq_u8(lo, hi)
+fn mul_vec(v: uint8x16_t, m: &NibbleMulTable) -> uint8x16_t {
+    unsafe {
+        let lo_v = vld1q_u8(m.0.as_ptr());
+        let hi_v = vld1q_u8(m.1.as_ptr());
+        let mask = vdupq_n_u8(0x0f);
+        let lo = vqtbl1q_u8(lo_v, vandq_u8(v, mask));
+        let hi = vqtbl1q_u8(hi_v, vshrq_n_u8(v, 4));
+        veorq_u8(lo, hi)
+    }
 }
 
 #[inline]
