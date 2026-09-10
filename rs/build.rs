@@ -631,13 +631,13 @@ fn write_butterfly_fwd_neon<G: Gf2p8 + fmt::Debug>(
     let fwd_op = if twiddle == G::zero() {
         "for (ai, bi) in a.iter().zip(b.iter_mut()) { *bi = bi.add(*ai); }"
     } else {
-        "butterfly_fwd_neon(a, b, shard_len, m);"
+        "butterfly_fwd(a, b, shard_len, m);"
     };
 
     let fwd_op_half1 = if twiddle == G::zero() {
         "for (ai, bi) in lo.iter().zip(hi.iter_mut()) { *bi = bi.add(*ai); }"
     } else {
-        "butterfly_fwd_neon(lo, hi, shard_len, m);"
+        "butterfly_fwd(lo, hi, shard_len, m);"
     };
 
     writeln!(f, "    {{")?;
@@ -683,13 +683,13 @@ fn write_butterfly_inv_neon<G: Gf2p8 + fmt::Debug>(
     let inv_op = if twiddle == G::zero() {
         "for (ai, bi) in a.iter().zip(b.iter_mut()) { *bi = ai.add(*bi); }"
     } else {
-        "butterfly_inv_gfni(a, b, shard_len, m);"
+        "butterfly_inv(a, b, shard_len, m);"
     };
 
     let inv_op_half1 = if twiddle == G::zero() {
         "for (ai, bi) in lo.iter().zip(hi.iter_mut()) { *bi = ai.add(*bi); }"
     } else {
-        "butterfly_inv_gfni(lo, hi, shard_len, m);"
+        "butterfly_inv(lo, hi, shard_len, m);"
     };
 
     writeln!(f, "    {{")?;
@@ -866,9 +866,9 @@ where
     writeln!(
         f,
         "\
-        use additive_fft_reed_solomon_gf2p8::{{Gf2p8, NIBBLE_MUL_TABLE}};
-use super::{{butterfly_fwd, butterfly_inv}};
-use std::arch::x86_64::*;
+        use additive_fft_reed_solomon_gf2p8::Gf2p8;
+use super::{{butterfly_fwd, butterfly_inv, NIBBLE_MUL_TABLE}};
+use std::arch::aarch64::*;
 "
     )?;
 
