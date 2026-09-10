@@ -77,9 +77,9 @@ mod tests {
                 let expected = a.mul(b);
 
                 let mat = a.into_mul_matrix();
-                let actual = mat.apply(b.into());
+                let actual: u8 = mat.apply(b.into());
 
-                assert_eq!(actual, expected.into());
+                assert_eq!(actual, u8::from(expected));
             }
         }
     }

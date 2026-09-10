@@ -230,12 +230,12 @@ impl Kernel<Gf2p8_11d> for NeonKernel<Gf2p8_11d> {
     }
 
     fn scale(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
-        let m = make_mul_table(scalar);
+        let m = &NIBBLE_MUL_TABLE[scalar.into_usize()];
         scale(src, dst, dst.len(), m);
     }
 
     fn scale_in_place(dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
-        let m = make_mul_table(scalar);
+        let m = &NIBBLE_MUL_TABLE[scalar.into_usize()];
         scale_in_place(dst, dst.len(), m);
     }
 }
@@ -278,9 +278,7 @@ mod tests {
                 let mut actual = expected.clone();
 
                 lut_kernel::fft_sharded(&basis, &mut expected, shard_len, k, beta);
-                unsafe {
-                    fft_sharded(&basis, &mut actual, shard_len, k, beta);
-                }
+                fft_sharded(&basis, &mut actual, shard_len, k, beta);
 
                 assert_eq!(expected, actual, "k={k} shard_len={shard_len}");
             }
@@ -299,9 +297,7 @@ mod tests {
                 let mut actual = expected.clone();
 
                 lut_kernel::ifft_sharded(&basis, &mut expected, shard_len, k, beta);
-                unsafe {
-                    ifft_sharded(&basis, &mut actual, shard_len, k, beta);
-                }
+                ifft_sharded(&basis, &mut actual, shard_len, k, beta);
 
                 assert_eq!(expected, actual, "k={k} shard_len={shard_len}");
             }
@@ -319,10 +315,8 @@ mod tests {
                 let original = make_shards(n, shard_len);
                 let mut data = original.clone();
 
-                unsafe {
-                    ifft_sharded(&basis, &mut data, shard_len, k, beta);
-                    fft_sharded(&basis, &mut data, shard_len, k, beta);
-                }
+                ifft_sharded(&basis, &mut data, shard_len, k, beta);
+                fft_sharded(&basis, &mut data, shard_len, k, beta);
 
                 assert_eq!(data, original, "k={k} shard_len={shard_len}");
             }
