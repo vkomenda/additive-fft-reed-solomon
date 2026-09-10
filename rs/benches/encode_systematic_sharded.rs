@@ -1,9 +1,11 @@
 #[cfg(native_gfni)]
-use additive_fft_reed_solomon::GfniKernel;
+use additive_fft_reed_solomon::kernel::gfni_kernel::GfniKernel;
 #[cfg(native_neon)]
-use additive_fft_reed_solomon::NeonKernel;
+use additive_fft_reed_solomon::kernel::neon_kernel::NeonKernel;
 use additive_fft_reed_solomon::{
-    LutKernel, codec::Codec, kernel::Kernel, poly_11d_lut::CantorBasisLut11d,
+    codec::Codec,
+    kernel::{Kernel, lut_kernel::LutKernel},
+    poly_11d_lut::CantorBasisLut11d,
 };
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d};
 use criterion::{

@@ -1,5 +1,7 @@
 #[cfg(native_gfni)]
 use additive_fft_reed_solomon::kernel::gfni_kernel::GfniKernel;
+#[cfg(native_neon)]
+use additive_fft_reed_solomon::kernel::neon_kernel::NeonKernel;
 use additive_fft_reed_solomon::{
     codec::Codec,
     gf2p8lut::CantorBasisLut,
@@ -192,6 +194,32 @@ fn bench_recover_erasures_sharded(c: &mut Criterion) {
             &mut rng,
             GfniKernel<Gf2p8_11d>,
             "gfni",
+            [
+                (2, 1),
+                (4, 1),
+                (4, 2),
+                (8, 2),
+                (8, 4),
+                (16, 4),
+                (16, 8),
+                (32, 8),
+                (32, 16),
+                (64, 16),
+                (64, 32),
+                (128, 32),
+                (128, 64),
+                (256, 64),
+                (256, 128),
+            ]
+        );
+
+        #[cfg(native_neon)]
+        bench_params!(
+            group,
+            shard_len,
+            &mut rng,
+            NeonKernel<Gf2p8_11d>,
+            "neon",
             [
                 (2, 1),
                 (4, 1),
