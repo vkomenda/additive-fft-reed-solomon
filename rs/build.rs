@@ -388,7 +388,7 @@ const LUT: UnrollTarget<Gf2p8_11d> = UnrollTarget {
 
 const NEON: UnrollTarget<Gf2p8_11d> = UnrollTarget {
     name: "neon",
-    cfg: "#[cfg(any(native_neon, feature = \"compile_neon\"))]\n",
+    cfg: "#[cfg(native_neon)]\n",
     attr: "",
     get_mul_table: |t| format!("&NIBBLE_MUL_TABLE[{t}]"),
     mul_table_import: "NIBBLE_MUL_TABLE",
