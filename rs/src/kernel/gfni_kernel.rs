@@ -13,7 +13,7 @@ pub mod unrolled_11d {
 
 /// Forward butterfly transforming (a, b) into (a + T·b, b + a + T·b).
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
-fn butterfly_fwd_gfni<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, mat: __m512i) {
+fn butterfly_fwd<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, mat: __m512i) {
     let a = a.as_mut_ptr();
     let b = b.as_mut_ptr();
     let mut i = 0;
@@ -45,7 +45,7 @@ fn butterfly_fwd_gfni<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, mat: __m51
 
 /// Inverse butterfly transforming (g0, g1) into (g0 + T·(g0+g1), g0+g1).
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
-fn butterfly_inv_gfni<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, mat: __m512i) {
+fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, mat: __m512i) {
     let a = a.as_mut_ptr();
     let b = b.as_mut_ptr();
     let mut i = 0;
@@ -92,7 +92,7 @@ fn fft_sharded_gfni<G: Gf2p8Lut>(
 
     for i in 0..half {
         let (left, right) = shards.split_at_mut((i + half) * shard_len);
-        butterfly_fwd_gfni(
+        butterfly_fwd(
             &mut left[i * shard_len..],
             &mut right[..shard_len],
             shard_len,
@@ -140,7 +140,7 @@ fn ifft_sharded_gfni<G: Gf2p8Lut>(
 
     for i in 0..half {
         let (left, right) = shards.split_at_mut((i + half) * shard_len);
-        butterfly_inv_gfni(
+        butterfly_inv(
             &mut left[i * shard_len..],
             &mut right[..shard_len],
             shard_len,

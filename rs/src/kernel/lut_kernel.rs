@@ -9,7 +9,7 @@ pub mod unrolled_11d {
 }
 
 /// Forward butterfly on one shard pair.
-fn butterfly_fwd<G: Gf2p8>(a: &mut [G], b: &mut [G], lut: &[u8; FIELD_SIZE]) {
+fn butterfly_fwd<G: Gf2p8>(a: &mut [G], b: &mut [G], _len: usize, lut: &[u8; FIELD_SIZE]) {
     for (ai, bi) in a.iter_mut().zip(b.iter_mut()) {
         let t = G::from(lut[bi.into_usize()]); // T * b
         *ai = ai.add(t); // g0 = a + T*b
@@ -18,7 +18,7 @@ fn butterfly_fwd<G: Gf2p8>(a: &mut [G], b: &mut [G], lut: &[u8; FIELD_SIZE]) {
 }
 
 /// Inverse butterfly on one shard pair.
-fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], lut: &[u8; FIELD_SIZE]) {
+fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], _len: usize, lut: &[u8; FIELD_SIZE]) {
     for (ai, bi) in a.iter_mut().zip(b.iter_mut()) {
         *bi = bi.add(*ai); //  d' = g0 + g1
         *ai = ai.add(G::from(lut[bi.into_usize()])); //  d  = g0 + T*d'
@@ -44,7 +44,7 @@ pub(crate) fn fft_sharded<G: Gf2p8Lut>(
         let (left, right) = shards.split_at_mut((i + half) * shard_len);
         let a = &mut left[i * shard_len..(i + 1) * shard_len];
         let b = &mut right[..shard_len];
-        butterfly_fwd(a, b, lut);
+        butterfly_fwd(a, b, 0, lut);
     }
 
     let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
@@ -101,7 +101,7 @@ pub(crate) fn ifft_sharded<G: Gf2p8Lut>(
         let (left, right) = shards.split_at_mut((i + half) * shard_len);
         let a = &mut left[i * shard_len..(i + 1) * shard_len];
         let b = &mut right[..shard_len];
-        butterfly_inv(a, b, lut);
+        butterfly_inv(a, b, 0, lut);
     }
 }
 
