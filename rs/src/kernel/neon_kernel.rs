@@ -24,11 +24,6 @@ fn mul_vec(v: uint8x16_t, m: &NibbleMulTable) -> uint8x16_t {
 }
 
 #[inline]
-fn mul_scalar<G: Gf2p8>(x: G, m: &NibbleMulTable) -> G {
-    (m.1[x.into_usize() >> 4] ^ m.0[x.into_usize() & 0xf]).into()
-}
-
-#[inline]
 fn butterfly_fwd<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: &NibbleMulTable) {
     let mut i = 0;
     {
@@ -51,7 +46,7 @@ fn butterfly_fwd<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: &NibbleMulTa
     while i < len {
         let x = a[i];
         let y = b[i];
-        let g0 = x.add(mul_scalar(y, m));
+        let g0 = x.add(y.nibble_mul(m));
         a[i] = g0;
         b[i] = y.add(g0);
         i += 1;
@@ -80,7 +75,7 @@ fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: &NibbleMulTa
         let x = a[i];
         let y = b[i];
         let y = x.add(y);
-        let x = x.add(mul_scalar(y, m));
+        let x = x.add(y.nibble_mul(m));
         a[i] = x;
         b[i] = y;
         i += 1;
@@ -175,7 +170,7 @@ fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: &NibbleMulTable) {
     }
     while i < len {
         let x = src[i];
-        let r = mul_scalar(x, m);
+        let r = x.nibble_mul(m);
         dst[i] = r;
         i += 1;
     }
@@ -196,7 +191,7 @@ fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: &NibbleMulTable) {
     }
     while i < len {
         let x = dst[i];
-        let r = mul_scalar(x, m);
+        let r = x.nibble_mul(m);
         dst[i] = r;
         i += 1;
     }

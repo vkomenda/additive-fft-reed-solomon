@@ -1,7 +1,9 @@
+#[cfg(any(native_avx2, feature = "compile_avx2"))]
+pub mod avx2_kernel;
 #[cfg(any(native_gfni, feature = "compile_gfni"))]
 pub mod gfni_kernel;
 pub mod lut_kernel;
-#[cfg(any(native_neon, feature = "compile_neon"))]
+#[cfg(native_neon)]
 pub mod neon_kernel;
 
 use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};

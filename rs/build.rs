@@ -1044,24 +1044,28 @@ fn main() {
         .expect("NEON kernel");
 
     // CPU feature detection
-    #[cfg(target_arch = "x86_64")]
-    {
-        let has_gfni = is_x86_feature_detected!("avx512f")
-            && is_x86_feature_detected!("avx512bw")
-            && is_x86_feature_detected!("gfni");
-        let has_avx2 = is_x86_feature_detected!("avx2");
+    let target = std::env::var("TARGET").unwrap();
+    let host = std::env::var("HOST").unwrap();
+    let native = target == host;
 
-        if has_gfni {
-            println!("cargo:rustc-cfg=native_gfni");
-        }
-        if has_avx2 {
-            println!("cargo:rustc-cfg=native_avx2");
-        }
+    if target.starts_with("aarch64") {
+        // NEON is included as standard on Aarch64
+        println!("cargo:rustc-cfg=native_neon");
     }
 
-    #[cfg(target_arch = "aarch64")]
-    {
-        println!("cargo:rustc-cfg=native_neon");
+    // Feature detection only works when the build machine is the target machine. Cross builds must
+    // use the compile_* features to opt in.
+    #[cfg(target_arch = "x86_64")]
+    if native {
+        if is_x86_feature_detected!("avx512f")
+            && is_x86_feature_detected!("avx512bw")
+            && is_x86_feature_detected!("gfni")
+        {
+            println!("cargo:rustc-cfg=native_gfni");
+        }
+        if is_x86_feature_detected!("avx2") {
+            println!("cargo:rustc-cfg=native_avx2");
+        }
     }
 
     // Emit the lint checker tweaks on all platforms.

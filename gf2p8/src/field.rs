@@ -178,6 +178,12 @@ pub trait Gf2p8: Sized + Copy + From<u8> + Into<u8> + PartialEq {
         (0..FIELD_SIZE).map(|i| Self::from(i as u8).nibble_mul_table())
     }
 
+    #[inline]
+    fn nibble_mul(self, m: &NibbleMulTable) -> Self {
+        let x = self.into_usize();
+        (m.1[x >> 4] ^ m.0[x & 0xf]).into()
+    }
+
     // TODO: vectorized ops need to move to a dedicated trait.
     fn shard_add(a: &mut [Self], b: &[Self]) {
         for (x, y) in a.iter_mut().zip(b) {

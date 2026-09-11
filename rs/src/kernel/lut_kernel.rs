@@ -25,7 +25,7 @@ fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], lut: &[u8; FIELD_SIZE]) {
     }
 }
 
-pub fn fft_sharded<G: Gf2p8Lut>(
+pub(crate) fn fft_sharded<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [G],
     shard_len: usize,
@@ -53,7 +53,8 @@ pub fn fft_sharded<G: Gf2p8Lut>(
     fft_sharded(basis, &mut shards[h..], shard_len, k - 1, next_beta);
 }
 
-pub fn fft_sharded_zero_padded<G: Gf2p8Lut>(
+#[cfg(test)]
+pub(crate) fn fft_sharded_zero_padded<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [G],
     shard_len: usize,
@@ -76,7 +77,7 @@ pub fn fft_sharded_zero_padded<G: Gf2p8Lut>(
     fft_sharded_zero_padded(basis, hi, shard_len, k - 1, next_beta, log_support);
 }
 
-pub fn ifft_sharded<G: Gf2p8Lut>(
+pub(crate) fn ifft_sharded<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [G],
     shard_len: usize,
@@ -104,14 +105,14 @@ pub fn ifft_sharded<G: Gf2p8Lut>(
     }
 }
 
-pub fn scale<G: Gf2p8Lut>(src: &[G], dst: &mut [G], scalar: G) {
+pub(crate) fn scale<G: Gf2p8Lut>(src: &[G], dst: &mut [G], scalar: G) {
     let lut = &MUL_TABLE[scalar.into_usize()];
     for (d, s) in dst.iter_mut().zip(src.iter()) {
         *d = G::from(lut[s.into_usize()]);
     }
 }
 
-pub fn scale_in_place<G: Gf2p8Lut>(dst: &mut [G], scalar: G) {
+pub(crate) fn scale_in_place<G: Gf2p8Lut>(dst: &mut [G], scalar: G) {
     let lut = &MUL_TABLE[scalar.into_usize()];
     for b in dst.iter_mut() {
         *b = G::from(lut[b.into_usize()]);
