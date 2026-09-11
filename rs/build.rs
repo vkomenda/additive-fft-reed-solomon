@@ -27,6 +27,7 @@ struct UnrollTarget<G> {
     get_mul_table: fn(usize) -> String,
     mul_table_import: &'static str,
     g: &'static str,
+    extra_imports: &'static str,
     _phant: PhantomData<G>,
 }
 
@@ -292,8 +293,8 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
             "\
             use additive_fft_reed_solomon_gf2p8::{{Gf2p8, {}}};
 use super::{{butterfly_fwd, butterfly_inv, {}}};
-",
-            self.g, self.mul_table_import
+{}",
+            self.g, self.mul_table_import, self.extra_imports,
         )?;
 
         for k in 0..8 {
@@ -363,6 +364,7 @@ const AVX2: UnrollTarget<Gf2p8_11d> = UnrollTarget {
     get_mul_table: |t| format!("&NIBBLE_MUL_TABLE[{t}]"),
     mul_table_import: "NIBBLE_MUL_TABLE",
     g: "Gf2p8_11d",
+    extra_imports: "",
     _phant: PhantomData,
 };
 
@@ -373,6 +375,7 @@ const GFNI: UnrollTarget<Gf2p8_11d> = UnrollTarget {
     get_mul_table: |t| format!("_mm512_set1_epi64(GFNI_MUL_TABLE[{t}] as i64)"),
     mul_table_import: "GFNI_MUL_TABLE",
     g: "Gf2p8_11d",
+    extra_imports: "use std::arch::x86_64::*;\n",
     _phant: PhantomData,
 };
 
@@ -383,6 +386,7 @@ const LUT: UnrollTarget<Gf2p8_11d> = UnrollTarget {
     get_mul_table: |t| format!("&MUL_TABLE[{t}]"),
     mul_table_import: "MUL_TABLE",
     g: "Gf2p8_11d",
+    extra_imports: "",
     _phant: PhantomData,
 };
 
@@ -393,6 +397,7 @@ const NEON: UnrollTarget<Gf2p8_11d> = UnrollTarget {
     get_mul_table: |t| format!("&NIBBLE_MUL_TABLE[{t}]"),
     mul_table_import: "NIBBLE_MUL_TABLE",
     g: "Gf2p8_11d",
+    extra_imports: "",
     _phant: PhantomData,
 };
 
