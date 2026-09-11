@@ -1,7 +1,7 @@
 use super::Kernel;
 use crate::{
     gf2p8lut::{CantorBasisLut, Gf2p8Lut},
-    poly_11d_lut::generated::CANTOR_SUBSPACE,
+    poly_11d_lut::generated::{CANTOR_SUBSPACE, GFNI_MUL_TABLE},
 };
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d};
 use core::arch::x86_64::*;
