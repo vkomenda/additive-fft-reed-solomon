@@ -6,6 +6,14 @@ In addition to the scalar encoder and the error-correcting decoder presented in 
 
 An (n,k) RS code appends T=n-k parity symbols to the k message symbols, forming a codeword of length n. (n,k) RS codes can correct up to floor(T/2) erroneous symbols (shards) when the locations of those errors are not known, and up to T erasures (shards) when erasure locations are known.
 
+The library provides SIMD acceleration on the following targets:
+
+- x86-64 with AVX512-GFNI extensions
+
+- x86-64 with AVX2 extensions
+
+- Aarch64
+
 
 ## On additive RS
 
@@ -49,9 +57,12 @@ Throughput is measured in the number of message input payload bytes. Aligned inp
 
 - Erasure-heavy environments - distributed storage, high throughput erasure-coded gossip messaging.
 
-- x86-64 with AVX-512 GFNI. The GFNI FFT butterfly gives the largest absolute throughput.
+- x86-64 with AVX-512 GFNI. The 512-bit wide GFNI FFT butterfly gives the largest absolute throughput.
 
-- Aarch64 NEON. Field multiply via 128-bit wide nibble table lookups.
+- x86-64 with AVX2. 256-bit wide field multiply via nibble table lookup.
+
+- Aarch64 NEON. 128-bit wide field multiply via nibble table lookup.
+
 
 ### Not a good fit
 
