@@ -1,3 +1,5 @@
+#[cfg(native_avx2)]
+use additive_fft_reed_solomon::kernel::avx2_kernel::Avx2Kernel;
 #[cfg(native_gfni)]
 use additive_fft_reed_solomon::kernel::gfni_kernel::GfniKernel;
 #[cfg(native_neon)]
@@ -168,6 +170,32 @@ fn bench_recover_erasures_sharded(c: &mut Criterion) {
             &mut rng,
             LutKernel<Gf2p8_11d>,
             "lut",
+            [
+                (2, 1),
+                (4, 1),
+                (4, 2),
+                (8, 2),
+                (8, 4),
+                (16, 4),
+                (16, 8),
+                (32, 8),
+                (32, 16),
+                (64, 16),
+                (64, 32),
+                (128, 32),
+                (128, 64),
+                (256, 64),
+                (256, 128),
+            ]
+        );
+
+        #[cfg(native_avx2)]
+        bench_params!(
+            group,
+            shard_len,
+            &mut rng,
+            Avx2Kernel<Gf2p8_11d>,
+            "avx2",
             [
                 (2, 1),
                 (4, 1),
