@@ -16,6 +16,12 @@ use poly_11d_lut::CantorBasisLut11d;
 
 pub use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d};
 
+/// Aligned buffer type helper to make good use of SIMD ops and avoid memory accesses across
+/// cache-line boundaries. Specifically useful for shard buffers.
+#[repr(align(64))]
+#[derive(Copy, Clone, Debug)]
+pub struct AlignedArray<G, const L: usize>([G; L]);
+
 /// Reed-Solomon codec interface type with precomputed lookup tables.
 ///
 /// ## Arguments

@@ -6,6 +6,7 @@ use crate::{
     },
 };
 use std::marker::PhantomData;
+use std::mem;
 
 #[derive(Copy, Clone, Default)]
 pub struct Codec<G, B, K, const N: usize, const T: usize> {
@@ -474,15 +475,19 @@ where
             pts[k] = self.basis.get_subspace_point_lut(pos);
         }
 
-        let mut scratch = [G::zero(); N];
-        let mut lambda = [G::zero(); N];
-        lambda[0] = G::one();
+        let mut ping = [G::zero(); N];
+        let mut pong = [G::zero(); N];
+        ping[0] = G::one();
+        let (mut src, mut dst) = (&mut ping, &mut pong);
 
-        for p in pts.into_iter().take(erasure_count) {
-            scratch.copy_from_slice(&lambda);
-            K::scale_in_place(&mut lambda, p);
-            lambda[1..].poly_add_in_place(&scratch[..N - 1]);
+        for k in 0..erasure_count {
+            // After k iterations lambda has degree k, so multiplying by (x + p) touches only
+            // indices 0..=k+1; the rest of the array is still zero.
+            K::scale(&src[..=k + 1], &mut dst[..=k + 1], pts[k]);
+            dst[1..=k + 1].poly_add_in_place(&src[..=k]);
+            mem::swap(&mut src, &mut dst);
         }
+        let lambda = *src;
 
         let mut denoms = [G::zero(); N];
         for j in 0..erasure_count {
