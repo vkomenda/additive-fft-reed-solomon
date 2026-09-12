@@ -474,14 +474,14 @@ where
             pts[k] = self.basis.get_subspace_point_lut(pos);
         }
 
+        let mut scratch = [G::zero(); N];
         let mut lambda = [G::zero(); N];
         lambda[0] = G::one();
-        for k in 0..erasure_count {
-            let p = pts[k];
-            for j in (1..=k + 1).rev() {
-                lambda[j] = lambda[j - 1].add(p.mul_lut(lambda[j]));
-            }
-            lambda[0] = p.mul_lut(lambda[0]);
+
+        for p in pts.into_iter().take(erasure_count) {
+            scratch.copy_from_slice(&lambda);
+            K::scale_in_place(&mut lambda, p);
+            lambda[1..].poly_add_in_place(&scratch[..N - 1]);
         }
 
         let mut denoms = [G::zero(); N];
