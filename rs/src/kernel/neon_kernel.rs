@@ -201,7 +201,7 @@ fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: &NibbleMulTable) {
 pub struct NeonKernel<G: Gf2p8Lut>(PhantomData<G>);
 
 impl Kernel<Gf2p8_11d> for NeonKernel<Gf2p8_11d> {
-    const SHARD_ALIGN: usize = 16;
+    const ALIGN: usize = 16;
 
     fn fft_sharded(
         basis: &impl CantorBasisLut<Gf2p8_11d>,

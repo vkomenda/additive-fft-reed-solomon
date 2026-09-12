@@ -198,7 +198,7 @@ fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, mat: __m512i) {
 pub struct GfniKernel<G: Gf2p8Lut>(PhantomData<G>);
 
 impl Kernel<Gf2p8_11d> for GfniKernel<Gf2p8_11d> {
-    const SHARD_ALIGN: usize = 64;
+    const ALIGN: usize = 64;
 
     fn fft_sharded(
         basis: &impl CantorBasisLut<Gf2p8_11d>,

@@ -481,9 +481,12 @@ where
         let (mut src, mut dst) = (&mut ping, &mut pong);
 
         for k in 0..erasure_count {
-            // After k iterations lambda has degree k, so multiplying by (x + p) touches only
-            // indices 0..=k+1; the rest of the array is still zero.
-            K::scale(&src[..=k + 1], &mut dst[..=k + 1], pts[k]);
+            // Round up the scale payload size to fit the kernel vector width to stay away from the
+            // scalar tail path.
+            let lim = (k + 2).next_multiple_of(K::ALIGN).min(N);
+            // After k iterations lambda has degree k, so multiplication only touches indices
+            // 0..=k+1; the rest of the array is still zero.
+            K::scale(&src[..lim], &mut dst[..lim], pts[k]);
             dst[1..=k + 1].poly_add_in_place(&src[..=k]);
             mem::swap(&mut src, &mut dst);
         }

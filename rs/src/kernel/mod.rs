@@ -13,7 +13,7 @@ pub trait Kernel<G: Gf2p8Lut> {
     /// at an address which is a multiple of this constant. The length of every shard in the buffer
     /// must be a multiple of this constant. Unaligned buffers will work but may be noticeably
     /// slower.
-    const SHARD_ALIGN: usize;
+    const ALIGN: usize;
 
     /// Forward transform.
     fn fft_sharded(

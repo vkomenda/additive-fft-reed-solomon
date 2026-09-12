@@ -210,7 +210,7 @@ fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: &NibbleMulTable) {
 pub struct Avx2Kernel<G: Gf2p8Lut>(PhantomData<G>);
 
 impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
-    const SHARD_ALIGN: usize = 32;
+    const ALIGN: usize = 32;
 
     fn fft_sharded(
         basis: &impl CantorBasisLut<Gf2p8_11d>,
