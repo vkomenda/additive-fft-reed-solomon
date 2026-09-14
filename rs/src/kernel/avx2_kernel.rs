@@ -1,9 +1,9 @@
 use super::Kernel;
 use crate::{
     gf2p8lut::{CantorBasisLut, Gf2p8Lut},
-    poly_11d_lut::generated::{CANTOR_SUBSPACE, NIBBLE_MUL_TABLE},
+    poly_11d_lut::generated::{CANTOR_SUBSPACE, NIBBLE_MUL_BY_LOG, NIBBLE_MUL_TABLE},
 };
-use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, NibbleMulTable};
+use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, NibbleMulTable, Z255};
 use core::arch::x86_64::*;
 use std::marker::PhantomData;
 
@@ -350,6 +350,26 @@ impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
         unsafe {
             scale_in_place(dst, dst.len(), m);
         }
+    }
+
+    fn scale_by_log(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], log_m: Z255) {
+        if log_m.is_zero() {
+            dst.fill(Gf2p8_11d::zero());
+            return;
+        }
+
+        let m = &NIBBLE_MUL_BY_LOG[log_m.0 as usize];
+        unsafe { scale(src, dst, dst.len(), m) };
+    }
+
+    fn scale_in_place_by_log(dst: &mut [Gf2p8_11d], log_m: Z255) {
+        if log_m.is_zero() {
+            dst.fill(Gf2p8_11d::zero());
+            return;
+        }
+
+        let m = &NIBBLE_MUL_BY_LOG[log_m.0 as usize];
+        unsafe { scale_in_place(dst, dst.len(), m) };
     }
 }
 

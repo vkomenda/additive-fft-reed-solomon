@@ -220,6 +220,11 @@ impl Z255 {
         Self(((u32::from(self.0) * u32::from(other.0)) % 255) as u8)
     }
 
+    #[inline]
+    pub fn is_zero(self) -> bool {
+        self.0 == 0 || self.0 == 255
+    }
+
     /// Walsh-Hadamard transform over Z/255. `support` is the number of non-zero entries at the
     /// front. Entries beyond it are known zeros. Their butterflies are skipped in early levels.
     pub fn wht(data: &mut [Self; FIELD_SIZE], support: usize) {

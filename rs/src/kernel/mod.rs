@@ -6,6 +6,8 @@ pub mod lut_kernel;
 #[cfg(native_neon)]
 pub mod neon_kernel;
 
+use additive_fft_reed_solomon_gf2p8::Z255;
+
 use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
 
 pub trait Kernel<G: Gf2p8Lut> {
@@ -39,4 +41,8 @@ pub trait Kernel<G: Gf2p8Lut> {
     fn scale(src: &[G], dst: &mut [G], scalar: G);
 
     fn scale_in_place(dst: &mut [G], scalar: G);
+
+    fn scale_by_log(src: &[G], dst: &mut [G], log_m: Z255);
+
+    fn scale_in_place_by_log(dst: &mut [G], log_m: Z255);
 }

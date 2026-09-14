@@ -1,3 +1,4 @@
+use additive_fft_reed_solomon_gf2p8::NibbleMulTable;
 use additive_fft_reed_solomon_gf2p8::{
     CantorBasis, CantorBasis11d, EXP_TABLE_SIZE, FIELD_SIZE, Gf2p8, Gf2p8_11d,
 };
@@ -357,6 +358,27 @@ fn write_bytes(f: &mut impl Write, it: impl Iterator<Item = u8>, has_subarrays: 
     }
 }
 
+fn write_nibble_mul(f: &mut impl Write, arr: &[NibbleMulTable; FIELD_SIZE], name: &'static str) {
+    writeln!(
+        f,
+        "\npub static {name}: [([u8; 16], [u8; 16]); {}] = [",
+        FIELD_SIZE
+    )
+    .unwrap();
+    for t in arr {
+        write!(f, "    ([").unwrap();
+        for i in 0..16 {
+            write!(f, "0x{:02x}, ", t.0[i]).unwrap();
+        }
+        write!(f, "],\n     [").unwrap();
+        for i in 0..16 {
+            write!(f, "0x{:02x}, ", t.1[i]).unwrap();
+        }
+        writeln!(f, "]),").unwrap();
+    }
+    writeln!(f, "];").unwrap();
+}
+
 const AVX2: UnrollTarget<Gf2p8_11d> = UnrollTarget {
     name: "avx2",
     cfg: "#[cfg(any(native_avx2, feature = \"compile_avx2\"))]\n",
@@ -446,28 +468,23 @@ fn main() {
     }
     writeln!(f, "];").unwrap();
 
-    let nibble_mul_iter = Gf2p8_11d::iter_nibble_mul_tables();
-    let nibble_mul_tables: [([u8; 16], [u8; 16]); FIELD_SIZE] =
-        nibble_mul_iter.collect::<Vec<_>>().try_into().unwrap();
+    let gfni_mul_by_log: [u64; FIELD_SIZE] =
+        std::array::from_fn(|l| gfni_mul_mats[exp_table[l] as usize]);
 
-    writeln!(
-        f,
-        "\npub static NIBBLE_MUL_TABLE: [([u8; 16], [u8; 16]); {}] = [",
-        FIELD_SIZE
-    )
-    .unwrap();
-    for t in nibble_mul_tables {
-        write!(f, "    ([").unwrap();
-        for i in 0..16 {
-            write!(f, "0x{:02x}, ", t.0[i]).unwrap();
-        }
-        write!(f, "],\n     [").unwrap();
-        for i in 0..16 {
-            write!(f, "0x{:02x}, ", t.1[i]).unwrap();
-        }
-        writeln!(f, "]),").unwrap();
+    writeln!(f, "\npub static GFNI_MUL_BY_LOG: [u64; {}] = [", FIELD_SIZE).unwrap();
+    for mat in gfni_mul_by_log {
+        writeln!(f, "    0x{:016x},", mat).unwrap();
     }
     writeln!(f, "];").unwrap();
+
+    let nibble_mul_iter = Gf2p8_11d::iter_nibble_mul_tables();
+    let nibble_mul_tables: [NibbleMulTable; FIELD_SIZE] =
+        nibble_mul_iter.collect::<Vec<_>>().try_into().unwrap();
+    write_nibble_mul(&mut f, &nibble_mul_tables, &"NIBBLE_MUL_TABLE");
+
+    let nibble_mul_by_log: [NibbleMulTable; FIELD_SIZE] =
+        std::array::from_fn(|l| nibble_mul_tables[exp_table[l] as usize]);
+    write_nibble_mul(&mut f, &nibble_mul_by_log, &"NIBBLE_MUL_BY_LOG");
 
     let (num_points, points_iter) = basis.iter_subspace_points();
     let subspace_points: [Gf2p8_11d; FIELD_SIZE] =

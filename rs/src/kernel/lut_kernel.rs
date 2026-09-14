@@ -1,7 +1,7 @@
 use super::Kernel;
 use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
-use crate::poly_11d_lut::generated::{CANTOR_SUBSPACE, MUL_TABLE};
-use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8, Gf2p8_11d};
+use crate::poly_11d_lut::generated::{CANTOR_SUBSPACE, EXP_TABLE, MUL_TABLE};
+use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8, Gf2p8_11d, Z255};
 use std::marker::PhantomData;
 
 pub mod unrolled_11d {
@@ -250,6 +250,28 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
 
     fn scale_in_place(dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
         scale_in_place(dst, scalar)
+    }
+
+    fn scale_by_log(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], log_m: Z255) {
+        if log_m.is_zero() {
+            dst.fill(Gf2p8_11d::zero());
+            return;
+        }
+
+        // TODO: use a log-based multiplication table
+        let m = EXP_TABLE[log_m.0 as usize];
+        scale(src, dst, m.into());
+    }
+
+    fn scale_in_place_by_log(dst: &mut [Gf2p8_11d], log_m: Z255) {
+        if log_m.is_zero() {
+            dst.fill(Gf2p8_11d::zero());
+            return;
+        }
+
+        // TODO: use a log-based multiplication table
+        let m = EXP_TABLE[log_m.0 as usize];
+        scale_in_place(dst, m.into());
     }
 }
 

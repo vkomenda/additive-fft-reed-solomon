@@ -3,7 +3,7 @@ use crate::{
     gf2p8lut::{CantorBasisLut, Gf2p8Lut},
     poly_11d_lut::generated::{CANTOR_SUBSPACE, NIBBLE_MUL_TABLE},
 };
-use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, NibbleMulTable};
+use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, NibbleMulTable, Z255};
 use core::arch::aarch64::*;
 use std::marker::PhantomData;
 
@@ -330,6 +330,26 @@ impl Kernel<Gf2p8_11d> for NeonKernel<Gf2p8_11d> {
 
     fn scale_in_place(dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
         let m = &NIBBLE_MUL_TABLE[scalar.into_usize()];
+        scale_in_place(dst, dst.len(), m);
+    }
+
+    fn scale_by_log(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], log_m: Z255) {
+        if log_m.is_zero() {
+            dst.fill(Gf2p8_11d::zero());
+            return;
+        }
+
+        let m = &NIBBLE_MUL_BY_LOG[log_m.0 as usize];
+        scale(src, dst, dst.len(), m);
+    }
+
+    fn scale_in_place_by_log(dst: &mut [Gf2p8_11d], log_m: Z255) {
+        if log_m.is_zero() {
+            dst.fill(Gf2p8_11d::zero());
+            return;
+        }
+
+        let m = &NIBBLE_MUL_BY_LOG[log_m.0 as usize];
         scale_in_place(dst, dst.len(), m);
     }
 }
