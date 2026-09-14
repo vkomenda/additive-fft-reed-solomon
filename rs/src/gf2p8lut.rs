@@ -1,4 +1,4 @@
-use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8};
+use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8, Z255};
 
 /// Precomputed lookup table group operations.
 pub trait Gf2p8Lut: Gf2p8 {
@@ -85,6 +85,8 @@ pub trait CantorBasisLut<G: Gf2p8Lut> {
 
         result
     }
+
+    fn log_walsh_lut(&self) -> &'static [Z255; FIELD_SIZE];
 }
 
 /// The Lin-Chung-Han basis

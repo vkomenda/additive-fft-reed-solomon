@@ -420,6 +420,10 @@ fn main() {
     write!(f, "\npub const CANTOR_BASIS: [u8; 8] = [").unwrap();
     write_points(&mut f, basis.into_iter(), false);
 
+    let log_walsh_iter = basis.iter_log_walsh(&log_table);
+    write!(f, "\npub static LOG_WALSH_TABLE: [u8; {}] = [", FIELD_SIZE).unwrap();
+    write_points(&mut f, log_walsh_iter, false);
+
     let mul_table_iter =
         (0..FIELD_SIZE).map(|x| Gf2p8_11d(x as u8).make_mul_table(&exp_table, &log_table));
     writeln!(

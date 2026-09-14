@@ -192,6 +192,53 @@ pub trait Gf2p8: Sized + Copy + From<u8> + Into<u8> + PartialEq {
     }
 }
 
+/// Element of Z/255, the exponent ring of GF(2^8). Both 0 and 255 represent the zero exponent.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct Z255(pub u8);
+
+impl Z255 {
+    #[inline]
+    pub fn add(self, other: Self) -> Self {
+        let sum = self.0 as u16 + other.0 as u16;
+        Self((sum + (sum >> 8)) as u8)
+    }
+
+    #[inline]
+    pub fn sub(self, other: Self) -> Self {
+        let diff = (self.0 as u16).wrapping_sub(other.0 as u16);
+        Self((diff.wrapping_add(diff >> 8)) as u8)
+    }
+
+    #[inline]
+    pub fn neg(self) -> Self {
+        Self(255 - self.0)
+    }
+
+    #[inline]
+    pub fn mul(self, other: Self) -> Self {
+        Self(((u32::from(self.0) * u32::from(other.0)) % 255) as u8)
+    }
+
+    /// Walsh-Hadamard transform over Z/255. `support` is the number of non-zero entries at the
+    /// front. Entries beyond it are known zeros. Their butterflies are skipped in early levels.
+    pub fn wht(data: &mut [Self; FIELD_SIZE], support: usize) {
+        let mut dist: usize = 1;
+        while dist < FIELD_SIZE {
+            let step = dist << 1;
+            let limit = if step <= support { support } else { FIELD_SIZE };
+            for r in (0..limit).step_by(step) {
+                for i in r..r + dist {
+                    let (a, b) = (data[i], data[i + dist]);
+                    data[i] = a.add(b);
+                    data[i + dist] = a.sub(b);
+                }
+            }
+            dist = step;
+        }
+    }
+}
+
 pub trait CantorBasis<G: Gf2p8>:
     Sized + Copy + Clone + FromIterator<G> + IntoIterator<Item = G> + AsRef<[G]>
 {
@@ -416,5 +463,14 @@ pub trait CantorBasis<G: Gf2p8>:
         }
 
         masks.into_iter().map(|m| (m >> 1) as u8)
+    }
+
+    fn iter_log_walsh(&self, log: &[u8; FIELD_SIZE]) -> impl Iterator<Item = u8> {
+        let mut w = [Z255(0); FIELD_SIZE];
+        for i in 1..FIELD_SIZE {
+            w[i] = Z255(log[self.get_subspace_point(i as u8).into_usize()]);
+        }
+        Z255::wht(&mut w, FIELD_SIZE);
+        w.into_iter().map(|z| z.0)
     }
 }

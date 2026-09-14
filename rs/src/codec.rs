@@ -1,3 +1,5 @@
+use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, field::Z255};
+
 use crate::{
     gf2p8lut::{CantorBasisLut, Gf2p8Lut},
     kernel::Kernel,
@@ -615,5 +617,48 @@ where
         }
 
         true
+    }
+
+    pub(crate) fn locator_log_evals(
+        &self,
+        erasure_positions: &[u8],
+        support: usize,
+    ) -> [Z255; FIELD_SIZE] {
+        let mut ev = [Z255(0); FIELD_SIZE];
+        for &pos in erasure_positions {
+            ev[pos as usize] = Z255(1);
+        }
+
+        Z255::wht(&mut ev, support);
+        for (e, &w) in ev.iter_mut().zip(self.basis.log_walsh_lut().iter()) {
+            *e = e.mul(w);
+        }
+        Z255::wht(&mut ev, FIELD_SIZE);
+
+        ev
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{RsLut, poly_11d_lut::generated::EXP_TABLE};
+    use additive_fft_reed_solomon_gf2p8::Gf2p8;
+
+    #[test]
+    fn single_erasure_log_eval() {
+        let rs: RsLut<256, 128> = Default::default();
+
+        for p in 0..=255 {
+            let ev = rs.locator_log_evals(&[p], FIELD_SIZE);
+            for j in 0..FIELD_SIZE {
+                if j == usize::from(p) {
+                    continue;
+                }
+                let ssp = |k| rs.basis.get_subspace_point_lut(k);
+                let w = ssp(j as u8).add(ssp(p));
+                assert_eq!(EXP_TABLE[ev[j].0 as usize], w.into());
+            }
+        }
     }
 }
