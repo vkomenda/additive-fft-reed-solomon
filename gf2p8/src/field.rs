@@ -192,7 +192,7 @@ pub trait Gf2p8: Sized + Copy + From<u8> + Into<u8> + PartialEq {
     }
 }
 
-/// Element of Z/255, the exponent ring of GF(2^8). Both 0 and 255 represent the zero exponent.
+/// Element of Z/255, the exponent ring of GF(2^8).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Z255(pub u8);
@@ -218,11 +218,6 @@ impl Z255 {
     #[inline]
     pub fn mul(self, other: Self) -> Self {
         Self(((u32::from(self.0) * u32::from(other.0)) % 255) as u8)
-    }
-
-    #[inline]
-    pub fn is_zero(self) -> bool {
-        self.0 == 0 || self.0 == 255
     }
 
     /// Walsh-Hadamard transform over Z/255. `support` is the number of non-zero entries at the

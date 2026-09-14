@@ -253,22 +253,12 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
     }
 
     fn scale_by_log(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], log_m: Z255) {
-        if log_m.is_zero() {
-            dst.fill(Gf2p8_11d::zero());
-            return;
-        }
-
         // TODO: use a log-based multiplication table
         let m = EXP_TABLE[log_m.0 as usize];
         scale(src, dst, m.into());
     }
 
     fn scale_in_place_by_log(dst: &mut [Gf2p8_11d], log_m: Z255) {
-        if log_m.is_zero() {
-            dst.fill(Gf2p8_11d::zero());
-            return;
-        }
-
         // TODO: use a log-based multiplication table
         let m = EXP_TABLE[log_m.0 as usize];
         scale_in_place(dst, m.into());

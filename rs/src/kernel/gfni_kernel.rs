@@ -337,21 +337,11 @@ impl Kernel<Gf2p8_11d> for GfniKernel<Gf2p8_11d> {
     }
 
     fn scale_by_log(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], log_m: Z255) {
-        if log_m.is_zero() {
-            dst.fill(Gf2p8_11d::zero());
-            return;
-        }
-
         let m = &GFNI_MUL_BY_LOG[log_m.0 as usize];
         unsafe { scale(src, dst, dst.len(), m) };
     }
 
     fn scale_in_place_by_log(dst: &mut [Gf2p8_11d], log_m: Z255) {
-        if log_m.is_zero() {
-            dst.fill(Gf2p8_11d::zero());
-            return;
-        }
-
         let m = &GFNI_MUL_BY_LOG[log_m.0 as usize];
         unsafe { scale_in_place(dst, dst.len(), m) };
     }
