@@ -1,7 +1,7 @@
 use super::Kernel;
 use crate::{
     gf2p8lut::{CantorBasisLut, Gf2p8Lut},
-    poly_11d_lut::generated::{CANTOR_SUBSPACE, GFNI_MUL_TABLE},
+    poly_11d_lut::generated::{CANTOR_SUBSPACE, GFNI_MUL_BY_LOG, GFNI_MUL_TABLE},
 };
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, Z255};
 use core::arch::x86_64::*;
@@ -150,7 +150,7 @@ fn ifft_sharded_gfni<G: Gf2p8Lut>(
 }
 
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
-fn scale_gfni<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, mat: __m512i) {
+fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, mat: __m512i) {
     let src = src.as_ptr();
     let dst = dst.as_mut_ptr();
     let mut i = 0;
@@ -328,7 +328,7 @@ impl Kernel<Gf2p8_11d> for GfniKernel<Gf2p8_11d> {
 
     fn scale(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
         let mat = unsafe { _mm512_set1_epi64(scalar.gfni_mul_matrix() as i64) };
-        unsafe { scale_gfni(src, dst, dst.len(), mat) }
+        unsafe { scale(src, dst, dst.len(), mat) }
     }
 
     fn scale_in_place(dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
@@ -337,12 +337,12 @@ impl Kernel<Gf2p8_11d> for GfniKernel<Gf2p8_11d> {
     }
 
     fn scale_by_log(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], log_m: Z255) {
-        let m = &GFNI_MUL_BY_LOG[log_m.0 as usize];
+        let m = unsafe { _mm512_set1_epi64(GFNI_MUL_BY_LOG[log_m.0 as usize] as i64) };
         unsafe { scale(src, dst, dst.len(), m) };
     }
 
     fn scale_in_place_by_log(dst: &mut [Gf2p8_11d], log_m: Z255) {
-        let m = &GFNI_MUL_BY_LOG[log_m.0 as usize];
+        let m = unsafe { _mm512_set1_epi64(GFNI_MUL_BY_LOG[log_m.0 as usize] as i64) };
         unsafe { scale_in_place(dst, dst.len(), m) };
     }
 }

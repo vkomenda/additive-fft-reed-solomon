@@ -521,7 +521,7 @@ where
     /// not matter. Neither do the initial contents of `workspace`.
     ///
     /// # Preconditions
-    /// - All `erasure_positions` are unique.
+    /// - All `erasure_positions` are unique and ordered in ascending order.
     /// - `received` and `workspace` are both of length `N * shard_len`.
     ///
     /// # Returns
@@ -637,6 +637,64 @@ where
 
         ev
     }
+
+    /// Recovers the shards in `received` with indices in `erasure_positions` using and clobbering
+    /// all the other `received` shards.
+    ///
+    /// # Preconditions
+    /// - Contents of `erasure_positions` are unique and ordered in ascending order.
+    /// - Erased shards are zeroed in `received`.
+    /// - `received` is of length `N * shard_len`.
+    ///
+    /// # Returns
+    /// * `true`     - if recovery succeeded
+    /// * `false`    - if recovery failed
+    pub fn recover_erasures_sharded_wht(
+        &self,
+        received: &mut [G],
+        shard_len: usize,
+        erasure_positions: &[u8],
+    ) -> bool {
+        debug_assert_eq!(received.len(), N * shard_len);
+
+        let e = erasure_positions.len();
+
+        if e > T {
+            return false;
+        }
+        if e == 0 || T == 0 {
+            return true;
+        }
+
+        let t_log = T.trailing_zeros() as u8;
+        let n_log = N.trailing_zeros() as u8;
+
+        // Logarighms of evaluations of the locator polynomial.
+        let ev = self.locator_log_evals(erasure_positions, T);
+
+        {
+            let mut scale = |i: usize| {
+                K::scale_in_place_by_log(&mut received[i * shard_len..(i + 1) * shard_len], ev[i])
+            };
+            let mut i = 0;
+            for &p in erasure_positions {
+                while i < p as usize {
+                    // Scale the received shard.
+                    scale(i);
+                    i += 1;
+                }
+                // Skip the erased shard.
+                i += 1;
+            }
+            while i < N as usize {
+                // Scale the received shard.
+                scale(i);
+                i += 1;
+            }
+        }
+
+        true
+    }
 }
 
 #[cfg(test)]
@@ -648,6 +706,7 @@ mod test {
     #[test]
     fn single_erasure_log_eval() {
         let rs: RsLut<256, 128> = Default::default();
+        let ssp = |k| rs.basis.get_subspace_point_lut(k);
 
         for p in 0..=255 {
             let ev = rs.locator_log_evals(&[p], FIELD_SIZE);
@@ -655,7 +714,6 @@ mod test {
                 if j == usize::from(p) {
                     continue;
                 }
-                let ssp = |k| rs.basis.get_subspace_point_lut(k);
                 let w = ssp(j as u8).add(ssp(p));
                 assert_eq!(EXP_TABLE[ev[j].0 as usize], w.into());
             }
