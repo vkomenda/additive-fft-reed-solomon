@@ -16,8 +16,9 @@ use common::*;
 use criterion::{
     BatchSize, Bencher, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main,
 };
-use rand::SeedableRng;
+use rand::distr::{Distribution, Uniform};
 use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
 use std::alloc::{Layout, alloc};
 
 macro_rules! bench_params {
@@ -34,57 +35,71 @@ macro_rules! bench_params {
                 BenchmarkId::new(format!("N{}_T{}_{}_aligned", $n, $t, $kernel_name), $shard_len),
                 &$shard_len,
                 |mut b, &shard_len| {
-                    bench_encode_systematic_sharded_inner(&mut b, &rs, shard_len, &mut $rng, true);
+                    bench_recover_erasures_sharded_clobber_inner(&mut b, &rs, shard_len, &mut $rng, true);
                 },
             );
             $group.bench_with_input(
                 BenchmarkId::new(format!("N{}_T{}_{}_unaligned", $n, $t, $kernel_name), $shard_len),
                 &$shard_len,
                 |mut b, &shard_len| {
-                    bench_encode_systematic_sharded_inner(&mut b, &rs, shard_len, &mut $rng, false);
+                    bench_recover_erasures_sharded_clobber_inner(&mut b, &rs, shard_len, &mut $rng, false);
                 },
             );
         })*
     }
 }
 
-fn aligned_buffer(len: usize) -> Vec<Gf2p8_11d> {
-    let layout = Layout::from_size_align(len, 64).unwrap();
-    let buf = unsafe { alloc(layout) };
-    let codeword: Vec<Gf2p8_11d> = unsafe { Vec::from_raw_parts(buf as *mut Gf2p8_11d, len, len) };
-    codeword
-}
-
-fn bench_encode_systematic_sharded_inner<K, const N: usize, const T: usize>(
+fn bench_recover_erasures_sharded_clobber_inner<K, const N: usize, const T: usize>(
     b: &mut Bencher<'_>,
     rs: &Codec<Gf2p8_11d, CantorBasisLut11d, K, N, T>,
     shard_len: usize,
-    rng: &mut SmallRng,
+    rng: &mut impl Rng,
     is_aligned: bool,
 ) where
     K: Kernel<Gf2p8_11d>,
 {
-    let (message, _message_backing) = create_buffer(N - T, shard_len, Some(rng), is_aligned);
     b.iter_batched(
         || {
-            let (parity_backing, parity_start) = create_buffer(T, shard_len, None, is_aligned);
-            let workspace = aligned_buffer(shard_len * T);
-            (parity_backing, parity_start, workspace)
+            let (mut codeword_backing, codeword_start) =
+                generate_random_codeword(rs, shard_len, rng, is_aligned);
+            // Choose T random distinct positions to erase
+            let mut positions: Vec<usize> = (0..N).collect();
+            // partial Fisher-Yates shuffle for T elements
+            for i in 0..T {
+                let j = Uniform::new(i, N).unwrap().sample(rng);
+                positions.swap(i, j);
+            }
+            let mut erasure_positions = positions[..T].to_vec();
+            erasure_positions.sort_unstable();
+
+            for &pos in &erasure_positions {
+                codeword_backing
+                    [codeword_start + pos * shard_len..codeword_start + (pos + 1) * shard_len]
+                    .fill(Gf2p8_11d::zero());
+            }
+
+            (
+                codeword_backing,
+                codeword_start,
+                erasure_positions
+                    .iter()
+                    .map(|&p| p as u8)
+                    .collect::<Vec<u8>>(),
+            )
         },
-        |(mut parity_backing, parity_start, mut workspace)| {
-            rs.encode_systematic_sharded(
-                &message,
-                &mut parity_backing[parity_start..][..T * shard_len],
-                &mut workspace,
+        |(mut codeword_backing, codeword_start, erasure_positions)| {
+            rs.recover_erasures_sharded_clobber(
+                &mut codeword_backing[codeword_start..][..N * shard_len],
                 shard_len,
+                &erasure_positions,
             );
         },
         BatchSize::LargeInput,
     );
 }
 
-fn bench_encode_systematic_sharded(c: &mut Criterion) {
-    let mut group = c.benchmark_group("encode_systematic_sharded");
+fn bench_recover_erasures_sharded_clobber(c: &mut Criterion) {
+    let mut group = c.benchmark_group("recover_erasures_sharded_clobber");
     let mut rng = SmallRng::seed_from_u64(42);
 
     for shard_len in [64, 1024, 65536] {
@@ -194,5 +209,5 @@ fn bench_encode_systematic_sharded(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_encode_systematic_sharded);
+criterion_group!(benches, bench_recover_erasures_sharded_clobber);
 criterion_main!(benches);

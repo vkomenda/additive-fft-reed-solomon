@@ -26,11 +26,15 @@ lto = "fat"
 codegen-units = 1
 
 [[bench]]
+name = "encode_systematic_sharded"
+harness = false
+
+[[bench]]
 name = "recover_erasures_sharded"
 harness = false
 
 [[bench]]
-name = "encode_systematic_sharded"
+name = "recover_erasures_sharded_clobber"
 harness = false
 
 [features]
