@@ -19,7 +19,6 @@ use criterion::{
 use rand::distr::{Distribution, Uniform};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use std::alloc::{Layout, alloc};
 
 macro_rules! bench_params {
     ($group:expr,

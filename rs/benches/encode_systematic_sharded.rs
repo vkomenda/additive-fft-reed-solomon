@@ -11,7 +11,7 @@ use additive_fft_reed_solomon::{
     kernel::{Kernel, lut_kernel::LutKernel},
     poly_11d_lut::CantorBasisLut11d,
 };
-use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d};
+use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
 use common::*;
 use criterion::{
     BatchSize, Bencher, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main,
@@ -67,7 +67,8 @@ fn bench_encode_systematic_sharded_inner<K, const N: usize, const T: usize>(
     let (message, _message_backing) = create_buffer(N - T, shard_len, Some(rng), is_aligned);
     b.iter_batched(
         || {
-            let (parity_backing, parity_start) = create_buffer(T, shard_len, None, is_aligned);
+            let (parity_backing, parity_start) =
+                create_buffer(T, shard_len, None::<&mut SmallRng>, is_aligned);
             let workspace = aligned_buffer(shard_len * T);
             (parity_backing, parity_start, workspace)
         },
