@@ -220,9 +220,9 @@ impl Z255 {
         Self(((u32::from(self.0) * u32::from(other.0)) % 255) as u8)
     }
 
-    /// Walsh-Hadamard transform over Z/255. `support` is the number of non-zero entries at the
+    /// Fast Walsh-Hadamard transform over Z/255. `support` is the number of non-zero entries at the
     /// front. Entries beyond it are known zeros. Their butterflies are skipped in early levels.
-    pub fn wht(data: &mut [Self; FIELD_SIZE], support: usize) {
+    pub fn fwht(data: &mut [Self; FIELD_SIZE], support: usize) {
         let mut dist: usize = 1;
         while dist < FIELD_SIZE {
             let step = dist << 1;
@@ -470,7 +470,7 @@ pub trait CantorBasis<G: Gf2p8>:
         for i in 1..FIELD_SIZE {
             w[i] = Z255(log[self.get_subspace_point(i as u8).into_usize()]);
         }
-        Z255::wht(&mut w, FIELD_SIZE);
+        Z255::fwht(&mut w, FIELD_SIZE);
         w.into_iter().map(|z| z.0)
     }
 }

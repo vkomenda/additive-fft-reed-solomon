@@ -572,4 +572,78 @@ mod tests {
         ));
         assert_eq!(received, original, "N={N}, T={T}");
     }
+
+    #[test]
+    fn recover_erasures_sharded_clobber() {
+        recover_erasures_sharded_clobber_t::<2, 1>();
+        recover_erasures_sharded_clobber_t::<4, 1>();
+        recover_erasures_sharded_clobber_t::<4, 2>();
+        recover_erasures_sharded_clobber_t::<8, 1>();
+        recover_erasures_sharded_clobber_t::<8, 2>();
+        recover_erasures_sharded_clobber_t::<8, 4>();
+        recover_erasures_sharded_clobber_t::<16, 1>();
+        recover_erasures_sharded_clobber_t::<16, 2>();
+        recover_erasures_sharded_clobber_t::<16, 4>();
+        recover_erasures_sharded_clobber_t::<16, 8>();
+        recover_erasures_sharded_clobber_t::<32, 1>();
+        recover_erasures_sharded_clobber_t::<32, 2>();
+        recover_erasures_sharded_clobber_t::<32, 4>();
+        recover_erasures_sharded_clobber_t::<32, 8>();
+        recover_erasures_sharded_clobber_t::<32, 16>();
+        recover_erasures_sharded_clobber_t::<64, 1>();
+        recover_erasures_sharded_clobber_t::<64, 2>();
+        recover_erasures_sharded_clobber_t::<64, 4>();
+        recover_erasures_sharded_clobber_t::<64, 8>();
+        recover_erasures_sharded_clobber_t::<64, 16>();
+        recover_erasures_sharded_clobber_t::<64, 32>();
+        recover_erasures_sharded_clobber_t::<128, 1>();
+        recover_erasures_sharded_clobber_t::<128, 2>();
+        recover_erasures_sharded_clobber_t::<128, 4>();
+        recover_erasures_sharded_clobber_t::<128, 8>();
+        recover_erasures_sharded_clobber_t::<128, 16>();
+        recover_erasures_sharded_clobber_t::<128, 32>();
+        recover_erasures_sharded_clobber_t::<128, 64>();
+        recover_erasures_sharded_clobber_t::<256, 1>();
+        recover_erasures_sharded_clobber_t::<256, 2>();
+        recover_erasures_sharded_clobber_t::<256, 4>();
+        recover_erasures_sharded_clobber_t::<256, 8>();
+        recover_erasures_sharded_clobber_t::<256, 16>();
+        recover_erasures_sharded_clobber_t::<256, 32>();
+        recover_erasures_sharded_clobber_t::<256, 64>();
+        recover_erasures_sharded_clobber_t::<256, 128>();
+    }
+
+    fn recover_erasures_sharded_clobber_t<const N: usize, const T: usize>() {
+        const SHARD_LEN: usize = 1;
+
+        let rs = RsLut::<N, T>::new();
+        let zero_shard = vec![Gf2p8_11d::zero(); SHARD_LEN];
+
+        let original = generate_sharded_lch_codeword(&rs, SHARD_LEN);
+        let mut received = original.clone();
+        let mut erasure_positions = Vec::new();
+
+        for (i, shard) in received
+            .chunks_mut(SHARD_LEN)
+            .enumerate()
+            .skip(1)
+            .take(T * 2 - 1)
+            .step_by(2)
+        {
+            shard.clone_from_slice(&zero_shard);
+            erasure_positions.push(i as u8);
+        }
+
+        assert!(rs.recover_erasures_sharded_clobber(&mut received, SHARD_LEN, &erasure_positions));
+
+        for i in 0..N {
+            if erasure_positions.contains(&u8::try_from(i).unwrap()) {
+                assert_eq!(
+                    received[i * SHARD_LEN],
+                    original[i * SHARD_LEN],
+                    "N={N}, T={T}, i={i}",
+                );
+            }
+        }
+    }
 }

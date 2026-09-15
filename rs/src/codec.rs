@@ -629,11 +629,11 @@ where
             ev[pos as usize] = Z255(1);
         }
 
-        Z255::wht(&mut ev, support);
+        Z255::fwht(&mut ev, support);
         for (e, &w) in ev.iter_mut().zip(self.basis.log_walsh_lut().iter()) {
             *e = e.mul(w);
         }
-        Z255::wht(&mut ev, FIELD_SIZE);
+        Z255::fwht(&mut ev, FIELD_SIZE);
 
         ev
     }
@@ -643,19 +643,20 @@ where
     ///
     /// # Preconditions
     /// - Contents of `erasure_positions` are unique and ordered in ascending order.
-    /// - Erased shards are zeroed in `received`.
     /// - `received` is of length `N * shard_len`.
+    /// - Erased shards are zeroed in `received`.
     ///
     /// # Returns
     /// * `true`     - if recovery succeeded
     /// * `false`    - if recovery failed
-    pub fn recover_erasures_sharded_wht(
+    pub fn recover_erasures_sharded_clobber(
         &self,
         received: &mut [G],
         shard_len: usize,
         erasure_positions: &[u8],
     ) -> bool {
         debug_assert_eq!(received.len(), N * shard_len);
+        debug_assert!(erasure_positions.iter().all(|&p| (p as usize) < N));
 
         let e = erasure_positions.len();
 
@@ -666,31 +667,43 @@ where
             return true;
         }
 
-        let t_log = T.trailing_zeros() as u8;
         let n_log = N.trailing_zeros() as u8;
 
         // Logarighms of evaluations of the locator polynomial.
-        let ev = self.locator_log_evals(erasure_positions, T);
+        let ev = self.locator_log_evals(erasure_positions, N);
+        let mut p = 0;
+        for i in 0..N {
+            if p < e && (erasure_positions[p] as usize) == i {
+                p += 1;
+                continue;
+            }
+            K::scale_in_place_by_log(&mut received[i * shard_len..(i + 1) * shard_len], ev[i]);
+        }
+        debug_assert_eq!(p, e);
 
-        {
-            let mut scale = |i: usize| {
-                K::scale_in_place_by_log(&mut received[i * shard_len..(i + 1) * shard_len], ev[i])
-            };
-            let mut i = 0;
-            for &p in erasure_positions {
-                while i < p as usize {
-                    // Scale the received shard.
-                    scale(i);
-                    i += 1;
-                }
-                // Skip the erased shard.
-                i += 1;
-            }
-            while i < N as usize {
-                // Scale the received shard.
-                scale(i);
-                i += 1;
-            }
+        K::ifft_sharded(&self.basis, received, shard_len, n_log, G::zero());
+
+        // Formal derivative. In the Cantor basis every subspace polynomial derivative is one, so
+        // this becomes an XOR linear map.
+        for i in 1..N {
+            let w = 1 << i.trailing_zeros();
+            let (dst, src) = received.split_at_mut(i * shard_len);
+            dst[(i - w) * shard_len..].poly_add_in_place(&src[..w * shard_len]);
+        }
+
+        K::fft_sharded(&self.basis, received, shard_len, n_log, G::zero());
+
+        // Forney (similar to Eq 78): u(ω_j) = q(ω_j) / λ'(ω_j)
+        // q(ω_j) = (λ·f)'(ω_j) = λ'(ω_j) · f(ω_j) + λ(ω_j) · f'(ω_j) = λ'(ω_j) · f(ω_j)
+        // since λ(ω_j) = 0.
+        // f is the codeword polynomial, f(ω_j) = c_j for j \in [0, N).
+        // ev[j] holds log(λ'(ω_j)) at erasure positions. Inversion is negation of the log.
+        for &p in erasure_positions {
+            let p = p as usize;
+            K::scale_in_place_by_log(
+                &mut received[p * shard_len..(p + 1) * shard_len],
+                ev[p].neg(),
+            );
         }
 
         true
@@ -706,7 +719,7 @@ mod test {
     #[test]
     fn single_erasure_log_eval() {
         let rs: RsLut<256, 128> = Default::default();
-        let ssp = |k| rs.basis.get_subspace_point_lut(k);
+        let ssp = |k: u8| rs.basis.get_subspace_point_lut(k);
 
         for p in 0..=255 {
             let ev = rs.locator_log_evals(&[p], FIELD_SIZE);
