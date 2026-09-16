@@ -34,17 +34,39 @@ Additive RS codes evaluate the message polynomial at all 256 elements of the add
 
 ## Benchmarks
 
-Results are dependent on hardware, so you are advised to run `cargo bench`.
+Benchmarks are run by `cargo bench`. Here is a representative set of results, time and throughput, obtained on an AMD EPYC 9575F for input-output buffers aligned to 64 bytes. Throughput is measured in the number of message input payload bytes. Aligned input-output buffers are noticeably faster to encode and recover - in some cases by as much as 20%.
 
-Here is a representative set of results, time and throughput, obtained on an AMD EPYC 9575F for n=64, k=32 and input-output buffers aligned to 64 bytes:
+### `Codec::encode_systematic_sharded`
 
-|shard length, bytes|encode 32 message shards|recover 32 random shard erasures|
-|---|---|---|
-| 64 | 328ns, 5.8GiB/s | 7.5µs, 261MiB/s |
-| 1k | 1.54µs, 19.7GiB/s | 14.3µs, 2.12GiB/s |
-| 64k | 142µs, 13.7GiB/s | 717µs, 2.72GiB/s |
+![systematic encoding of T parity shards from T data shards (gfni), T=n/2, shard length 64 B](docs/charts/encode_systematic_sharded_gfni_64.svg)
+![systematic encoding of T parity shards from T data shards (gfni), T=n/2, shard length 1 KiB](docs/charts/encode_systematic_sharded_gfni_1024.svg)
+![systematic encoding of T parity shards from T data shards (gfni), T=n/2, shard length 64 KiB](docs/charts/encode_systematic_sharded_gfni_65536.svg)
 
-Throughput is measured in the number of message input payload bytes. Aligned input-output buffers are noticeably faster to encode - by about 20%. By contrast, erasure recovery has not demonstrated a similar advantage of alignment of buffers.
+![systematic encoding of T parity shards from T data shards (avx2), T=n/2, shard length 64 B](docs/charts/encode_systematic_sharded_avx2_64.svg)
+![systematic encoding of T parity shards from T data shards (avx2), T=n/2, shard length 1 KiB](docs/charts/encode_systematic_sharded_avx2_1024.svg)
+![systematic encoding of T parity shards from T data shards (avx2), T=n/2, shard length 64 KiB](docs/charts/encode_systematic_sharded_avx2_65536.svg)
+
+### `Codec::recover_erasures_sharded_clobber`
+
+![recovery of random T erased shards (faster algo) (gfni), T=n/2, shard length 64 B](docs/charts/recover_erasures_sharded_clobber_gfni_64.svg)
+![recovery of random T erased shards (faster algo) (gfni), T=n/2, shard length 1 KiB](docs/charts/recover_erasures_sharded_clobber_gfni_1024.svg)
+![recovery of random T erased shards (faster algo) (gfni), T=n/2, shard length 64 KiB](docs/charts/recover_erasures_sharded_clobber_gfni_65536.svg)
+
+![recovery of random T erased shards (faster algo) (avx2), T=n/2, shard length 64 B](docs/charts/recover_erasures_sharded_clobber_avx2_64.svg)
+![recovery of random T erased shards (faster algo) (avx2), T=n/2, shard length 1 KiB](docs/charts/recover_erasures_sharded_clobber_avx2_1024.svg)
+![recovery of random T erased shards (faster algo) (avx2), T=n/2, shard length 64 KiB](docs/charts/recover_erasures_sharded_clobber_avx2_65536.svg)
+
+### `Codec::recover_erasures_sharded`
+
+![recovery of random T erased shards (LNH original) (gfni), T=n/2, shard length 64 B](docs/charts/recover_erasures_sharded_gfni_64.svg)
+![recovery of random T erased shards (LNH original) (gfni), T=n/2, shard length 1 KiB](docs/charts/recover_erasures_sharded_gfni_1024.svg)
+![recovery of random T erased shards (LNH original) (gfni), T=n/2, shard length 64 KiB](docs/charts/recover_erasures_sharded_gfni_65536.svg)
+
+![recovery of random T erased shards (LNH original) (avx2), T=n/2, shard length 64 B](docs/charts/recover_erasures_sharded_avx2_64.svg)
+![recovery of random T erased shards (LNH original) (avx2), T=n/2, shard length 1 KiB](docs/charts/recover_erasures_sharded_avx2_1024.svg)
+![recovery of random T erased shards (LNH original) (avx2), T=n/2, shard length 64 KiB](docs/charts/recover_erasures_sharded_avx2_65536.svg)
+
+The results shown are better on GFNI in absolute terms compared to [Malkovsky/galois](https://github.com/Malkovsky/galois) which is, according to their benchmarks, faster than other comparable libraries such as [LeopardRS](https://github.com/catid/leopard).
 
 
 ## Possible usecases
