@@ -4,6 +4,8 @@ use crate::poly_11d_lut::generated::{CANTOR_SUBSPACE, EXP_TABLE, MUL_TABLE};
 use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8, Gf2p8_11d, Z255};
 use std::marker::PhantomData;
 
+type MulTable = &'static [u8; FIELD_SIZE];
+
 pub mod unrolled_11d {
     include!(concat!(env!("OUT_DIR"), "/unrolled_lut_kernel_11d.rs"));
 }
@@ -23,6 +25,42 @@ fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], _len: usize, lut: &[u8; FIE
         *bi = bi.add(*ai); //  d' = g0 + g1
         *ai = ai.add(G::from(lut[bi.into_usize()])); //  d  = g0 + T*d'
     }
+}
+
+fn butterfly_fwd_dit2<G: Gf2p8>(
+    shards: &mut [G],
+    shard_len: usize,
+    base: usize,
+    d: usize,
+    m: MulTable,
+) {
+    debug_assert!((base + 2 * d) * shard_len <= shards.len());
+
+    let a_start = base * shard_len;
+    let b_start = (base + d) * shard_len;
+
+    let (before_b, from_b) = shards.split_at_mut(b_start);
+
+    let a = &mut before_b[a_start..a_start + shard_len];
+    let b = &mut from_b[..shard_len];
+
+    for (ai, bi) in a.iter_mut().zip(b.iter_mut()) {
+        let t = G::from(m[bi.into_usize()]); // T * b
+        *ai = ai.add(t); // g0 = a + T*b
+        *bi = bi.add(*ai); // g1 = g0 + b
+    }
+}
+
+fn butterfly_fwd_dit4(
+    shards: &mut [Gf2p8_11d],
+    shard_len: usize,
+    base: usize,
+    d: usize,
+    m01: MulTable,
+    m23: MulTable,
+    m02: MulTable,
+) {
+    todo!();
 }
 
 pub(crate) fn fft_sharded<G: Gf2p8Lut>(
@@ -124,6 +162,34 @@ pub struct LutKernel<G: Gf2p8Lut>(PhantomData<G>);
 
 impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
     const ALIGN: usize = 1;
+
+    type MulTable = MulTable;
+
+    fn mul_table(t: Gf2p8_11d) -> Self::MulTable {
+        &MUL_TABLE[t.into_usize()]
+    }
+
+    fn butterfly_fwd_dit2(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m: Self::MulTable,
+    ) {
+        butterfly_fwd_dit2(shards, shard_len, base, d, m);
+    }
+
+    fn butterfly_fwd_dit4(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m01: Self::MulTable,
+        m23: Self::MulTable,
+        m02: Self::MulTable,
+    ) {
+        butterfly_fwd_dit4(shards, shard_len, base, d, m01, m23, m02);
+    }
 
     fn fft_sharded(
         basis: &impl CantorBasisLut<Gf2p8_11d>,

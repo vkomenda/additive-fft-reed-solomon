@@ -17,6 +17,29 @@ pub trait Kernel<G: Gf2p8Lut> {
     /// slower.
     const ALIGN: usize;
 
+    /// Multiplication by a fixed element of G. Plain, non-SIMD data type.
+    type MulTable: Copy;
+
+    fn mul_table(twiddle: G) -> Self::MulTable;
+
+    fn butterfly_fwd_dit2(
+        shards: &mut [G],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m: Self::MulTable,
+    );
+
+    fn butterfly_fwd_dit4(
+        shards: &mut [G],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m01: Self::MulTable,
+        m23: Self::MulTable,
+        m02: Self::MulTable,
+    );
+
     /// Forward transform.
     fn fft_sharded(
         basis: &impl CantorBasisLut<G>,
@@ -45,4 +68,110 @@ pub trait Kernel<G: Gf2p8Lut> {
     fn scale_by_log(src: &[G], dst: &mut [G], log_m: Z255);
 
     fn scale_in_place_by_log(dst: &mut [G], log_m: Z255);
+
+    #[inline]
+    fn twiddle(basis: &impl CantorBasisLut<G>, level: u8, beta: G) -> G {
+        if level == 0 {
+            beta
+        } else {
+            basis.eval_subspace_poly_lut(level, beta)
+        }
+    }
+
+    fn fft_sharded_dit2(
+        basis: &impl CantorBasisLut<G>,
+        shards: &mut [G],
+        shard_len: usize,
+        k: u8,
+        beta: G,
+    ) {
+        debug_assert_eq!(shards.len(), (1 << k) * shard_len);
+
+        // betas[b] is the shift for block b at the current level pair.
+        let mut betas = [G::zero(); 256];
+        betas[0] = beta;
+        let mut blocks = 1;
+
+        let mut l = k;
+        while l >= 1 {
+            let hi = l - 1;
+            let d = 1 << hi;
+            let step = 1 << l; // block span, in shards
+            let basis_hi = basis.get_basis_point_lut(hi);
+
+            for b in (0..blocks).rev() {
+                let beta_l = betas[b];
+                let beta_r = beta_l.add(basis_hi);
+                let start = b * step;
+                Self::butterfly_fwd_dit2(
+                    shards,
+                    shard_len,
+                    start,
+                    d,
+                    Self::mul_table(Self::twiddle(basis, hi, beta_l)),
+                );
+
+                betas[2 * b] = beta_l;
+                betas[2 * b + 1] = beta_r;
+            }
+
+            blocks <<= 1;
+            l -= 1;
+        }
+    }
+
+    fn fft_sharded_dit4(
+        basis: &impl CantorBasisLut<G>,
+        shards: &mut [G],
+        shard_len: usize,
+        k: u8,
+        beta: G,
+    ) {
+        debug_assert_eq!(shards.len(), (1 << k) * shard_len);
+
+        // betas[b] is the shift for block b at the current level pair.
+        let mut betas = [G::zero(); 256];
+        betas[0] = beta;
+        let mut blocks = 1;
+
+        let mut l = k;
+        while l >= 2 {
+            let hi = l - 1; // wide level, stride 2d
+            let lo = l - 2; // narrow level, stride d
+            let d = 1 << lo;
+            let step = 1 << l; // block span, in shards
+            let basis_hi = basis.get_basis_point_lut(hi);
+            let basis_lo = basis.get_basis_point_lut(lo);
+
+            for b in (0..blocks).rev() {
+                let beta_l = betas[b];
+                let beta_r = beta_l.add(basis_hi);
+                let start = b * step;
+                Self::butterfly_fwd_dit4(
+                    shards,
+                    shard_len,
+                    start,
+                    d,
+                    Self::mul_table(Self::twiddle(basis, lo, beta_l)),
+                    Self::mul_table(Self::twiddle(basis, lo, beta_r)),
+                    Self::mul_table(Self::twiddle(basis, hi, beta_l)),
+                );
+
+                betas[4 * b] = beta_l;
+                betas[4 * b + 1] = beta_l.add(basis_lo);
+                betas[4 * b + 2] = beta_r;
+                betas[4 * b + 3] = beta_r.add(basis_lo);
+            }
+
+            blocks <<= 2;
+            l -= 2;
+        }
+
+        if l == 1 {
+            for b in 0..blocks {
+                let m = Self::mul_table(Self::twiddle(basis, 0, betas[b]));
+                Self::butterfly_fwd_dit2(&mut shards[..], shard_len, 2 * b, 1, m);
+            }
+        }
+    }
 }

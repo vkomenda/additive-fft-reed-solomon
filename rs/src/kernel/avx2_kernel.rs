@@ -212,6 +212,12 @@ pub struct Avx2Kernel<G: Gf2p8Lut>(PhantomData<G>);
 impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
     const ALIGN: usize = 32;
 
+    type MulTable = &'static NibbleMulTable;
+
+    fn mul_table(t: Gf2p8_11d) -> Self::MulTable {
+        &NIBBLE_MUL_TABLE[t.into_usize()]
+    }
+
     fn fft_sharded(
         basis: &impl CantorBasisLut<Gf2p8_11d>,
         shards: &mut [Gf2p8_11d],
