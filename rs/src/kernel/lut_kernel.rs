@@ -507,6 +507,38 @@ mod test {
     }
 
     #[test]
+    fn dit4_matches_two_dit2_levels() {
+        const SHARD_LEN: usize = 37;
+        let mut rng = SmallRng::seed_from_u64(1);
+
+        for d in [1, 2, 4, 8] {
+            for base in 0..d {
+                let n = 4 * d;
+
+                let mut a = vec![Gf2p8_11d::zero(); n * SHARD_LEN];
+                rng.fill_bytes(unsafe {
+                    std::slice::from_raw_parts_mut(a.as_mut_ptr() as *mut u8, n * SHARD_LEN)
+                });
+                let mut b = a.clone();
+
+                let m02 = LutKernel::mul_table(Gf2p8_11d(0x53));
+                let m01 = LutKernel::mul_table(Gf2p8_11d(0x2a));
+                let m23 = LutKernel::mul_table(Gf2p8_11d(0xc7));
+
+                // Reference: wide level at stride 2d, then narrow at stride d.
+                LutKernel::butterfly_fwd_dit2(&mut a, SHARD_LEN, base, 2 * d, m02);
+                LutKernel::butterfly_fwd_dit2(&mut a, SHARD_LEN, base + d, 2 * d, m02);
+                LutKernel::butterfly_fwd_dit2(&mut a, SHARD_LEN, base, d, m01);
+                LutKernel::butterfly_fwd_dit2(&mut a, SHARD_LEN, base + 2 * d, d, m23);
+
+                LutKernel::butterfly_fwd_dit4(&mut b, SHARD_LEN, base, d, m01, m23, m02);
+
+                assert_eq!(a, b, "d={d} base={base}");
+            }
+        }
+    }
+
+    #[test]
     fn fft_sharded_dit4_matches_fft_sharded() {
         const SHARD_LEN: usize = 37;
 
@@ -516,11 +548,13 @@ mod test {
             let n = 1 << k;
 
             let mut a = vec![Gf2p8_11d::zero(); n * SHARD_LEN];
-            rng.fill_bytes(unsafe { std::slice::from_raw_parts_mut(a.as_mut_ptr() as *mut u8, n) });
+            rng.fill_bytes(unsafe {
+                std::slice::from_raw_parts_mut(a.as_mut_ptr() as *mut u8, n * SHARD_LEN)
+            });
             let mut b = a.clone();
 
             fft_sharded(&CantorBasisLut11d, &mut a, SHARD_LEN, k, Gf2p8_11d::zero());
-            LutKernel::<Gf2p8_11d>::fft_sharded_dit4(
+            LutKernel::fft_sharded_dit4(
                 &CantorBasisLut11d,
                 &mut b,
                 SHARD_LEN,

@@ -30,6 +30,10 @@ pub trait Kernel<G: Gf2p8Lut> {
         m: Self::MulTable,
     );
 
+    /// Applies two butterfly levels to the node of `4 * d` shards beginning at shard `base`. The
+    /// node consists of `d` independent groups. Group `i` consists of shards `base + i`, `base + i
+    /// + d`, `base + i + 2 * d` and `base + i + 3 * d`. All groups share the multiplication tables
+    /// `m01`, `m23` and `m02`.
     fn butterfly_fwd_dit4(
         shards: &mut [G],
         shard_len: usize,
@@ -121,13 +125,15 @@ pub trait Kernel<G: Gf2p8Lut> {
                 let beta_l = betas[b];
                 let beta_r = beta_l.add(basis_hi);
                 let start = b * step;
-                Self::butterfly_fwd_dit2(
-                    shards,
-                    shard_len,
-                    start,
-                    d,
-                    Self::mul_table(Self::twiddle(basis, hi, beta_l)),
-                );
+                for i in 0..d {
+                    Self::butterfly_fwd_dit2(
+                        shards,
+                        shard_len,
+                        start + i,
+                        d,
+                        Self::mul_table(Self::twiddle(basis, hi, beta_l)),
+                    );
+                }
 
                 betas[2 * b] = beta_l;
                 betas[2 * b + 1] = beta_r;
@@ -165,15 +171,17 @@ pub trait Kernel<G: Gf2p8Lut> {
                 let beta_l = betas[b];
                 let beta_r = beta_l.add(basis_hi);
                 let start = b * step;
-                Self::butterfly_fwd_dit4(
-                    shards,
-                    shard_len,
-                    start,
-                    d,
-                    Self::mul_table(Self::twiddle(basis, lo, beta_l)),
-                    Self::mul_table(Self::twiddle(basis, lo, beta_r)),
-                    Self::mul_table(Self::twiddle(basis, hi, beta_l)),
-                );
+                for i in 0..d {
+                    Self::butterfly_fwd_dit4(
+                        shards,
+                        shard_len,
+                        start + i,
+                        d,
+                        Self::mul_table(Self::twiddle(basis, lo, beta_l)),
+                        Self::mul_table(Self::twiddle(basis, lo, beta_r)),
+                        Self::mul_table(Self::twiddle(basis, hi, beta_l)),
+                    );
+                }
 
                 betas[4 * b] = beta_l;
                 betas[4 * b + 1] = beta_l.add(basis_lo);
