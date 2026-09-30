@@ -125,15 +125,13 @@ pub trait Kernel<G: Gf2p8Lut> {
                 let beta_l = betas[b];
                 let beta_r = beta_l.add(basis_hi);
                 let start = b * step;
-                for i in 0..d {
-                    Self::butterfly_fwd_dit2(
-                        shards,
-                        shard_len,
-                        start + i,
-                        d,
-                        Self::mul_table(Self::twiddle(basis, hi, beta_l)),
-                    );
-                }
+                Self::butterfly_fwd_dit2(
+                    shards,
+                    shard_len,
+                    start,
+                    d,
+                    Self::mul_table(Self::twiddle(basis, hi, beta_l)),
+                );
 
                 betas[2 * b] = beta_l;
                 betas[2 * b + 1] = beta_r;
@@ -171,17 +169,15 @@ pub trait Kernel<G: Gf2p8Lut> {
                 let beta_l = betas[b];
                 let beta_r = beta_l.add(basis_hi);
                 let start = b * step;
-                for i in 0..d {
-                    Self::butterfly_fwd_dit4(
-                        shards,
-                        shard_len,
-                        start + i,
-                        d,
-                        Self::mul_table(Self::twiddle(basis, lo, beta_l)),
-                        Self::mul_table(Self::twiddle(basis, lo, beta_r)),
-                        Self::mul_table(Self::twiddle(basis, hi, beta_l)),
-                    );
-                }
+                Self::butterfly_fwd_dit4(
+                    shards,
+                    shard_len,
+                    start,
+                    d,
+                    Self::mul_table(Self::twiddle(basis, lo, beta_l)),
+                    Self::mul_table(Self::twiddle(basis, lo, beta_r)),
+                    Self::mul_table(Self::twiddle(basis, hi, beta_l)),
+                );
 
                 betas[4 * b] = beta_l;
                 betas[4 * b + 1] = beta_l.add(basis_lo);

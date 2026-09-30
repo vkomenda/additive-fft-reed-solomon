@@ -34,20 +34,23 @@ fn butterfly_fwd_dit2<G: Gf2p8>(
     d: usize,
     m: MulTable,
 ) {
-    debug_assert!((base + d + 1) * shard_len <= shards.len());
+    debug_assert!((base + 2 * d) * shard_len <= shards.len());
 
-    let a_start = base * shard_len;
-    let b_start = (base + d) * shard_len;
+    for i in 0..d {
+        let base_offset = base + i;
 
-    let (before_b, from_b) = shards.split_at_mut(b_start);
+        let a_start = base_offset * shard_len;
+        let b_start = (base_offset + d) * shard_len;
 
-    let a = &mut before_b[a_start..a_start + shard_len];
-    let b = &mut from_b[..shard_len];
+        let (before_b, from_b) = shards.split_at_mut(b_start);
 
-    for (ai, bi) in a.iter_mut().zip(b.iter_mut()) {
-        let t = G::from(m[bi.into_usize()]); // T * b
-        *ai = ai.add(t); // g0 = a + T*b
-        *bi = bi.add(*ai); // g1 = g0 + b
+        let a = &mut before_b[a_start..a_start + shard_len];
+        let b = &mut from_b[..shard_len];
+
+        for (ai, bi) in a.iter_mut().zip(b.iter_mut()) {
+            *ai = ai.add(G::from(m[bi.into_usize()])); // g0 = a + T*b
+            *bi = bi.add(*ai); // g1 = g0 + b
+        }
     }
 }
 
@@ -58,19 +61,23 @@ fn butterfly_inv_dit2<G: Gf2p8>(
     d: usize,
     m: MulTable,
 ) {
-    debug_assert!((base + d + 1) * shard_len <= shards.len());
+    debug_assert!((base + 2 * d) * shard_len <= shards.len());
 
-    let a_start = base * shard_len;
-    let b_start = (base + d) * shard_len;
+    for i in 0..d {
+        let base_offset = base + i;
 
-    let (before_b, from_b) = shards.split_at_mut(b_start);
+        let a_start = base_offset * shard_len;
+        let b_start = (base_offset + d) * shard_len;
 
-    let a = &mut before_b[a_start..a_start + shard_len];
-    let b = &mut from_b[..shard_len];
+        let (before_b, from_b) = shards.split_at_mut(b_start);
 
-    for (ai, bi) in a.iter_mut().zip(b.iter_mut()) {
-        *bi = bi.add(*ai); //  d' = g0 + g1
-        *ai = ai.add(G::from(m[bi.into_usize()])); //  d = g0 + T*d'
+        let a = &mut before_b[a_start..a_start + shard_len];
+        let b = &mut from_b[..shard_len];
+
+        for (ai, bi) in a.iter_mut().zip(b.iter_mut()) {
+            *bi = bi.add(*ai); //  d' = g0 + g1
+            *ai = ai.add(G::from(m[bi.into_usize()])); //  d = g0 + T*d'
+        }
     }
 }
 
@@ -83,34 +90,36 @@ fn butterfly_fwd_dit4<G: Gf2p8>(
     m23: MulTable,
     m02: MulTable,
 ) {
-    debug_assert!((base + 3 * d + 1) * shard_len <= shards.len());
+    debug_assert!((base + 4 * d) * shard_len <= shards.len());
 
-    let base_offset = base * shard_len;
-    let gap = (d - 1) * shard_len;
+    for i in 0..d {
+        let base_offset = (base + i) * shard_len;
+        let gap = (d - 1) * shard_len;
 
-    let (_, rest) = shards.split_at_mut(base_offset);
-    let (s0, rest) = rest.split_at_mut(shard_len);
-    let (_, rest) = rest.split_at_mut(gap);
-    let (s1, rest) = rest.split_at_mut(shard_len);
-    let (_, rest) = rest.split_at_mut(gap);
-    let (s2, rest) = rest.split_at_mut(shard_len);
-    let (_, rest) = rest.split_at_mut(gap);
-    let (s3, _) = rest.split_at_mut(shard_len);
+        let (_, rest) = shards.split_at_mut(base_offset);
+        let (s0, rest) = rest.split_at_mut(shard_len);
+        let (_, rest) = rest.split_at_mut(gap);
+        let (s1, rest) = rest.split_at_mut(shard_len);
+        let (_, rest) = rest.split_at_mut(gap);
+        let (s2, rest) = rest.split_at_mut(shard_len);
+        let (_, rest) = rest.split_at_mut(gap);
+        let (s3, _) = rest.split_at_mut(shard_len);
 
-    for (((w0, w1), w2), w3) in s0
-        .iter_mut()
-        .zip(s1.iter_mut())
-        .zip(s2.iter_mut())
-        .zip(s3.iter_mut())
-    {
-        *w0 = w0.add(G::from(m02[w2.into_usize()]));
-        *w1 = w1.add(G::from(m02[w3.into_usize()]));
-        *w2 = w2.add(*w0);
-        *w3 = w3.add(*w1);
-        *w0 = w0.add(G::from(m01[w1.into_usize()]));
-        *w2 = w2.add(G::from(m23[w3.into_usize()]));
-        *w1 = w1.add(*w0);
-        *w3 = w3.add(*w2);
+        for (((w0, w1), w2), w3) in s0
+            .iter_mut()
+            .zip(s1.iter_mut())
+            .zip(s2.iter_mut())
+            .zip(s3.iter_mut())
+        {
+            *w0 = w0.add(G::from(m02[w2.into_usize()]));
+            *w1 = w1.add(G::from(m02[w3.into_usize()]));
+            *w2 = w2.add(*w0);
+            *w3 = w3.add(*w1);
+            *w0 = w0.add(G::from(m01[w1.into_usize()]));
+            *w2 = w2.add(G::from(m23[w3.into_usize()]));
+            *w1 = w1.add(*w0);
+            *w3 = w3.add(*w2);
+        }
     }
 }
 
@@ -123,34 +132,36 @@ fn butterfly_inv_dit4<G: Gf2p8>(
     m23: MulTable,
     m02: MulTable,
 ) {
-    debug_assert!((base + 3 * d + 1) * shard_len <= shards.len());
+    debug_assert!((base + 4 * d) * shard_len <= shards.len());
 
-    let base_offset = base * shard_len;
-    let gap = (d - 1) * shard_len;
+    for i in 0..d {
+        let base_offset = (base + i) * shard_len;
+        let gap = (d - 1) * shard_len;
 
-    let (_, rest) = shards.split_at_mut(base_offset);
-    let (s0, rest) = rest.split_at_mut(shard_len);
-    let (_, rest) = rest.split_at_mut(gap);
-    let (s1, rest) = rest.split_at_mut(shard_len);
-    let (_, rest) = rest.split_at_mut(gap);
-    let (s2, rest) = rest.split_at_mut(shard_len);
-    let (_, rest) = rest.split_at_mut(gap);
-    let (s3, _) = rest.split_at_mut(shard_len);
+        let (_, rest) = shards.split_at_mut(base_offset);
+        let (s0, rest) = rest.split_at_mut(shard_len);
+        let (_, rest) = rest.split_at_mut(gap);
+        let (s1, rest) = rest.split_at_mut(shard_len);
+        let (_, rest) = rest.split_at_mut(gap);
+        let (s2, rest) = rest.split_at_mut(shard_len);
+        let (_, rest) = rest.split_at_mut(gap);
+        let (s3, _) = rest.split_at_mut(shard_len);
 
-    for (((w0, w1), w2), w3) in s0
-        .iter_mut()
-        .zip(s1.iter_mut())
-        .zip(s2.iter_mut())
-        .zip(s3.iter_mut())
-    {
-        *w3 = w3.add(*w2);
-        *w1 = w1.add(*w0);
-        *w2 = w2.add(G::from(m23[w3.into_usize()]));
-        *w0 = w0.add(G::from(m01[w1.into_usize()]));
-        *w3 = w3.add(*w1);
-        *w2 = w2.add(*w0);
-        *w1 = w1.add(G::from(m02[w3.into_usize()]));
-        *w0 = w0.add(G::from(m02[w2.into_usize()]));
+        for (((w0, w1), w2), w3) in s0
+            .iter_mut()
+            .zip(s1.iter_mut())
+            .zip(s2.iter_mut())
+            .zip(s3.iter_mut())
+        {
+            *w3 = w3.add(*w2);
+            *w1 = w1.add(*w0);
+            *w2 = w2.add(G::from(m23[w3.into_usize()]));
+            *w0 = w0.add(G::from(m01[w1.into_usize()]));
+            *w3 = w3.add(*w1);
+            *w2 = w2.add(*w0);
+            *w1 = w1.add(G::from(m02[w3.into_usize()]));
+            *w0 = w0.add(G::from(m02[w2.into_usize()]));
+        }
     }
 }
 
@@ -512,8 +523,8 @@ mod test {
         let mut rng = SmallRng::seed_from_u64(1);
 
         for d in [1, 2, 4, 8] {
-            for base in 0..d {
-                let n = 4 * d;
+            for base in [0, 1, 3] {
+                let n = base + 4 * d;
 
                 let mut a = vec![Gf2p8_11d::zero(); n * SHARD_LEN];
                 rng.fill_bytes(unsafe {
@@ -525,9 +536,8 @@ mod test {
                 let m01 = LutKernel::mul_table(Gf2p8_11d(0x2a));
                 let m23 = LutKernel::mul_table(Gf2p8_11d(0xc7));
 
-                // Reference: wide level at stride 2d, then narrow at stride d.
+                // The wide level over the whole node, then the narrow level over each half.
                 LutKernel::butterfly_fwd_dit2(&mut a, SHARD_LEN, base, 2 * d, m02);
-                LutKernel::butterfly_fwd_dit2(&mut a, SHARD_LEN, base + d, 2 * d, m02);
                 LutKernel::butterfly_fwd_dit2(&mut a, SHARD_LEN, base, d, m01);
                 LutKernel::butterfly_fwd_dit2(&mut a, SHARD_LEN, base + 2 * d, d, m23);
 
