@@ -505,4 +505,30 @@ mod test {
         fft_sharded(&basis, &mut a, SHARD_LEN, k, Gf2p8_11d::zero());
         unrolled_11d::fft_sharded_zero_padded_lut_32_8(&mut b, SHARD_LEN);
     }
+
+    #[test]
+    fn fft_sharded_dit4_matches_fft_sharded() {
+        const SHARD_LEN: usize = 37;
+
+        let mut rng = SmallRng::seed_from_u64(42);
+
+        for k in 1..=8 {
+            let n = 1 << k;
+
+            let mut a = vec![Gf2p8_11d::zero(); n * SHARD_LEN];
+            rng.fill_bytes(unsafe { std::slice::from_raw_parts_mut(a.as_mut_ptr() as *mut u8, n) });
+            let mut b = a.clone();
+
+            fft_sharded(&CantorBasisLut11d, &mut a, SHARD_LEN, k, Gf2p8_11d::zero());
+            LutKernel::<Gf2p8_11d>::fft_sharded_dit4(
+                &CantorBasisLut11d,
+                &mut b,
+                SHARD_LEN,
+                k,
+                Gf2p8_11d::zero(),
+            );
+
+            assert_eq!(a, b, "k={k}");
+        }
+    }
 }
