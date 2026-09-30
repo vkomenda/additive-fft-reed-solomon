@@ -40,6 +40,24 @@ pub trait Kernel<G: Gf2p8Lut> {
         m02: Self::MulTable,
     );
 
+    fn butterfly_inv_dit2(
+        shards: &mut [G],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m: Self::MulTable,
+    );
+
+    fn butterfly_inv_dit4(
+        shards: &mut [G],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m01: Self::MulTable,
+        m23: Self::MulTable,
+        m02: Self::MulTable,
+    );
+
     /// Forward transform.
     fn fft_sharded(
         basis: &impl CantorBasisLut<G>,
