@@ -112,6 +112,8 @@ fn butterfly_fwd_dit2<G: Gf2p8>(
     d: usize,
     m: MulTable,
 ) {
+    debug_assert!((base + d + 1) * shard_len <= shards.len());
+
     let a_start = base * shard_len;
     let b_start = (base + d) * shard_len;
 
