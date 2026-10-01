@@ -197,3 +197,21 @@ pub trait Kernel<G: Gf2p8Lut> {
         }
     }
 }
+
+/// Splits the node of `R * d` shards starting at shard `base` into `R` equal
+/// parts and yields the `d` groups. Group `i` holds shard `i` of each part,
+/// i.e. shards `base + i + j * d` for `j` in `0..R`.
+pub(crate) fn shard_groups<G, const R: usize>(
+    shards: &mut [G],
+    shard_len: usize,
+    base: usize,
+    d: usize,
+) -> impl Iterator<Item = [&mut [G]; R]> {
+    let q = d * shard_len;
+    let node = &mut shards[base * shard_len..][..R * q];
+    let mut parts = node
+        .chunks_exact_mut(q)
+        .map(|p| p.chunks_exact_mut(shard_len));
+    let mut parts: [_; R] = std::array::from_fn(|_| parts.next().unwrap());
+    (0..d).map(move |_| parts.each_mut().map(|p| p.next().unwrap()))
+}
