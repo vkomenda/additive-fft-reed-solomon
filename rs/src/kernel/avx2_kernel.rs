@@ -1,4 +1,4 @@
-use super::Kernel;
+use super::{Kernel, shard_groups};
 use crate::{
     gf2p8lut::{CantorBasisLut, Gf2p8Lut},
     poly_11d_lut::generated::{CANTOR_SUBSPACE, NIBBLE_MUL_BY_LOG, NIBBLE_MUL_TABLE},
@@ -112,42 +112,36 @@ fn butterfly_fwd_dit2<G: Gf2p8>(
     d: usize,
     m: MulTable,
 ) {
-    debug_assert!((base + d + 1) * shard_len <= shards.len());
+    let (m_lo, m_hi) = load_mul_table(m);
 
-    let a_start = base * shard_len;
-    let b_start = (base + d) * shard_len;
-
-    let (before_b, from_b) = shards.split_at_mut(b_start);
-
-    let a = &mut before_b[a_start..a_start + shard_len];
-    let b = &mut from_b[..shard_len];
-
-    let mut i = 0;
-    {
-        let a = a.as_mut_ptr() as *mut u8;
-        let b = b.as_mut_ptr() as *mut u8;
-        while i + 32 <= shard_len {
-            unsafe {
-                let va = _mm256_loadu_si256(a.add(i) as *const __m256i);
-                let vb = _mm256_loadu_si256(b.add(i) as *const __m256i);
-                let t = mul_vec(vb, m); // T·b
-                let va = _mm256_xor_si256(va, t); // a + T·b = g0
-                let vb = _mm256_xor_si256(vb, va); // b + g0 = g1
-                _mm256_storeu_si256(a.add(i) as *mut __m256i, va);
-                _mm256_storeu_si256(b.add(i) as *mut __m256i, vb);
+    for [a, b] in shard_groups::<_, 2>(shards, shard_len, base, d) {
+        let mut i = 0;
+        {
+            let a = a.as_mut_ptr() as *mut u8;
+            let b = b.as_mut_ptr() as *mut u8;
+            while i + 32 <= shard_len {
+                unsafe {
+                    let va = _mm256_loadu_si256(a.add(i) as *const __m256i);
+                    let vb = _mm256_loadu_si256(b.add(i) as *const __m256i);
+                    let t = mul_vec_inner(vb, m_lo, m_hi); // T·b
+                    let va = _mm256_xor_si256(va, t); // a + T·b = g0
+                    let vb = _mm256_xor_si256(vb, va); // b + g0 = g1
+                    _mm256_storeu_si256(a.add(i) as *mut __m256i, va);
+                    _mm256_storeu_si256(b.add(i) as *mut __m256i, vb);
+                }
+                i += 32;
             }
-            i += 32;
         }
-    }
-    // Handle the tail scalar. Masked AVX2 load/store ops work on 4-byte dwords, hence apply the
-    // multiplication table elementwise instead.
-    while i < shard_len {
-        let x = a[i];
-        let y = b[i];
-        let g0 = x.add(y.nibble_mul(m));
-        a[i] = g0;
-        b[i] = y.add(g0);
-        i += 1;
+        // Handle the tail scalar. Masked AVX2 load/store ops work on 4-byte dwords, hence apply the
+        // multiplication table elementwise instead.
+        while i < shard_len {
+            let x = a[i];
+            let y = b[i];
+            let g0 = x.add(y.nibble_mul(m));
+            a[i] = g0;
+            b[i] = y.add(g0);
+            i += 1;
+        }
     }
 }
 
@@ -159,42 +153,36 @@ fn butterfly_inv_dit2<G: Gf2p8>(
     d: usize,
     m: MulTable,
 ) {
-    debug_assert!((base + d + 1) * shard_len <= shards.len());
+    let (m_lo, m_hi) = load_mul_table(m);
 
-    let a_start = base * shard_len;
-    let b_start = (base + d) * shard_len;
-
-    let (before_b, from_b) = shards.split_at_mut(b_start);
-
-    let a = &mut before_b[a_start..a_start + shard_len];
-    let b = &mut from_b[..shard_len];
-
-    let mut i = 0;
-    {
-        let a = a.as_mut_ptr() as *mut u8;
-        let b = b.as_mut_ptr() as *mut u8;
-        while i + 32 <= shard_len {
-            unsafe {
-                let va = _mm256_loadu_si256(a.add(i) as *const __m256i);
-                let vb = _mm256_loadu_si256(b.add(i) as *const __m256i);
-                let vb = _mm256_xor_si256(vb, va); // d' = g0 + g1
-                let va = _mm256_xor_si256(va, mul_vec(vb, m)); // d = g0 + T·d'
-                _mm256_storeu_si256(a.add(i) as *mut __m256i, va);
-                _mm256_storeu_si256(b.add(i) as *mut __m256i, vb);
+    for [a, b] in shard_groups::<_, 2>(shards, shard_len, base, d) {
+        let mut i = 0;
+        {
+            let a = a.as_mut_ptr() as *mut u8;
+            let b = b.as_mut_ptr() as *mut u8;
+            while i + 32 <= shard_len {
+                unsafe {
+                    let va = _mm256_loadu_si256(a.add(i) as *const __m256i);
+                    let vb = _mm256_loadu_si256(b.add(i) as *const __m256i);
+                    let vb = _mm256_xor_si256(vb, va); // d' = g0 + g1
+                    let va = _mm256_xor_si256(va, mul_vec_inner(vb, m_lo, m_hi)); // d = g0 + T·d'
+                    _mm256_storeu_si256(a.add(i) as *mut __m256i, va);
+                    _mm256_storeu_si256(b.add(i) as *mut __m256i, vb);
+                }
+                i += 32;
             }
-            i += 32;
         }
-    }
-    // Handle the tail scalar. Masked AVX2 load/store ops work on 4-byte dwords, hence apply the
-    // multiplication table elementwise instead.
-    while i < shard_len {
-        let x = a[i];
-        let y = b[i];
-        let y = x.add(y);
-        let x = x.add(y.nibble_mul(m));
-        a[i] = x;
-        b[i] = y;
-        i += 1;
+        // Handle the tail scalar. Masked AVX2 load/store ops work on 4-byte dwords, hence apply the
+        // multiplication table elementwise instead.
+        while i < shard_len {
+            let x = a[i];
+            let y = b[i];
+            let y = x.add(y);
+            let x = x.add(y.nibble_mul(m));
+            a[i] = x;
+            b[i] = y;
+            i += 1;
+        }
     }
 }
 
@@ -208,58 +196,46 @@ fn butterfly_fwd_dit4<G: Gf2p8>(
     m23: MulTable,
     m02: MulTable,
 ) {
-    debug_assert!((base + 3 * d + 1) * shard_len <= shards.len());
-
-    let ptr = shards.as_mut_ptr() as *mut u8;
-    let p: [*mut u8; 4] = unsafe {
-        [
-            ptr.add(base * shard_len),
-            ptr.add((base + d) * shard_len),
-            ptr.add((base + 2 * d) * shard_len),
-            ptr.add((base + 3 * d) * shard_len),
-        ]
-    };
-
     let (m02_lo, m02_hi) = load_mul_table(m02);
     let (m01_lo, m01_hi) = load_mul_table(m01);
     let (m23_lo, m23_hi) = load_mul_table(m23);
 
-    let mut i = 0;
-    while i + 32 <= shard_len {
-        unsafe {
-            let mut w0 = _mm256_loadu_si256(p[0].add(i) as *const __m256i);
-            let mut w1 = _mm256_loadu_si256(p[1].add(i) as *const __m256i);
-            let mut w2 = _mm256_loadu_si256(p[2].add(i) as *const __m256i);
-            let mut w3 = _mm256_loadu_si256(p[3].add(i) as *const __m256i);
+    for [s0, s1, s2, s3] in shard_groups::<_, 4>(shards, shard_len, base, d) {
+        let p0 = s0.as_mut_ptr() as *mut u8;
+        let p1 = s1.as_mut_ptr() as *mut u8;
+        let p2 = s2.as_mut_ptr() as *mut u8;
+        let p3 = s3.as_mut_ptr() as *mut u8;
 
-            // Wide level: (w0, w2) and (w1, w3), both with m02.
-            w0 = _mm256_xor_si256(w0, mul_vec_inner(w2, m02_lo, m02_hi));
-            w1 = _mm256_xor_si256(w1, mul_vec_inner(w3, m02_lo, m02_hi));
-            w2 = _mm256_xor_si256(w2, w0);
-            w3 = _mm256_xor_si256(w3, w1);
+        let mut i = 0;
+        while i + 32 <= shard_len {
+            unsafe {
+                let mut w0 = _mm256_loadu_si256(p0.add(i) as *const __m256i);
+                let mut w1 = _mm256_loadu_si256(p1.add(i) as *const __m256i);
+                let mut w2 = _mm256_loadu_si256(p2.add(i) as *const __m256i);
+                let mut w3 = _mm256_loadu_si256(p3.add(i) as *const __m256i);
 
-            // Narrow level: (w0, w1) with m01, (w2, w3) with m23.
-            w0 = _mm256_xor_si256(w0, mul_vec_inner(w1, m01_lo, m01_hi));
-            w2 = _mm256_xor_si256(w2, mul_vec_inner(w3, m23_lo, m23_hi));
-            w1 = _mm256_xor_si256(w1, w0);
-            w3 = _mm256_xor_si256(w3, w2);
+                // Wide level: (w0, w2) and (w1, w3), both with m02.
+                w0 = _mm256_xor_si256(w0, mul_vec_inner(w2, m02_lo, m02_hi));
+                w1 = _mm256_xor_si256(w1, mul_vec_inner(w3, m02_lo, m02_hi));
+                w2 = _mm256_xor_si256(w2, w0);
+                w3 = _mm256_xor_si256(w3, w1);
 
-            _mm256_storeu_si256(p[0].add(i) as *mut __m256i, w0);
-            _mm256_storeu_si256(p[1].add(i) as *mut __m256i, w1);
-            _mm256_storeu_si256(p[2].add(i) as *mut __m256i, w2);
-            _mm256_storeu_si256(p[3].add(i) as *mut __m256i, w3);
+                // Narrow level: (w0, w1) with m01, (w2, w3) with m23.
+                w0 = _mm256_xor_si256(w0, mul_vec_inner(w1, m01_lo, m01_hi));
+                w2 = _mm256_xor_si256(w2, mul_vec_inner(w3, m23_lo, m23_hi));
+                w1 = _mm256_xor_si256(w1, w0);
+                w3 = _mm256_xor_si256(w3, w2);
+
+                _mm256_storeu_si256(p0.add(i) as *mut __m256i, w0);
+                _mm256_storeu_si256(p1.add(i) as *mut __m256i, w1);
+                _mm256_storeu_si256(p2.add(i) as *mut __m256i, w2);
+                _mm256_storeu_si256(p3.add(i) as *mut __m256i, w3);
+            }
+            i += 32;
         }
-        i += 32;
-    }
 
-    while i < shard_len {
-        unsafe {
-            let (mut w0, mut w1, mut w2, mut w3) = (
-                G::from(*p[0].add(i)),
-                G::from(*p[1].add(i)),
-                G::from(*p[2].add(i)),
-                G::from(*p[3].add(i)),
-            );
+        while i < shard_len {
+            let (mut w0, mut w1, mut w2, mut w3) = (s0[i], s1[i], s2[i], s3[i]);
             w0 = w0.add(w2.nibble_mul(m02));
             w1 = w1.add(w3.nibble_mul(m02));
             w2 = w2.add(w0);
@@ -268,12 +244,12 @@ fn butterfly_fwd_dit4<G: Gf2p8>(
             w2 = w2.add(w3.nibble_mul(m23));
             w1 = w1.add(w0);
             w3 = w3.add(w2);
-            *p[0].add(i) = w0.into();
-            *p[1].add(i) = w1.into();
-            *p[2].add(i) = w2.into();
-            *p[3].add(i) = w3.into();
+            s0[i] = w0;
+            s1[i] = w1;
+            s2[i] = w2;
+            s3[i] = w3;
+            i += 1;
         }
-        i += 1;
     }
 }
 
@@ -287,58 +263,46 @@ fn butterfly_inv_dit4<G: Gf2p8>(
     m23: MulTable,
     m02: MulTable,
 ) {
-    debug_assert!((base + 3 * d + 1) * shard_len <= shards.len());
-
-    let ptr = shards.as_mut_ptr() as *mut u8;
-    let p: [*mut u8; 4] = unsafe {
-        [
-            ptr.add(base * shard_len),
-            ptr.add((base + d) * shard_len),
-            ptr.add((base + 2 * d) * shard_len),
-            ptr.add((base + 3 * d) * shard_len),
-        ]
-    };
-
     let (m02_lo, m02_hi) = load_mul_table(m02);
     let (m01_lo, m01_hi) = load_mul_table(m01);
     let (m23_lo, m23_hi) = load_mul_table(m23);
 
-    let mut i = 0;
-    while i + 32 <= shard_len {
-        unsafe {
-            let mut w0 = _mm256_loadu_si256(p[0].add(i) as *const __m256i);
-            let mut w1 = _mm256_loadu_si256(p[1].add(i) as *const __m256i);
-            let mut w2 = _mm256_loadu_si256(p[2].add(i) as *const __m256i);
-            let mut w3 = _mm256_loadu_si256(p[3].add(i) as *const __m256i);
+    for [s0, s1, s2, s3] in shard_groups::<_, 4>(shards, shard_len, base, d) {
+        let p0 = s0.as_mut_ptr() as *mut u8;
+        let p1 = s1.as_mut_ptr() as *mut u8;
+        let p2 = s2.as_mut_ptr() as *mut u8;
+        let p3 = s3.as_mut_ptr() as *mut u8;
 
-            // Narrow level: (w0, w1) with m01, (w2, w3) with m23.
-            w3 = _mm256_xor_si256(w3, w2);
-            w1 = _mm256_xor_si256(w1, w0);
-            w2 = _mm256_xor_si256(w2, mul_vec_inner(w3, m23_lo, m23_hi));
-            w0 = _mm256_xor_si256(w0, mul_vec_inner(w1, m01_lo, m01_hi));
+        let mut i = 0;
+        while i + 32 <= shard_len {
+            unsafe {
+                let mut w0 = _mm256_loadu_si256(p0.add(i) as *const __m256i);
+                let mut w1 = _mm256_loadu_si256(p1.add(i) as *const __m256i);
+                let mut w2 = _mm256_loadu_si256(p2.add(i) as *const __m256i);
+                let mut w3 = _mm256_loadu_si256(p3.add(i) as *const __m256i);
 
-            // Wide level: (w0, w2) and (w1, w3), both with m02.
-            w3 = _mm256_xor_si256(w3, w1);
-            w2 = _mm256_xor_si256(w2, w0);
-            w1 = _mm256_xor_si256(w1, mul_vec_inner(w3, m02_lo, m02_hi));
-            w0 = _mm256_xor_si256(w0, mul_vec_inner(w2, m02_lo, m02_hi));
+                // Narrow level: (w0, w1) with m01, (w2, w3) with m23.
+                w3 = _mm256_xor_si256(w3, w2);
+                w1 = _mm256_xor_si256(w1, w0);
+                w2 = _mm256_xor_si256(w2, mul_vec_inner(w3, m23_lo, m23_hi));
+                w0 = _mm256_xor_si256(w0, mul_vec_inner(w1, m01_lo, m01_hi));
 
-            _mm256_storeu_si256(p[0].add(i) as *mut __m256i, w0);
-            _mm256_storeu_si256(p[1].add(i) as *mut __m256i, w1);
-            _mm256_storeu_si256(p[2].add(i) as *mut __m256i, w2);
-            _mm256_storeu_si256(p[3].add(i) as *mut __m256i, w3);
+                // Wide level: (w0, w2) and (w1, w3), both with m02.
+                w3 = _mm256_xor_si256(w3, w1);
+                w2 = _mm256_xor_si256(w2, w0);
+                w1 = _mm256_xor_si256(w1, mul_vec_inner(w3, m02_lo, m02_hi));
+                w0 = _mm256_xor_si256(w0, mul_vec_inner(w2, m02_lo, m02_hi));
+
+                _mm256_storeu_si256(p0.add(i) as *mut __m256i, w0);
+                _mm256_storeu_si256(p1.add(i) as *mut __m256i, w1);
+                _mm256_storeu_si256(p2.add(i) as *mut __m256i, w2);
+                _mm256_storeu_si256(p3.add(i) as *mut __m256i, w3);
+            }
+            i += 32;
         }
-        i += 32;
-    }
 
-    while i < shard_len {
-        unsafe {
-            let (mut w0, mut w1, mut w2, mut w3) = (
-                G::from(*p[0].add(i)),
-                G::from(*p[1].add(i)),
-                G::from(*p[2].add(i)),
-                G::from(*p[3].add(i)),
-            );
+        while i < shard_len {
+            let (mut w0, mut w1, mut w2, mut w3) = (s0[i], s1[i], s2[i], s3[i]);
             w3 = w3.add(w2);
             w1 = w1.add(w0);
             w2 = w2.add(w3.nibble_mul(m23));
@@ -347,12 +311,12 @@ fn butterfly_inv_dit4<G: Gf2p8>(
             w2 = w2.add(w0);
             w1 = w1.add(w3.nibble_mul(m02));
             w0 = w0.add(w2.nibble_mul(m02));
-            *p[0].add(i) = w0.into();
-            *p[1].add(i) = w1.into();
-            *p[2].add(i) = w2.into();
-            *p[3].add(i) = w3.into();
+            s0[i] = w0;
+            s1[i] = w1;
+            s2[i] = w2;
+            s3[i] = w3;
+            i += 1;
         }
-        i += 1;
     }
 }
 
