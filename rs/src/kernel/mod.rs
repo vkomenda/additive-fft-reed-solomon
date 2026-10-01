@@ -165,6 +165,36 @@ pub trait Kernel<G: Gf2p8Lut> {
         }
     }
 
+    fn fft_sharded_dit4_with(
+        shards: &mut [G],
+        shard_len: usize,
+        k: u8,
+        body_mul: &[[Self::MulTable; 3]],
+        tail_mul: &[Self::MulTable],
+    ) {
+        debug_assert_eq!(shards.len(), (1 << k) * shard_len);
+        let n = 1 << k;
+        let mut body_mul = body_mul.iter();
+
+        let mut l = k;
+        while l >= 2 {
+            let d = 1 << (l - 2);
+            for start in (0..n).step_by(4 * d) {
+                let [m01, m23, m02] = *body_mul.next().unwrap();
+                Self::butterfly_fwd_dit4(shards, shard_len, start, d, m01, m23, m02);
+            }
+            l -= 2;
+        }
+        debug_assert!(body_mul.next().is_none());
+
+        if l == 1 {
+            debug_assert_eq!(tail_mul.len(), n / 2);
+            for (start, m) in (0..n).step_by(2).zip(tail_mul) {
+                Self::butterfly_fwd_dit2(shards, shard_len, start, 1, *m);
+            }
+        }
+    }
+
     fn ifft_sharded_dit2(
         basis: &impl CantorBasisLut<G>,
         shards: &mut [G],
@@ -223,6 +253,34 @@ pub trait Kernel<G: Gf2p8Lut> {
 
         if lo + 1 == k {
             let m = Self::mul_table(Self::twiddle(basis, lo, beta));
+            Self::butterfly_inv_dit2(shards, shard_len, 0, n / 2, m);
+        }
+    }
+
+    fn ifft_sharded_dit4_with(
+        shards: &mut [G],
+        shard_len: usize,
+        k: u8,
+        body_mul: &[[Self::MulTable; 3]],
+        tail_mul: Option<&Self::MulTable>,
+    ) {
+        debug_assert_eq!(shards.len(), (1 << k) * shard_len);
+        let n = 1 << k;
+        let mut body_mul = body_mul.iter();
+
+        let mut lo = 0u8;
+        while lo + 1 < k {
+            let d = 1 << lo;
+            for start in (0..n).step_by(4 * d) {
+                let [m01, m23, m02] = *body_mul.next().unwrap();
+                Self::butterfly_inv_dit4(shards, shard_len, start, d, m01, m23, m02);
+            }
+            lo += 2;
+        }
+        debug_assert!(body_mul.next().is_none());
+
+        if lo + 1 == k {
+            let m = *tail_mul.expect("odd k needs a tail multiplier");
             Self::butterfly_inv_dit2(shards, shard_len, 0, n / 2, m);
         }
     }
