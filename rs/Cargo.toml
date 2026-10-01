@@ -37,6 +37,10 @@ harness = false
 name = "recover_erasures_sharded_clobber"
 harness = false
 
+[[bench]]
+name = "fft_sharded"
+harness = false
+
 [features]
 default = []
 compile_avx2 = []

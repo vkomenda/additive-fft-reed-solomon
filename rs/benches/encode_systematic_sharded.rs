@@ -18,7 +18,6 @@ use criterion::{
 };
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
-use std::alloc::{Layout, alloc};
 
 macro_rules! bench_params {
     ($group:expr,
@@ -46,13 +45,6 @@ macro_rules! bench_params {
             );
         })*
     }
-}
-
-fn aligned_buffer(len: usize) -> Vec<Gf2p8_11d> {
-    let layout = Layout::from_size_align(len, 64).unwrap();
-    let buf = unsafe { alloc(layout) };
-    let codeword: Vec<Gf2p8_11d> = unsafe { Vec::from_raw_parts(buf as *mut Gf2p8_11d, len, len) };
-    codeword
 }
 
 fn bench_encode_systematic_sharded_inner<K, const N: usize, const T: usize>(
