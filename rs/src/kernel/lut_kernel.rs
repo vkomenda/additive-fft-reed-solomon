@@ -408,7 +408,7 @@ mod test {
     use super::*;
     use crate::poly_11d_lut::CantorBasisLut11d;
     use rand::rngs::SmallRng;
-    use rand::{Rng, SeedableRng};
+    use rand::{Rng, RngExt, SeedableRng};
 
     #[test]
     fn fft_sharded_zero_padded_matches_fft_sharded() {
@@ -501,6 +501,8 @@ mod test {
         const SHARD_LEN: usize = 37;
 
         let mut rng = SmallRng::seed_from_u64(42);
+        let beta: u8 = rng.random();
+        let beta = Gf2p8_11d::from(beta);
 
         for k in 1..=8 {
             let n = 1 << k;
@@ -511,14 +513,32 @@ mod test {
             });
             let mut b = a.clone();
 
-            fft_sharded(&CantorBasisLut11d, &mut a, SHARD_LEN, k, Gf2p8_11d::zero());
-            LutKernel::fft_sharded_dit4(
-                &CantorBasisLut11d,
-                &mut b,
-                SHARD_LEN,
-                k,
-                Gf2p8_11d::zero(),
-            );
+            fft_sharded(&CantorBasisLut11d, &mut a, SHARD_LEN, k, beta);
+            LutKernel::fft_sharded_dit4(&CantorBasisLut11d, &mut b, SHARD_LEN, k, beta);
+
+            assert_eq!(a, b, "k={k}");
+        }
+    }
+
+    #[test]
+    fn ifft_sharded_dit4_matches_ifft_sharded() {
+        const SHARD_LEN: usize = 37;
+
+        let mut rng = SmallRng::seed_from_u64(42);
+        let beta: u8 = rng.random();
+        let beta = Gf2p8_11d::from(beta);
+
+        for k in 1..=8 {
+            let n = 1 << k;
+
+            let mut a = vec![Gf2p8_11d::zero(); n * SHARD_LEN];
+            rng.fill_bytes(unsafe {
+                std::slice::from_raw_parts_mut(a.as_mut_ptr() as *mut u8, n * SHARD_LEN)
+            });
+            let mut b = a.clone();
+
+            ifft_sharded(&CantorBasisLut11d, &mut a, SHARD_LEN, k, beta);
+            LutKernel::ifft_sharded_dit4(&CantorBasisLut11d, &mut b, SHARD_LEN, k, beta);
 
             assert_eq!(a, b, "k={k}");
         }

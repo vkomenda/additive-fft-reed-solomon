@@ -108,37 +108,20 @@ pub trait Kernel<G: Gf2p8Lut> {
         beta: G,
     ) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
+        let n = 1 << k;
 
-        // betas[b] is the shift for block b at the current level pair.
-        let mut betas = [G::zero(); 256];
-        betas[0] = beta;
-        let mut blocks = 1;
-
-        let mut l = k;
-        while l >= 1 {
-            let hi = l - 1;
-            let d = 1 << hi;
-            let step = 1 << l; // block span, in shards
-            let basis_hi = basis.get_basis_point_lut(hi);
-
-            for b in (0..blocks).rev() {
-                let beta_l = betas[b];
-                let beta_r = beta_l.add(basis_hi);
-                let start = b * step;
+        for l in (0..k).rev() {
+            let d = 1 << l;
+            for start in (0..n).step_by(2 * d) {
+                let node_beta = beta.add(basis.get_subspace_point_lut(start as u8));
                 Self::butterfly_fwd_dit2(
                     shards,
                     shard_len,
                     start,
                     d,
-                    Self::mul_table(Self::twiddle(basis, hi, beta_l)),
+                    Self::mul_table(Self::twiddle(basis, l, node_beta)),
                 );
-
-                betas[2 * b] = beta_l;
-                betas[2 * b + 1] = beta_r;
             }
-
-            blocks <<= 1;
-            l -= 1;
         }
     }
 
@@ -150,25 +133,17 @@ pub trait Kernel<G: Gf2p8Lut> {
         beta: G,
     ) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
-
-        // betas[b] is the shift for block b at the current level pair.
-        let mut betas = [G::zero(); 256];
-        betas[0] = beta;
-        let mut blocks = 1;
+        let n = 1 << k;
+        let node_beta = |start: usize| beta.add(basis.get_subspace_point_lut(start as u8));
 
         let mut l = k;
         while l >= 2 {
             let hi = l - 1; // wide level, stride 2d
             let lo = l - 2; // narrow level, stride d
             let d = 1 << lo;
-            let step = 1 << l; // block span, in shards
-            let basis_hi = basis.get_basis_point_lut(hi);
-            let basis_lo = basis.get_basis_point_lut(lo);
-
-            for b in (0..blocks).rev() {
-                let beta_l = betas[b];
-                let beta_r = beta_l.add(basis_hi);
-                let start = b * step;
+            for start in (0..n).step_by(4 * d) {
+                let beta_l = node_beta(start);
+                let beta_r = node_beta(start + 2 * d);
                 Self::butterfly_fwd_dit4(
                     shards,
                     shard_len,
@@ -178,22 +153,77 @@ pub trait Kernel<G: Gf2p8Lut> {
                     Self::mul_table(Self::twiddle(basis, lo, beta_r)),
                     Self::mul_table(Self::twiddle(basis, hi, beta_l)),
                 );
-
-                betas[4 * b] = beta_l;
-                betas[4 * b + 1] = beta_l.add(basis_lo);
-                betas[4 * b + 2] = beta_r;
-                betas[4 * b + 3] = beta_r.add(basis_lo);
             }
-
-            blocks <<= 2;
             l -= 2;
         }
 
         if l == 1 {
-            for b in 0..blocks {
-                let m = Self::mul_table(Self::twiddle(basis, 0, betas[b]));
-                Self::butterfly_fwd_dit2(&mut shards[..], shard_len, 2 * b, 1, m);
+            for start in (0..n).step_by(2) {
+                let m = Self::mul_table(Self::twiddle(basis, 0, node_beta(start)));
+                Self::butterfly_fwd_dit2(shards, shard_len, start, 1, m);
             }
+        }
+    }
+
+    fn ifft_sharded_dit2(
+        basis: &impl CantorBasisLut<G>,
+        shards: &mut [G],
+        shard_len: usize,
+        k: u8,
+        beta: G,
+    ) {
+        debug_assert_eq!(shards.len(), (1 << k) * shard_len);
+        let n = 1 << k;
+
+        for l in 0..k {
+            let d = 1 << l;
+            for start in (0..n).step_by(2 * d) {
+                let node_beta = beta.add(basis.get_subspace_point_lut(start as u8));
+                Self::butterfly_inv_dit2(
+                    shards,
+                    shard_len,
+                    start,
+                    d,
+                    Self::mul_table(Self::twiddle(basis, l, node_beta)),
+                );
+            }
+        }
+    }
+
+    fn ifft_sharded_dit4(
+        basis: &impl CantorBasisLut<G>,
+        shards: &mut [G],
+        shard_len: usize,
+        k: u8,
+        beta: G,
+    ) {
+        debug_assert_eq!(shards.len(), (1 << k) * shard_len);
+        let n = 1 << k;
+        let node_beta = |start: usize| beta.add(basis.get_subspace_point_lut(start as u8));
+
+        let mut lo = 0u8;
+        while lo + 1 < k {
+            let hi = lo + 1;
+            let d = 1 << lo;
+            for start in (0..n).step_by(4 * d) {
+                let beta_l = node_beta(start);
+                let beta_r = node_beta(start + 2 * d);
+                Self::butterfly_inv_dit4(
+                    shards,
+                    shard_len,
+                    start,
+                    d,
+                    Self::mul_table(Self::twiddle(basis, lo, beta_l)),
+                    Self::mul_table(Self::twiddle(basis, lo, beta_r)),
+                    Self::mul_table(Self::twiddle(basis, hi, beta_l)),
+                );
+            }
+            lo += 2;
+        }
+
+        if lo + 1 == k {
+            let m = Self::mul_table(Self::twiddle(basis, lo, beta));
+            Self::butterfly_inv_dit2(shards, shard_len, 0, n / 2, m);
         }
     }
 }
