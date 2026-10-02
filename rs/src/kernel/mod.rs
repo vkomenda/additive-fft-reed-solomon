@@ -83,9 +83,9 @@ pub trait Kernel<G: Gf2p8Lut> {
         beta: G,
     );
 
-    fn fft_sharded_iterated(shards: &mut [G], shard_len: usize, k: u8, beta: G);
+    fn fft_sharded_iterative(shards: &mut [G], shard_len: usize, k: u8, beta: G);
 
-    fn ifft_sharded_iterated(shards: &mut [G], shard_len: usize, k: u8, beta: G);
+    fn ifft_sharded_iterative(shards: &mut [G], shard_len: usize, k: u8, beta: G);
 
     fn scale(src: &[G], dst: &mut [G], scalar: G);
 

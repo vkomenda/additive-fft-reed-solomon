@@ -382,7 +382,7 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
         }
     }
 
-    fn fft_sharded_iterated(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+    fn fft_sharded_iterative(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
         if beta == Gf2p8_11d::zero() {
             match k {
                 1 => Self::fft_sharded_dit4_with(
@@ -448,7 +448,7 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
         }
     }
 
-    fn ifft_sharded_iterated(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+    fn ifft_sharded_iterative(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
         if beta == Gf2p8_11d::zero() {
             match k {
                 1 => Self::ifft_sharded_dit4_with(

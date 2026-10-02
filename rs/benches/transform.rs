@@ -17,16 +17,34 @@ use rand::SeedableRng;
 use rand::rngs::SmallRng;
 use std::hint::black_box;
 
-type Transform = fn(&CantorBasisLut11d, &mut [Gf2p8_11d], usize, u8, Gf2p8_11d);
+type Transform = fn(&mut [Gf2p8_11d], usize, u8);
 
-fn transforms<K: Kernel<Gf2p8_11d>>() -> [(&'static str, Transform); 6] {
+fn transforms<K: Kernel<Gf2p8_11d>>() -> [(&'static str, Transform); 8] {
     [
-        ("fft_sharded", K::fft_sharded),
-        ("fft_sharded_dit2", K::fft_sharded_dit2),
-        ("fft_sharded_dit4", K::fft_sharded_dit4),
-        ("ifft_sharded", K::ifft_sharded),
-        ("ifft_sharded_dit2", K::ifft_sharded_dit2),
-        ("ifft_sharded_dit4", K::ifft_sharded_dit4),
+        ("fft_sharded_iterative", |s, l, k| {
+            K::fft_sharded_iterative(s, l, k, Gf2p8_11d::zero())
+        }),
+        ("ifft_sharded_iterative", |s, l, k| {
+            K::ifft_sharded_iterative(s, l, k, Gf2p8_11d::zero())
+        }),
+        ("fft_sharded", |s, l, k| {
+            K::fft_sharded(&CantorBasisLut11d, s, l, k, Gf2p8_11d::zero())
+        }),
+        ("fft_sharded_dit2", |s, l, k| {
+            K::fft_sharded_dit2(&CantorBasisLut11d, s, l, k, Gf2p8_11d::zero())
+        }),
+        ("fft_sharded_dit4", |s, l, k| {
+            K::fft_sharded_dit4(&CantorBasisLut11d, s, l, k, Gf2p8_11d::zero())
+        }),
+        ("ifft_sharded", |s, l, k| {
+            K::ifft_sharded(&CantorBasisLut11d, s, l, k, Gf2p8_11d::zero())
+        }),
+        ("ifft_sharded_dit2", |s, l, k| {
+            K::ifft_sharded_dit2(&CantorBasisLut11d, s, l, k, Gf2p8_11d::zero())
+        }),
+        ("ifft_sharded_dit4", |s, l, k| {
+            K::ifft_sharded_dit4(&CantorBasisLut11d, s, l, k, Gf2p8_11d::zero())
+        }),
     ]
 }
 
@@ -49,9 +67,7 @@ macro_rules! bench_params {
                     ),
                     &$shard_len,
                     |b, &shard_len| {
-                        bench_transform_inner(b, shard_len, $k, &mut *$rng, aligned, |s, l, k| {
-                            $func(&CantorBasisLut11d, s, l, k, Gf2p8_11d::zero())
-                        });
+                        bench_transform_inner(b, shard_len, $k, &mut *$rng, aligned, $func);
                     },
                 );
             }
@@ -76,19 +92,19 @@ fn bench_transform(c: &mut Criterion) {
     let mut rng = SmallRng::seed_from_u64(42);
     let mut group = c.benchmark_group("transform");
 
-    // for (name, f) in transforms::<LutKernel<Gf2p8_11d>>() {
-    //     for shard_len in [64, 1024, 65536] {
-    //         bench_params!(
-    //             group,
-    //             shard_len,
-    //             &mut rng,
-    //             "lut",
-    //             f,
-    //             name,
-    //             [1, 2, 3, 4, 5, 6, 7, 8]
-    //         );
-    //     }
-    // }
+    for (name, f) in transforms::<LutKernel<Gf2p8_11d>>() {
+        for shard_len in [64, 1024, 65536] {
+            bench_params!(
+                group,
+                shard_len,
+                &mut rng,
+                "lut",
+                f,
+                name,
+                [1, 2, 3, 4, 5, 6, 7, 8]
+            );
+        }
+    }
 
     #[cfg(native_avx2)]
     for (name, f) in transforms::<Avx2Kernel<Gf2p8_11d>>() {
