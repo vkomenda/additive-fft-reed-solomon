@@ -76,19 +76,19 @@ fn bench_transform(c: &mut Criterion) {
     let mut rng = SmallRng::seed_from_u64(42);
     let mut group = c.benchmark_group("transform");
 
-    for (name, f) in transforms::<LutKernel<Gf2p8_11d>>() {
-        for shard_len in [64, 1024, 65536] {
-            bench_params!(
-                group,
-                shard_len,
-                &mut rng,
-                "lut",
-                f,
-                name,
-                [1, 2, 3, 4, 5, 6, 7, 8]
-            );
-        }
-    }
+    // for (name, f) in transforms::<LutKernel<Gf2p8_11d>>() {
+    //     for shard_len in [64, 1024, 65536] {
+    //         bench_params!(
+    //             group,
+    //             shard_len,
+    //             &mut rng,
+    //             "lut",
+    //             f,
+    //             name,
+    //             [1, 2, 3, 4, 5, 6, 7, 8]
+    //         );
+    //     }
+    // }
 
     #[cfg(native_avx2)]
     for (name, f) in transforms::<Avx2Kernel<Gf2p8_11d>>() {

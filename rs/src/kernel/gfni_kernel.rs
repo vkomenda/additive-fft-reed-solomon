@@ -318,7 +318,7 @@ fn fft_sharded_gfni<G: Gf2p8Lut>(
     }
     let half = 1usize << (k - 1);
     let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
-    let mat = _mm512_set1_epi64(twiddle.gfni_mul_matrix() as i64);
+    let mat = _mm512_set1_epi64(twiddle.gfni_mul_matrix_lut() as i64);
 
     for i in 0..half {
         let (left, right) = shards.split_at_mut((i + half) * shard_len);
@@ -366,7 +366,7 @@ fn ifft_sharded_gfni<G: Gf2p8Lut>(
     );
 
     let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
-    let mat = _mm512_set1_epi64(twiddle.gfni_mul_matrix() as i64);
+    let mat = _mm512_set1_epi64(twiddle.gfni_mul_matrix_lut() as i64);
 
     for i in 0..half {
         let (left, right) = shards.split_at_mut((i + half) * shard_len);
@@ -433,7 +433,7 @@ impl Kernel<Gf2p8_11d> for GfniKernel<Gf2p8_11d> {
     type MulTable = u64;
 
     fn mul_table(twiddle: Gf2p8_11d) -> Self::MulTable {
-        twiddle.gfni_mul_matrix()
+        twiddle.gfni_mul_matrix_lut()
     }
 
     fn butterfly_fwd_dit2(
@@ -615,12 +615,12 @@ impl Kernel<Gf2p8_11d> for GfniKernel<Gf2p8_11d> {
     }
 
     fn scale(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
-        let mat = unsafe { _mm512_set1_epi64(scalar.gfni_mul_matrix() as i64) };
+        let mat = unsafe { _mm512_set1_epi64(scalar.gfni_mul_matrix_lut() as i64) };
         unsafe { scale(src, dst, dst.len(), mat) }
     }
 
     fn scale_in_place(dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
-        let mat = unsafe { _mm512_set1_epi64(scalar.gfni_mul_matrix() as i64) };
+        let mat = unsafe { _mm512_set1_epi64(scalar.gfni_mul_matrix_lut() as i64) };
         unsafe { scale_in_place(dst, dst.len(), mat) }
     }
 

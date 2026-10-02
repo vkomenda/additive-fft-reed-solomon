@@ -160,8 +160,12 @@ pub trait Gf2p8: Sized + Copy + From<u8> + Into<u8> + PartialEq {
         m.transpose()
     }
 
+    fn gfni_mul_matrix(self) -> u64 {
+        self.into_mul_matrix().to_gfni_u64()
+    }
+
     fn iter_gfni_mul_matrices() -> impl Iterator<Item = u64> {
-        (0..FIELD_SIZE).map(|i| Self::from(i as u8).into_mul_matrix().to_gfni_u64())
+        (0..FIELD_SIZE).map(|i| Self::from(i as u8).gfni_mul_matrix())
     }
 
     fn nibble_mul_table(self) -> NibbleMulTable {

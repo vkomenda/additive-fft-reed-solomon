@@ -423,6 +423,155 @@ const NEON: UnrollTarget<Gf2p8_11d> = UnrollTarget {
     _phant: PhantomData,
 };
 
+/// An identifier for a transform node's twiddle: a level and the global index of its first shard.
+type NodeRef = (u8, usize);
+
+/// Twiddle references in body-first driver traversal order: DIT4 triples [m01, m23, m02], then the
+/// DIT2 tail.
+fn dit4_schedule(k: u8, inverse: bool) -> (Vec<[NodeRef; 3]>, Vec<NodeRef>) {
+    let n = 1 << k;
+    let triple = |lo: u8, start: usize| {
+        let d = 1 << lo;
+        [(lo, start), (lo, start + 2 * d), (lo + 1, start)]
+    };
+    let mut body = Vec::new();
+    let mut tail = Vec::new();
+
+    if !inverse {
+        // Outermost pairs first
+        let mut l = k;
+        while l >= 2 {
+            let lo = l - 2;
+            for start in (0..n).step_by(4 << lo) {
+                body.push(triple(lo, start));
+            }
+            l -= 2;
+        }
+        if l == 1 {
+            tail.extend((0..n).step_by(2).map(|s| (0, s)));
+        }
+    } else {
+        // Innermost pairs first
+        let mut lo = 0;
+        while lo + 1 < k {
+            for start in (0..n).step_by(4 << lo) {
+                body.push(triple(lo, start));
+            }
+            lo += 2;
+        }
+        if lo + 1 == k {
+            tail.push((lo, 0));
+        }
+    }
+    (body, tail)
+}
+
+fn twiddle<G: Gf2p8>(
+    sub_poly_luts: &[[G; FIELD_SIZE]; 8],
+    subspace_points: &[G; FIELD_SIZE],
+    (l, s): NodeRef,
+) -> G {
+    let w = subspace_points[s];
+    if l == 0 {
+        w
+    } else {
+        sub_poly_luts[l as usize][w.into_usize()]
+    }
+}
+
+struct ScheduleTarget<G> {
+    name: &'static str,
+    ty: &'static str,
+    literal: fn(G) -> String,
+}
+
+fn lut_target<G: Gf2p8>() -> ScheduleTarget<G> {
+    ScheduleTarget {
+        name: "LUT",
+        ty: "&[u8; 256]",
+        literal: |t| format!("&MUL_TABLE[{}]", t.into_usize()),
+    }
+}
+
+fn gfni_target<G: Gf2p8>() -> ScheduleTarget<G> {
+    ScheduleTarget {
+        name: "GFNI",
+        ty: "u64",
+        literal: |t| format!("0x{:016x}", t.gfni_mul_matrix()),
+    }
+}
+
+fn nibble_target<G: Gf2p8>() -> ScheduleTarget<G> {
+    ScheduleTarget {
+        name: "NIBBLE",
+        ty: "&([u8; 16], [u8; 16])",
+        literal: |t| format!("&NIBBLE_MUL_TABLE[{}]", t.into_usize()),
+    }
+}
+
+fn write_dit4_schedules<G: Gf2p8>(
+    f: &mut impl Write,
+    target: &ScheduleTarget<G>,
+    sub_poly_luts: &[[G; FIELD_SIZE]; 8],
+    subspace_points: &[G; FIELD_SIZE],
+    cases: &[(u8, usize)], // (k, offset) pairs actually used
+) -> io::Result<()> {
+    let tw = |r: NodeRef, off: usize| {
+        (target.literal)(twiddle(sub_poly_luts, subspace_points, (r.0, r.1 + off)))
+    };
+
+    for &(k, off) in cases {
+        assert_eq!(off % (1 << k), 0, "offset must be aligned to the transform");
+        for (dir, inverse) in [("FFT", false), ("IFFT", true)] {
+            let (body, tail) = dit4_schedule(k, inverse);
+            let prefix = format!("{dir}_BODY_{}_K{k}_O{off}", target.name);
+
+            writeln!(
+                f,
+                "pub static {prefix}: [[{}; 3]; {}] = [",
+                target.ty,
+                body.len()
+            )?;
+            for [a, b, c] in &body {
+                writeln!(
+                    f,
+                    "    [{}, {}, {}],",
+                    tw(*a, off),
+                    tw(*b, off),
+                    tw(*c, off)
+                )?;
+            }
+            writeln!(f, "];")?;
+
+            if inverse {
+                // One outermost node when k is odd.
+                match tail.first() {
+                    Some(r) => writeln!(
+                        f,
+                        "pub static {prefix}_TAIL: Option<{}> = Some({});",
+                        target.ty,
+                        tw(*r, off)
+                    )?,
+                    None => writeln!(f, "pub static {prefix}_TAIL: Option<{}> = None;", target.ty)?,
+                }
+            } else {
+                writeln!(
+                    f,
+                    "pub static {prefix}_TAIL: [{}; {}] = [",
+                    target.ty,
+                    tail.len()
+                )?;
+                for r in &tail {
+                    writeln!(f, "    {},", tw(*r, off))?;
+                }
+                writeln!(f, "];")?;
+            }
+            writeln!(f)?;
+        }
+    }
+    Ok(())
+}
+
 fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("tables_11d.rs");
@@ -513,6 +662,32 @@ fn main() {
     write_points(&mut f, sub_poly_coeffs_iter, false);
 
     let sub_poly_luts8: &[[Gf2p8_11d; 256]; 8] = sub_poly_luts[..8].try_into().unwrap();
+
+    let cases: Vec<_> = (1..=8).map(|k| (k, 0)).collect();
+    write_dit4_schedules(
+        &mut f,
+        &lut_target(),
+        sub_poly_luts8,
+        &subspace_points,
+        &cases,
+    )
+    .unwrap();
+    write_dit4_schedules(
+        &mut f,
+        &nibble_target(),
+        sub_poly_luts8,
+        &subspace_points,
+        &cases,
+    )
+    .unwrap();
+    write_dit4_schedules(
+        &mut f,
+        &gfni_target(),
+        sub_poly_luts8,
+        &subspace_points,
+        &cases,
+    )
+    .unwrap();
 
     let dest_kernel_lut = Path::new(&out_dir).join("unrolled_lut_kernel_11d.rs");
     let mut fkl = BufWriter::new(File::create(&dest_kernel_lut).unwrap());

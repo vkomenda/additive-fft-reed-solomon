@@ -20,11 +20,11 @@ impl Gf2p8Lut for Gf2p8_11d {
         generated::INV_TABLE[self.into_usize()].into()
     }
 
-    fn gfni_mul_matrix(self) -> u64 {
+    fn gfni_mul_matrix_lut(self) -> u64 {
         generated::GFNI_MUL_TABLE[self.into_usize()]
     }
 
-    fn nibble_mul_table(self) -> ([u8; 16], [u8; 16]) {
+    fn nibble_mul_table_lut(self) -> ([u8; 16], [u8; 16]) {
         generated::NIBBLE_MUL_TABLE[self.into_usize()]
     }
 }

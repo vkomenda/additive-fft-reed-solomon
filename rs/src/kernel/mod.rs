@@ -180,8 +180,8 @@ pub trait Kernel<G: Gf2p8Lut> {
         while l >= 2 {
             let d = 1 << (l - 2);
             for start in (0..n).step_by(4 * d) {
-                let [m01, m23, m02] = *body_mul.next().unwrap();
-                Self::butterfly_fwd_dit4(shards, shard_len, start, d, m01, m23, m02);
+                let [m01, m23, m02] = body_mul.next().unwrap();
+                Self::butterfly_fwd_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
             }
             l -= 2;
         }
@@ -193,6 +193,38 @@ pub trait Kernel<G: Gf2p8Lut> {
                 Self::butterfly_fwd_dit2(shards, shard_len, start, 1, *m);
             }
         }
+    }
+
+    fn fft_sharded_dit4_mirrored_with(
+        shards: &mut [G],
+        shard_len: usize,
+        k: u8,
+        body_mul: &[[Self::MulTable; 3]], // IFFT schedule
+        tail_mul: Option<&Self::MulTable>,
+    ) {
+        debug_assert_eq!(shards.len(), (1 << k) * shard_len);
+        let n = 1 << k;
+
+        if k % 2 == 1 {
+            let m = *tail_mul.expect("odd k needs a tail multiplier");
+            Self::butterfly_fwd_dit2(shards, shard_len, 0, n / 2, m);
+        } else {
+            debug_assert!(tail_mul.is_none());
+        }
+
+        let mut end = body_mul.len();
+        let mut l = k as i32 - 2 - (k % 2) as i32;
+        while l >= 0 {
+            let d = 1 << l;
+            let count = n / (4 * d);
+            let round = &body_mul[end - count..end];
+            for (start, [m01, m23, m02]) in (0..n).step_by(4 * d).zip(round) {
+                Self::butterfly_fwd_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
+            }
+            end -= count;
+            l -= 2;
+        }
+        debug_assert_eq!(end, 0);
     }
 
     fn ifft_sharded_dit2(
@@ -272,16 +304,18 @@ pub trait Kernel<G: Gf2p8Lut> {
         while lo + 1 < k {
             let d = 1 << lo;
             for start in (0..n).step_by(4 * d) {
-                let [m01, m23, m02] = *body_mul.next().unwrap();
-                Self::butterfly_inv_dit4(shards, shard_len, start, d, m01, m23, m02);
+                let [m01, m23, m02] = body_mul.next().unwrap();
+                Self::butterfly_inv_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
             }
             lo += 2;
         }
         debug_assert!(body_mul.next().is_none());
 
         if lo + 1 == k {
-            let m = *tail_mul.expect("odd k needs a tail multiplier");
-            Self::butterfly_inv_dit2(shards, shard_len, 0, n / 2, m);
+            let m = tail_mul.expect("odd k needs a tail multiplier");
+            Self::butterfly_inv_dit2(shards, shard_len, 0, n / 2, *m);
+        } else {
+            debug_assert!(tail_mul.is_none());
         }
     }
 }

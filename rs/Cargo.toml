@@ -1,6 +1,6 @@
 [package]
 name = "additive-fft-reed-solomon"
-version = "0.2.3"
+version = "0.2.4"
 license = "MIT"
 description = "Fast Reed-Solomon encode and decode algorithms based on additive FFT (Lin, Al Naffouri, Han)"
 repository = "https://github.com/vkomenda/additive-fft-reed-solomon"
@@ -10,11 +10,11 @@ categories = ["encoding"]
 edition = "2024"
 
 [dependencies]
-additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8", version = "0.1.5" }
+additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8", version = "0.1.6" }
 cfg-if = "1.0"
 
 [build-dependencies]
-additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8", version = "0.1.5" }
+additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8", version = "0.1.6" }
 
 [dev-dependencies]
 criterion = "0.8"
