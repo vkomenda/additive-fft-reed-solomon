@@ -1,7 +1,9 @@
 use super::{Kernel, shard_groups};
 use crate::{
     gf2p8lut::{CantorBasisLut, Gf2p8Lut},
-    poly_11d_lut::generated::{CANTOR_SUBSPACE, NIBBLE_MUL_BY_LOG, NIBBLE_MUL_TABLE},
+    poly_11d_lut::generated::{
+        self as tables, CANTOR_SUBSPACE, NIBBLE_MUL_BY_LOG, NIBBLE_MUL_TABLE,
+    },
 };
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, NibbleMulTable, Z255};
 use core::arch::x86_64::*;
@@ -626,6 +628,138 @@ impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
                     _ => ifft_sharded(basis, shards, shard_len, k, beta),
                 }
             }
+        }
+    }
+
+    fn fft_sharded_iterated(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+        if beta == Gf2p8_11d::zero() {
+            match k {
+                1 => Self::fft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::FFT_DIT4_NIBBLE_K1_O0,
+                    &tables::FFT_DIT4_NIBBLE_K1_O0_TAIL,
+                ),
+                2 => Self::fft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::FFT_DIT4_NIBBLE_K2_O0,
+                    &tables::FFT_DIT4_NIBBLE_K2_O0_TAIL,
+                ),
+                3 => Self::fft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::FFT_DIT4_NIBBLE_K3_O0,
+                    &tables::FFT_DIT4_NIBBLE_K3_O0_TAIL,
+                ),
+                4 => Self::fft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::FFT_DIT4_NIBBLE_K4_O0,
+                    &tables::FFT_DIT4_NIBBLE_K4_O0_TAIL,
+                ),
+                5 => Self::fft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::FFT_DIT4_NIBBLE_K5_O0,
+                    &tables::FFT_DIT4_NIBBLE_K5_O0_TAIL,
+                ),
+                6 => Self::fft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::FFT_DIT4_NIBBLE_K6_O0,
+                    &tables::FFT_DIT4_NIBBLE_K6_O0_TAIL,
+                ),
+                7 => Self::fft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::FFT_DIT4_NIBBLE_K7_O0,
+                    &tables::FFT_DIT4_NIBBLE_K7_O0_TAIL,
+                ),
+                8 => Self::fft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::FFT_DIT4_NIBBLE_K8_O0,
+                    &tables::FFT_DIT4_NIBBLE_K8_O0_TAIL,
+                ),
+                _ => unreachable!("k={k} must be in 1..=8"),
+            }
+        } else {
+            todo!();
+        }
+    }
+
+    fn ifft_sharded_iterated(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+        if beta == Gf2p8_11d::zero() {
+            match k {
+                1 => Self::ifft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_NIBBLE_K1_O0,
+                    tables::IFFT_DIT4_NIBBLE_K1_O0_TAIL.as_ref(),
+                ),
+                2 => Self::ifft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_NIBBLE_K2_O0,
+                    tables::IFFT_DIT4_NIBBLE_K2_O0_TAIL.as_ref(),
+                ),
+                3 => Self::ifft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_NIBBLE_K3_O0,
+                    tables::IFFT_DIT4_NIBBLE_K3_O0_TAIL.as_ref(),
+                ),
+                4 => Self::ifft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_NIBBLE_K4_O0,
+                    tables::IFFT_DIT4_NIBBLE_K4_O0_TAIL.as_ref(),
+                ),
+                5 => Self::ifft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_NIBBLE_K5_O0,
+                    tables::IFFT_DIT4_NIBBLE_K5_O0_TAIL.as_ref(),
+                ),
+                6 => Self::ifft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_NIBBLE_K6_O0,
+                    tables::IFFT_DIT4_NIBBLE_K6_O0_TAIL.as_ref(),
+                ),
+                7 => Self::ifft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_NIBBLE_K7_O0,
+                    tables::IFFT_DIT4_NIBBLE_K7_O0_TAIL.as_ref(),
+                ),
+                8 => Self::ifft_sharded_dit4_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_NIBBLE_K8_O0,
+                    tables::IFFT_DIT4_NIBBLE_K8_O0_TAIL.as_ref(),
+                ),
+                _ => unreachable!("k={k} must be in 1..=8"),
+            }
+        } else {
+            todo!();
         }
     }
 

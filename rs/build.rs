@@ -524,7 +524,7 @@ fn write_dit4_schedules<G: Gf2p8>(
         assert_eq!(off % (1 << k), 0, "offset must be aligned to the transform");
         for (dir, inverse) in [("FFT", false), ("IFFT", true)] {
             let (body, tail) = dit4_schedule(k, inverse);
-            let prefix = format!("{dir}_BODY_{}_K{k}_O{off}", target.name);
+            let prefix = format!("{dir}_DIT4_{}_K{k}_O{off}", target.name);
 
             writeln!(
                 f,
