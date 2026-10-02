@@ -1,4 +1,4 @@
-use super::Kernel;
+use super::{Kernel, shard_groups};
 use crate::{
     gf2p8lut::{CantorBasisLut, Gf2p8Lut},
     poly_11d_lut::generated::{CANTOR_SUBSPACE, GFNI_MUL_BY_LOG, GFNI_MUL_TABLE},

@@ -38,7 +38,7 @@ name = "recover_erasures_sharded_clobber"
 harness = false
 
 [[bench]]
-name = "fft_sharded"
+name = "transform"
 harness = false
 
 [features]
