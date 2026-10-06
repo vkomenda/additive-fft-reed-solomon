@@ -169,6 +169,7 @@ pub trait Kernel<G: Gf2p8Lut> {
         }
     }
 
+    #[inline(always)]
     fn fft_sharded_dit4_with(
         shards: &mut [G],
         shard_len: usize,
@@ -199,6 +200,7 @@ pub trait Kernel<G: Gf2p8Lut> {
         }
     }
 
+    #[inline(always)]
     fn fft_sharded_dit4_mirrored_with(
         shards: &mut [G],
         shard_len: usize,
@@ -293,6 +295,7 @@ pub trait Kernel<G: Gf2p8Lut> {
         }
     }
 
+    #[inline(always)]
     fn ifft_sharded_dit4_with(
         shards: &mut [G],
         shard_len: usize,

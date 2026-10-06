@@ -441,6 +441,144 @@ fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: &NibbleMulTable) {
     }
 }
 
+#[target_feature(enable = "avx2")]
+fn fft_sharded_iterative(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+    type K = Avx2Kernel<Gf2p8_11d>;
+
+    if beta == Gf2p8_11d::zero() {
+        match k {
+            1 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::FFT_DIT4_NIBBLE_K1_O0,
+                &tables::FFT_DIT4_NIBBLE_K1_O0_TAIL,
+            ),
+            2 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::FFT_DIT4_NIBBLE_K2_O0,
+                &tables::FFT_DIT4_NIBBLE_K2_O0_TAIL,
+            ),
+            3 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::FFT_DIT4_NIBBLE_K3_O0,
+                &tables::FFT_DIT4_NIBBLE_K3_O0_TAIL,
+            ),
+            4 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::FFT_DIT4_NIBBLE_K4_O0,
+                &tables::FFT_DIT4_NIBBLE_K4_O0_TAIL,
+            ),
+            5 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::FFT_DIT4_NIBBLE_K5_O0,
+                &tables::FFT_DIT4_NIBBLE_K5_O0_TAIL,
+            ),
+            6 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::FFT_DIT4_NIBBLE_K6_O0,
+                &tables::FFT_DIT4_NIBBLE_K6_O0_TAIL,
+            ),
+            7 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::FFT_DIT4_NIBBLE_K7_O0,
+                &tables::FFT_DIT4_NIBBLE_K7_O0_TAIL,
+            ),
+            8 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::FFT_DIT4_NIBBLE_K8_O0,
+                &tables::FFT_DIT4_NIBBLE_K8_O0_TAIL,
+            ),
+            _ => unreachable!("k={k} must be in 1..=8"),
+        }
+    } else {
+        todo!();
+    }
+}
+
+#[target_feature(enable = "avx2")]
+fn ifft_sharded_iterative(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+    type K = Avx2Kernel<Gf2p8_11d>;
+
+    if beta == Gf2p8_11d::zero() {
+        match k {
+            1 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K1_O0,
+                tables::IFFT_DIT4_NIBBLE_K1_O0_TAIL.as_ref(),
+            ),
+            2 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K2_O0,
+                tables::IFFT_DIT4_NIBBLE_K2_O0_TAIL.as_ref(),
+            ),
+            3 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K3_O0,
+                tables::IFFT_DIT4_NIBBLE_K3_O0_TAIL.as_ref(),
+            ),
+            4 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K4_O0,
+                tables::IFFT_DIT4_NIBBLE_K4_O0_TAIL.as_ref(),
+            ),
+            5 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K5_O0,
+                tables::IFFT_DIT4_NIBBLE_K5_O0_TAIL.as_ref(),
+            ),
+            6 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K6_O0,
+                tables::IFFT_DIT4_NIBBLE_K6_O0_TAIL.as_ref(),
+            ),
+            7 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K7_O0,
+                tables::IFFT_DIT4_NIBBLE_K7_O0_TAIL.as_ref(),
+            ),
+            8 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K8_O0,
+                tables::IFFT_DIT4_NIBBLE_K8_O0_TAIL.as_ref(),
+            ),
+            _ => unreachable!("k={k} must be in 1..=8"),
+        }
+    } else {
+        todo!();
+    }
+}
+
 #[derive(Default)]
 pub struct Avx2Kernel<G: Gf2p8Lut>(PhantomData<G>);
 
@@ -632,134 +770,14 @@ impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
     }
 
     fn fft_sharded_iterative(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        if beta == Gf2p8_11d::zero() {
-            match k {
-                1 => Self::fft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::FFT_DIT4_NIBBLE_K1_O0,
-                    &tables::FFT_DIT4_NIBBLE_K1_O0_TAIL,
-                ),
-                2 => Self::fft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::FFT_DIT4_NIBBLE_K2_O0,
-                    &tables::FFT_DIT4_NIBBLE_K2_O0_TAIL,
-                ),
-                3 => Self::fft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::FFT_DIT4_NIBBLE_K3_O0,
-                    &tables::FFT_DIT4_NIBBLE_K3_O0_TAIL,
-                ),
-                4 => Self::fft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::FFT_DIT4_NIBBLE_K4_O0,
-                    &tables::FFT_DIT4_NIBBLE_K4_O0_TAIL,
-                ),
-                5 => Self::fft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::FFT_DIT4_NIBBLE_K5_O0,
-                    &tables::FFT_DIT4_NIBBLE_K5_O0_TAIL,
-                ),
-                6 => Self::fft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::FFT_DIT4_NIBBLE_K6_O0,
-                    &tables::FFT_DIT4_NIBBLE_K6_O0_TAIL,
-                ),
-                7 => Self::fft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::FFT_DIT4_NIBBLE_K7_O0,
-                    &tables::FFT_DIT4_NIBBLE_K7_O0_TAIL,
-                ),
-                8 => Self::fft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::FFT_DIT4_NIBBLE_K8_O0,
-                    &tables::FFT_DIT4_NIBBLE_K8_O0_TAIL,
-                ),
-                _ => unreachable!("k={k} must be in 1..=8"),
-            }
-        } else {
-            todo!();
+        unsafe {
+            fft_sharded_iterative(shards, shard_len, k, beta);
         }
     }
 
     fn ifft_sharded_iterative(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        if beta == Gf2p8_11d::zero() {
-            match k {
-                1 => Self::ifft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::IFFT_DIT4_NIBBLE_K1_O0,
-                    tables::IFFT_DIT4_NIBBLE_K1_O0_TAIL.as_ref(),
-                ),
-                2 => Self::ifft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::IFFT_DIT4_NIBBLE_K2_O0,
-                    tables::IFFT_DIT4_NIBBLE_K2_O0_TAIL.as_ref(),
-                ),
-                3 => Self::ifft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::IFFT_DIT4_NIBBLE_K3_O0,
-                    tables::IFFT_DIT4_NIBBLE_K3_O0_TAIL.as_ref(),
-                ),
-                4 => Self::ifft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::IFFT_DIT4_NIBBLE_K4_O0,
-                    tables::IFFT_DIT4_NIBBLE_K4_O0_TAIL.as_ref(),
-                ),
-                5 => Self::ifft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::IFFT_DIT4_NIBBLE_K5_O0,
-                    tables::IFFT_DIT4_NIBBLE_K5_O0_TAIL.as_ref(),
-                ),
-                6 => Self::ifft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::IFFT_DIT4_NIBBLE_K6_O0,
-                    tables::IFFT_DIT4_NIBBLE_K6_O0_TAIL.as_ref(),
-                ),
-                7 => Self::ifft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::IFFT_DIT4_NIBBLE_K7_O0,
-                    tables::IFFT_DIT4_NIBBLE_K7_O0_TAIL.as_ref(),
-                ),
-                8 => Self::ifft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::IFFT_DIT4_NIBBLE_K8_O0,
-                    tables::IFFT_DIT4_NIBBLE_K8_O0_TAIL.as_ref(),
-                ),
-                _ => unreachable!("k={k} must be in 1..=8"),
-            }
-        } else {
-            todo!();
+        unsafe {
+            ifft_sharded_iterative(shards, shard_len, k, beta);
         }
     }
 
@@ -895,6 +913,44 @@ mod tests {
                 }
 
                 assert_eq!(data, original, "k={k} shard_len={shard_len}");
+            }
+        }
+    }
+
+    #[test]
+    fn fft_sharded_iterative_matches_fft_sharded() {
+        let basis = CantorBasisLut11d;
+        for shard_len in [1, 15, 16, 17, 32] {
+            for k in 1u8..=8 {
+                let n = 1 << k;
+                let mut expected = make_shards(n, shard_len);
+                let mut actual = expected.clone();
+
+                unsafe {
+                    fft_sharded(&basis, &mut expected, shard_len, k, Gf2p8_11d::zero());
+                    fft_sharded_iterative(&mut actual, shard_len, k, Gf2p8_11d::zero());
+                }
+
+                assert_eq!(expected, actual, "k={k} shard_len={shard_len}");
+            }
+        }
+    }
+
+    #[test]
+    fn ifft_sharded_iterative_matches_ifft_sharded() {
+        let basis = CantorBasisLut11d;
+        for shard_len in [1, 15, 16, 17, 32] {
+            for k in 1u8..=8 {
+                let n = 1 << k;
+                let mut expected = make_shards(n, shard_len);
+                let mut actual = expected.clone();
+
+                unsafe {
+                    ifft_sharded(&basis, &mut expected, shard_len, k, Gf2p8_11d::zero());
+                    ifft_sharded_iterative(&mut actual, shard_len, k, Gf2p8_11d::zero());
+                }
+
+                assert_eq!(expected, actual, "k={k} shard_len={shard_len}");
             }
         }
     }
