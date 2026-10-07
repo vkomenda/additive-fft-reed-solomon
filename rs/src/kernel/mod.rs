@@ -22,6 +22,8 @@ pub trait Kernel<G: Gf2p8Lut> {
 
     fn mul_table(twiddle: G) -> Self::MulTable;
 
+    fn is_zero_mul(m: &Self::MulTable) -> bool;
+
     fn butterfly_fwd_dit2(
         shards: &mut [G],
         shard_len: usize,
@@ -29,6 +31,8 @@ pub trait Kernel<G: Gf2p8Lut> {
         d: usize,
         m: Self::MulTable,
     );
+
+    fn butterfly_fwd_dit2_zero(shards: &mut [G], shard_len: usize, base: usize, d: usize);
 
     /// Applies two butterfly levels to the node of `4 * d` shards beginning at shard `base`. The
     /// node consists of `d` independent groups. Group `i` consists of shards `base + i`, `base + i
@@ -42,6 +46,16 @@ pub trait Kernel<G: Gf2p8Lut> {
         m01: Self::MulTable,
         m23: Self::MulTable,
         m02: Self::MulTable,
+    );
+
+    /// An optimization of `butterfly_fwd_dit4` for the common special case `m01 == m02 == 0` that
+    /// requires only 1 out of 4 multiply operations as well as fewer respective loads and stores.
+    fn butterfly_fwd_dit4_zero(
+        shards: &mut [G],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m23: Self::MulTable,
     );
 
     fn butterfly_inv_dit2(
@@ -60,6 +74,14 @@ pub trait Kernel<G: Gf2p8Lut> {
         m01: Self::MulTable,
         m23: Self::MulTable,
         m02: Self::MulTable,
+    );
+
+    fn butterfly_inv_dit4_zero(
+        shards: &mut [G],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m23: Self::MulTable,
     );
 
     /// Forward transform.
@@ -84,6 +106,8 @@ pub trait Kernel<G: Gf2p8Lut> {
     );
 
     fn fft_sharded_iterative(shards: &mut [G], shard_len: usize, k: u8, beta: G);
+
+    fn fft_sharded_iterative_mirrored(shards: &mut [G], shard_len: usize, k: u8, beta: G);
 
     fn ifft_sharded_iterative(shards: &mut [G], shard_len: usize, k: u8, beta: G);
 
@@ -186,7 +210,11 @@ pub trait Kernel<G: Gf2p8Lut> {
             let d = 1 << (l - 2);
             for start in (0..n).step_by(4 * d) {
                 let [m01, m23, m02] = body_mul.next().unwrap();
-                Self::butterfly_fwd_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
+                if Self::is_zero_mul(m01) && Self::is_zero_mul(m02) {
+                    Self::butterfly_fwd_dit4_zero(shards, shard_len, start, d, *m23);
+                } else {
+                    Self::butterfly_fwd_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
+                }
             }
             l -= 2;
         }
@@ -200,6 +228,8 @@ pub trait Kernel<G: Gf2p8Lut> {
         }
     }
 
+    /// FFT that mirrors the `ifft_sharded_dit4_with` traversal order and thus reuses IFFT body and
+    /// tail MulTables.
     #[inline(always)]
     fn fft_sharded_dit4_mirrored_with(
         shards: &mut [G],
@@ -212,8 +242,12 @@ pub trait Kernel<G: Gf2p8Lut> {
         let n = 1 << k;
 
         if k % 2 == 1 {
-            let m = *tail_mul.expect("odd k needs a tail multiplier");
-            Self::butterfly_fwd_dit2(shards, shard_len, 0, n / 2, m);
+            let m = tail_mul.expect("odd k needs a tail multiplier");
+            if Self::is_zero_mul(m) {
+                Self::butterfly_fwd_dit2_zero(shards, shard_len, 0, n / 2);
+            } else {
+                Self::butterfly_fwd_dit2(shards, shard_len, 0, n / 2, *m);
+            }
         } else {
             debug_assert!(tail_mul.is_none());
         }
@@ -225,7 +259,11 @@ pub trait Kernel<G: Gf2p8Lut> {
             let count = n / (4 * d);
             let round = &body_mul[end - count..end];
             for (start, [m01, m23, m02]) in (0..n).step_by(4 * d).zip(round) {
-                Self::butterfly_fwd_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
+                if Self::is_zero_mul(m01) && Self::is_zero_mul(m02) {
+                    Self::butterfly_fwd_dit4_zero(shards, shard_len, start, d, *m23);
+                } else {
+                    Self::butterfly_fwd_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
+                }
             }
             end -= count;
             l -= 2;
@@ -312,7 +350,11 @@ pub trait Kernel<G: Gf2p8Lut> {
             let d = 1 << lo;
             for start in (0..n).step_by(4 * d) {
                 let [m01, m23, m02] = body_mul.next().unwrap();
-                Self::butterfly_inv_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
+                if Self::is_zero_mul(m01) && Self::is_zero_mul(m02) {
+                    Self::butterfly_inv_dit4_zero(shards, shard_len, start, d, *m23);
+                } else {
+                    Self::butterfly_inv_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
+                }
             }
             lo += 2;
         }

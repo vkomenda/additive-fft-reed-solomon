@@ -27,6 +27,9 @@ fn transforms<K: Kernel<Gf2p8_11d>>() -> [(&'static str, Transform); 8] {
         ("ifft_sharded_iterative", |s, l, k| {
             K::ifft_sharded_iterative(s, l, k, Gf2p8_11d::zero())
         }),
+        ("fft_sharded_iterative_mirrored", |s, l, k| {
+            K::fft_sharded_iterative_mirrored(s, l, k, Gf2p8_11d::zero())
+        }),
         ("fft_sharded", |s, l, k| {
             K::fft_sharded(&CantorBasisLut11d, s, l, k, Gf2p8_11d::zero())
         }),

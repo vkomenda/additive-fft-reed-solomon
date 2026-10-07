@@ -106,6 +106,7 @@ fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: &NibbleMulTa
     }
 }
 
+#[inline]
 #[target_feature(enable = "avx2")]
 fn butterfly_fwd_dit2<G: Gf2p8>(
     shards: &mut [G],
@@ -147,6 +148,35 @@ fn butterfly_fwd_dit2<G: Gf2p8>(
     }
 }
 
+#[inline]
+#[target_feature(enable = "avx2")]
+fn butterfly_fwd_dit2_zero<G: Gf2p8>(shards: &mut [G], shard_len: usize, base: usize, d: usize) {
+    for [a, b] in shard_groups::<_, 2>(shards, shard_len, base, d) {
+        let mut i = 0;
+        {
+            let a = a.as_mut_ptr() as *mut u8;
+            let b = b.as_mut_ptr() as *mut u8;
+            while i + 32 <= shard_len {
+                unsafe {
+                    let va = _mm256_loadu_si256(a.add(i) as *const __m256i);
+                    let vb = _mm256_loadu_si256(b.add(i) as *const __m256i);
+                    let vb = _mm256_xor_si256(vb, va); // b + g0 = g1
+                    _mm256_storeu_si256(a.add(i) as *mut __m256i, va);
+                    _mm256_storeu_si256(b.add(i) as *mut __m256i, vb);
+                }
+                i += 32;
+            }
+        }
+        while i < shard_len {
+            let x = a[i];
+            let y = b[i];
+            b[i] = y.add(x);
+            i += 1;
+        }
+    }
+}
+
+#[inline]
 #[target_feature(enable = "avx2")]
 fn butterfly_inv_dit2<G: Gf2p8>(
     shards: &mut [G],
@@ -188,6 +218,7 @@ fn butterfly_inv_dit2<G: Gf2p8>(
     }
 }
 
+#[inline]
 #[target_feature(enable = "avx2")]
 fn butterfly_fwd_dit4<G: Gf2p8>(
     shards: &mut [G],
@@ -255,6 +286,63 @@ fn butterfly_fwd_dit4<G: Gf2p8>(
     }
 }
 
+#[inline]
+#[target_feature(enable = "avx2")]
+fn butterfly_fwd_dit4_zero<G: Gf2p8>(
+    shards: &mut [G],
+    shard_len: usize,
+    base: usize,
+    d: usize,
+    m23: MulTable,
+) {
+    let (m23_lo, m23_hi) = load_mul_table(m23);
+
+    for [s0, s1, s2, s3] in shard_groups::<_, 4>(shards, shard_len, base, d) {
+        let p0 = s0.as_mut_ptr() as *mut u8;
+        let p1 = s1.as_mut_ptr() as *mut u8;
+        let p2 = s2.as_mut_ptr() as *mut u8;
+        let p3 = s3.as_mut_ptr() as *mut u8;
+
+        let mut i = 0;
+        while i + 32 <= shard_len {
+            unsafe {
+                let w0 = _mm256_loadu_si256(p0.add(i) as *const __m256i);
+                let mut w1 = _mm256_loadu_si256(p1.add(i) as *const __m256i);
+                let mut w2 = _mm256_loadu_si256(p2.add(i) as *const __m256i);
+                let mut w3 = _mm256_loadu_si256(p3.add(i) as *const __m256i);
+
+                // Wide level: (w0, w2) and (w1, w3), both with m02.
+                w2 = _mm256_xor_si256(w2, w0);
+                w3 = _mm256_xor_si256(w3, w1);
+
+                // Narrow level: (w0, w1) with m01, (w2, w3) with m23.
+                w2 = _mm256_xor_si256(w2, mul_vec_inner(w3, m23_lo, m23_hi));
+                w1 = _mm256_xor_si256(w1, w0);
+                w3 = _mm256_xor_si256(w3, w2);
+
+                _mm256_storeu_si256(p1.add(i) as *mut __m256i, w1);
+                _mm256_storeu_si256(p2.add(i) as *mut __m256i, w2);
+                _mm256_storeu_si256(p3.add(i) as *mut __m256i, w3);
+            }
+            i += 32;
+        }
+
+        while i < shard_len {
+            let (w0, mut w1, mut w2, mut w3) = (s0[i], s1[i], s2[i], s3[i]);
+            w2 = w2.add(w0);
+            w3 = w3.add(w1);
+            w2 = w2.add(w3.nibble_mul(m23));
+            w1 = w1.add(w0);
+            w3 = w3.add(w2);
+            s1[i] = w1;
+            s2[i] = w2;
+            s3[i] = w3;
+            i += 1;
+        }
+    }
+}
+
+#[inline]
 #[target_feature(enable = "avx2")]
 fn butterfly_inv_dit4<G: Gf2p8>(
     shards: &mut [G],
@@ -314,6 +402,62 @@ fn butterfly_inv_dit4<G: Gf2p8>(
             w1 = w1.add(w3.nibble_mul(m02));
             w0 = w0.add(w2.nibble_mul(m02));
             s0[i] = w0;
+            s1[i] = w1;
+            s2[i] = w2;
+            s3[i] = w3;
+            i += 1;
+        }
+    }
+}
+
+#[inline]
+#[target_feature(enable = "avx2")]
+fn butterfly_inv_dit4_zero<G: Gf2p8>(
+    shards: &mut [G],
+    shard_len: usize,
+    base: usize,
+    d: usize,
+    m23: MulTable,
+) {
+    let (m23_lo, m23_hi) = load_mul_table(m23);
+
+    for [s0, s1, s2, s3] in shard_groups::<_, 4>(shards, shard_len, base, d) {
+        let p0 = s0.as_mut_ptr() as *mut u8;
+        let p1 = s1.as_mut_ptr() as *mut u8;
+        let p2 = s2.as_mut_ptr() as *mut u8;
+        let p3 = s3.as_mut_ptr() as *mut u8;
+
+        let mut i = 0;
+        while i + 32 <= shard_len {
+            unsafe {
+                let w0 = _mm256_loadu_si256(p0.add(i) as *const __m256i);
+                let mut w1 = _mm256_loadu_si256(p1.add(i) as *const __m256i);
+                let mut w2 = _mm256_loadu_si256(p2.add(i) as *const __m256i);
+                let mut w3 = _mm256_loadu_si256(p3.add(i) as *const __m256i);
+
+                // Narrow level: (w0, w1) with m01, (w2, w3) with m23.
+                w3 = _mm256_xor_si256(w3, w2);
+                w1 = _mm256_xor_si256(w1, w0);
+                w2 = _mm256_xor_si256(w2, mul_vec_inner(w3, m23_lo, m23_hi));
+
+                // Wide level: (w0, w2) and (w1, w3), both with m02.
+                w3 = _mm256_xor_si256(w3, w1);
+                w2 = _mm256_xor_si256(w2, w0);
+
+                _mm256_storeu_si256(p1.add(i) as *mut __m256i, w1);
+                _mm256_storeu_si256(p2.add(i) as *mut __m256i, w2);
+                _mm256_storeu_si256(p3.add(i) as *mut __m256i, w3);
+            }
+            i += 32;
+        }
+
+        while i < shard_len {
+            let (w0, mut w1, mut w2, mut w3) = (s0[i], s1[i], s2[i], s3[i]);
+            w3 = w3.add(w2);
+            w1 = w1.add(w0);
+            w2 = w2.add(w3.nibble_mul(m23));
+            w3 = w3.add(w1);
+            w2 = w2.add(w0);
             s1[i] = w1;
             s2[i] = w2;
             s3[i] = w3;
@@ -511,6 +655,80 @@ fn fft_sharded_iterative(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta
 }
 
 #[target_feature(enable = "avx2")]
+fn fft_sharded_iterative_mirrored(
+    shards: &mut [Gf2p8_11d],
+    shard_len: usize,
+    k: u8,
+    beta: Gf2p8_11d,
+) {
+    type K = Avx2Kernel<Gf2p8_11d>;
+
+    if beta == Gf2p8_11d::zero() {
+        match k {
+            1 => K::fft_sharded_dit4_mirrored_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K1_O0,
+                tables::IFFT_DIT4_NIBBLE_K1_O0_TAIL.as_ref(),
+            ),
+            2 => K::fft_sharded_dit4_mirrored_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K2_O0,
+                tables::IFFT_DIT4_NIBBLE_K2_O0_TAIL.as_ref(),
+            ),
+            3 => K::fft_sharded_dit4_mirrored_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K3_O0,
+                tables::IFFT_DIT4_NIBBLE_K3_O0_TAIL.as_ref(),
+            ),
+            4 => K::fft_sharded_dit4_mirrored_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K4_O0,
+                tables::IFFT_DIT4_NIBBLE_K4_O0_TAIL.as_ref(),
+            ),
+            5 => K::fft_sharded_dit4_mirrored_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K5_O0,
+                tables::IFFT_DIT4_NIBBLE_K5_O0_TAIL.as_ref(),
+            ),
+            6 => K::fft_sharded_dit4_mirrored_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K6_O0,
+                tables::IFFT_DIT4_NIBBLE_K6_O0_TAIL.as_ref(),
+            ),
+            7 => K::fft_sharded_dit4_mirrored_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K7_O0,
+                tables::IFFT_DIT4_NIBBLE_K7_O0_TAIL.as_ref(),
+            ),
+            8 => K::fft_sharded_dit4_mirrored_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K8_O0,
+                tables::IFFT_DIT4_NIBBLE_K8_O0_TAIL.as_ref(),
+            ),
+            _ => unreachable!("k={k} must be in 1..=8"),
+        }
+    } else {
+        todo!();
+    }
+}
+
+#[target_feature(enable = "avx2")]
 fn ifft_sharded_iterative(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
     type K = Avx2Kernel<Gf2p8_11d>;
 
@@ -591,6 +809,10 @@ impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
         &NIBBLE_MUL_TABLE[t.into_usize()]
     }
 
+    fn is_zero_mul(m: &Self::MulTable) -> bool {
+        m.0[1] == 0
+    }
+
     fn butterfly_fwd_dit2(
         shards: &mut [Gf2p8_11d],
         shard_len: usize,
@@ -600,6 +822,12 @@ impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
     ) {
         unsafe {
             butterfly_fwd_dit2(shards, shard_len, base, d, m);
+        }
+    }
+
+    fn butterfly_fwd_dit2_zero(shards: &mut [Gf2p8_11d], shard_len: usize, base: usize, d: usize) {
+        unsafe {
+            butterfly_fwd_dit2_zero(shards, shard_len, base, d);
         }
     }
 
@@ -614,6 +842,18 @@ impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
     ) {
         unsafe {
             butterfly_fwd_dit4(shards, shard_len, base, d, m01, m23, m02);
+        }
+    }
+
+    fn butterfly_fwd_dit4_zero(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m23: Self::MulTable,
+    ) {
+        unsafe {
+            butterfly_fwd_dit4_zero(shards, shard_len, base, d, m23);
         }
     }
 
@@ -640,6 +880,18 @@ impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
     ) {
         unsafe {
             butterfly_inv_dit4(shards, shard_len, base, d, m01, m23, m02);
+        }
+    }
+
+    fn butterfly_inv_dit4_zero(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m23: Self::MulTable,
+    ) {
+        unsafe {
+            butterfly_inv_dit4_zero(shards, shard_len, base, d, m23);
         }
     }
 
@@ -772,6 +1024,17 @@ impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
     fn fft_sharded_iterative(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
         unsafe {
             fft_sharded_iterative(shards, shard_len, k, beta);
+        }
+    }
+
+    fn fft_sharded_iterative_mirrored(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        beta: Gf2p8_11d,
+    ) {
+        unsafe {
+            fft_sharded_iterative_mirrored(shards, shard_len, k, beta);
         }
     }
 

@@ -42,6 +42,14 @@ fn butterfly_fwd_dit2<G: Gf2p8>(
     }
 }
 
+fn butterfly_fwd_dit2_zero<G: Gf2p8>(shards: &mut [G], shard_len: usize, base: usize, d: usize) {
+    for [a, b] in shard_groups::<_, 2>(shards, shard_len, base, d) {
+        for (ai, bi) in a.iter_mut().zip(b.iter_mut()) {
+            *bi = bi.add(*ai); // g1 = g0 + b
+        }
+    }
+}
+
 fn butterfly_inv_dit2<G: Gf2p8>(
     shards: &mut [G],
     shard_len: usize,
@@ -85,6 +93,29 @@ fn butterfly_fwd_dit4<G: Gf2p8>(
     }
 }
 
+fn butterfly_fwd_dit4_zero<G: Gf2p8>(
+    shards: &mut [G],
+    shard_len: usize,
+    base: usize,
+    d: usize,
+    m23: MulTable,
+) {
+    for [s0, s1, s2, s3] in shard_groups::<_, 4>(shards, shard_len, base, d) {
+        for (((w0, w1), w2), w3) in s0
+            .iter()
+            .zip(s1.iter_mut())
+            .zip(s2.iter_mut())
+            .zip(s3.iter_mut())
+        {
+            *w2 = w2.add(*w0);
+            *w3 = w3.add(*w1);
+            *w2 = w2.add(G::from(m23[w3.into_usize()]));
+            *w1 = w1.add(*w0);
+            *w3 = w3.add(*w2);
+        }
+    }
+}
+
 fn butterfly_inv_dit4<G: Gf2p8>(
     shards: &mut [G],
     shard_len: usize,
@@ -109,6 +140,29 @@ fn butterfly_inv_dit4<G: Gf2p8>(
             *w2 = w2.add(*w0);
             *w1 = w1.add(G::from(m02[w3.into_usize()]));
             *w0 = w0.add(G::from(m02[w2.into_usize()]));
+        }
+    }
+}
+
+fn butterfly_inv_dit4_zero<G: Gf2p8>(
+    shards: &mut [G],
+    shard_len: usize,
+    base: usize,
+    d: usize,
+    m23: MulTable,
+) {
+    for [s0, s1, s2, s3] in shard_groups::<_, 4>(shards, shard_len, base, d) {
+        for (((w0, w1), w2), w3) in s0
+            .iter()
+            .zip(s1.iter_mut())
+            .zip(s2.iter_mut())
+            .zip(s3.iter_mut())
+        {
+            *w3 = w3.add(*w2);
+            *w1 = w1.add(*w0);
+            *w2 = w2.add(G::from(m23[w3.into_usize()]));
+            *w3 = w3.add(*w1);
+            *w2 = w2.add(*w0);
         }
     }
 }
@@ -219,6 +273,10 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
         &MUL_TABLE[t.into_usize()]
     }
 
+    fn is_zero_mul(m: &Self::MulTable) -> bool {
+        m[1] == 0
+    }
+
     fn butterfly_fwd_dit2(
         shards: &mut [Gf2p8_11d],
         shard_len: usize,
@@ -227,6 +285,10 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
         m: Self::MulTable,
     ) {
         butterfly_fwd_dit2(shards, shard_len, base, d, m);
+    }
+
+    fn butterfly_fwd_dit2_zero(shards: &mut [Gf2p8_11d], shard_len: usize, base: usize, d: usize) {
+        butterfly_fwd_dit2_zero(shards, shard_len, base, d);
     }
 
     fn butterfly_fwd_dit4(
@@ -239,6 +301,16 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
         m02: Self::MulTable,
     ) {
         butterfly_fwd_dit4(shards, shard_len, base, d, m01, m23, m02);
+    }
+
+    fn butterfly_fwd_dit4_zero(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m23: Self::MulTable,
+    ) {
+        butterfly_fwd_dit4_zero(shards, shard_len, base, d, m23);
     }
 
     fn butterfly_inv_dit2(
@@ -261,6 +333,16 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
         m02: Self::MulTable,
     ) {
         butterfly_inv_dit4(shards, shard_len, base, d, m01, m23, m02);
+    }
+
+    fn butterfly_inv_dit4_zero(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m23: Self::MulTable,
+    ) {
+        butterfly_inv_dit4_zero(shards, shard_len, base, d, m23);
     }
 
     fn fft_sharded(
@@ -440,6 +522,77 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
                     k,
                     &tables::FFT_DIT4_LUT_K8_O0,
                     &tables::FFT_DIT4_LUT_K8_O0_TAIL,
+                ),
+                _ => unreachable!("k={k} must be in 1..=8"),
+            }
+        } else {
+            todo!();
+        }
+    }
+
+    fn fft_sharded_iterative_mirrored(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        beta: Gf2p8_11d,
+    ) {
+        if beta == Gf2p8_11d::zero() {
+            match k {
+                1 => Self::fft_sharded_dit4_mirrored_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_LUT_K1_O0,
+                    tables::IFFT_DIT4_LUT_K1_O0_TAIL.as_ref(),
+                ),
+                2 => Self::fft_sharded_dit4_mirrored_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_LUT_K2_O0,
+                    tables::IFFT_DIT4_LUT_K2_O0_TAIL.as_ref(),
+                ),
+                3 => Self::fft_sharded_dit4_mirrored_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_LUT_K3_O0,
+                    tables::IFFT_DIT4_LUT_K3_O0_TAIL.as_ref(),
+                ),
+                4 => Self::fft_sharded_dit4_mirrored_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_LUT_K4_O0,
+                    tables::IFFT_DIT4_LUT_K4_O0_TAIL.as_ref(),
+                ),
+                5 => Self::fft_sharded_dit4_mirrored_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_LUT_K5_O0,
+                    tables::IFFT_DIT4_LUT_K5_O0_TAIL.as_ref(),
+                ),
+                6 => Self::fft_sharded_dit4_mirrored_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_LUT_K6_O0,
+                    tables::IFFT_DIT4_LUT_K6_O0_TAIL.as_ref(),
+                ),
+                7 => Self::fft_sharded_dit4_mirrored_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_LUT_K7_O0,
+                    tables::IFFT_DIT4_LUT_K7_O0_TAIL.as_ref(),
+                ),
+                8 => Self::fft_sharded_dit4_mirrored_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &tables::IFFT_DIT4_LUT_K8_O0,
+                    tables::IFFT_DIT4_LUT_K8_O0_TAIL.as_ref(),
                 ),
                 _ => unreachable!("k={k} must be in 1..=8"),
             }
