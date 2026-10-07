@@ -517,11 +517,10 @@ fn write_dit4_schedules<G: Gf2p8>(
     cases: &[(u8, usize)], // (k, offset) pairs actually used
 ) -> io::Result<()> {
     let tw = |r: NodeRef, off: usize| {
-        (target.literal)(twiddle(sub_poly_luts, subspace_points, (r.0, r.1 + off)))
+        (target.literal)(twiddle(sub_poly_luts, subspace_points, (r.0, r.1 ^ off)))
     };
 
     for &(k, off) in cases {
-        assert_eq!(off % (1 << k), 0, "offset must be aligned to the transform");
         for (dir, inverse) in [("FFT", false), ("IFFT", true)] {
             let (body, tail) = dit4_schedule(k, inverse);
             let prefix = format!("{dir}_DIT4_{}_K{k}_O{off}", target.name);
@@ -663,7 +662,9 @@ fn main() {
 
     let sub_poly_luts8: &[[Gf2p8_11d; 256]; 8] = sub_poly_luts[..8].try_into().unwrap();
 
-    let cases: Vec<_> = (1..=8).map(|k| (k, 0)).collect();
+    let cases: Vec<_> = (0..8u8)
+        .flat_map(|k| vec![(k + 1, 0), (k + 1, 1usize << k)])
+        .collect();
     write_dit4_schedules(
         &mut f,
         &lut_target(),

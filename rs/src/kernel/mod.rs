@@ -84,32 +84,22 @@ pub trait Kernel<G: Gf2p8Lut> {
         m23: Self::MulTable,
     );
 
-    /// Forward transform.
-    fn fft_sharded(
-        basis: &impl CantorBasisLut<G>,
-        shards: &mut [G],
-        shard_len: usize,
-        k: u8,
-        beta: G,
-    );
+    /// Unrolled DIT2 forward transform
+    fn fft_sharded_unrolled(shards: &mut [G], shard_len: usize, k: u8, beta: G);
 
-    /// Forward transform where shards [1 << log_support..] are treated as zeros.
-    fn fft_sharded_zero_padded(shards: &mut [G], shard_len: usize, k: u8, log_support: u8);
+    /// Unrolled forward transform where shards [1 << log_support..] are treated as zeros.
+    fn fft_sharded_zero_padded_unrolled(shards: &mut [G], shard_len: usize, k: u8, log_support: u8);
+
+    /// Unrolled DIT2 inverse transform
+    fn ifft_sharded_unrolled(shards: &mut [G], shard_len: usize, k: u8, beta: G);
+
+    fn fft_sharded_radix2_last(shards: &mut [G], shard_len: usize, k: u8, beta: G);
+
+    /// Forward transform.
+    fn fft_sharded(shards: &mut [G], shard_len: usize, k: u8, beta: G);
 
     /// Inverse transform.
-    fn ifft_sharded(
-        basis: &impl CantorBasisLut<G>,
-        shards: &mut [G],
-        shard_len: usize,
-        k: u8,
-        beta: G,
-    );
-
-    fn fft_sharded_iterative(shards: &mut [G], shard_len: usize, k: u8, beta: G);
-
-    fn fft_sharded_iterative_mirrored(shards: &mut [G], shard_len: usize, k: u8, beta: G);
-
-    fn ifft_sharded_iterative(shards: &mut [G], shard_len: usize, k: u8, beta: G);
+    fn ifft_sharded(shards: &mut [G], shard_len: usize, k: u8, beta: G);
 
     fn scale(src: &[G], dst: &mut [G], scalar: G);
 
@@ -194,7 +184,7 @@ pub trait Kernel<G: Gf2p8Lut> {
     }
 
     #[inline(always)]
-    fn fft_sharded_dit4_with(
+    fn fft_sharded_dit4_radix2_last_with(
         shards: &mut [G],
         shard_len: usize,
         k: u8,
@@ -231,7 +221,7 @@ pub trait Kernel<G: Gf2p8Lut> {
     /// FFT that mirrors the `ifft_sharded_dit4_with` traversal order and thus reuses IFFT body and
     /// tail MulTables.
     #[inline(always)]
-    fn fft_sharded_dit4_mirrored_with(
+    fn fft_sharded_dit4_with(
         shards: &mut [G],
         shard_len: usize,
         k: u8,

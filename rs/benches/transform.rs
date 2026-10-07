@@ -19,19 +19,19 @@ use std::hint::black_box;
 
 type Transform = fn(&mut [Gf2p8_11d], usize, u8);
 
-fn transforms<K: Kernel<Gf2p8_11d>>() -> [(&'static str, Transform); 8] {
+fn transforms<K: Kernel<Gf2p8_11d>>() -> [(&'static str, Transform); 9] {
     [
-        ("fft_sharded_iterative", |s, l, k| {
-            K::fft_sharded_iterative(s, l, k, Gf2p8_11d::zero())
-        }),
-        ("ifft_sharded_iterative", |s, l, k| {
-            K::ifft_sharded_iterative(s, l, k, Gf2p8_11d::zero())
-        }),
-        ("fft_sharded_iterative_mirrored", |s, l, k| {
-            K::fft_sharded_iterative_mirrored(s, l, k, Gf2p8_11d::zero())
-        }),
         ("fft_sharded", |s, l, k| {
-            K::fft_sharded(&CantorBasisLut11d, s, l, k, Gf2p8_11d::zero())
+            K::fft_sharded(s, l, k, Gf2p8_11d::zero())
+        }),
+        ("ifft_sharded", |s, l, k| {
+            K::ifft_sharded(s, l, k, Gf2p8_11d::zero())
+        }),
+        ("fft_sharded_radix2_last", |s, l, k| {
+            K::fft_sharded_radix2_last(s, l, k, Gf2p8_11d::zero())
+        }),
+        ("fft_sharded_unrolled", |s, l, k| {
+            K::fft_sharded_unrolled(s, l, k, Gf2p8_11d::zero())
         }),
         ("fft_sharded_dit2", |s, l, k| {
             K::fft_sharded_dit2(&CantorBasisLut11d, s, l, k, Gf2p8_11d::zero())
@@ -39,8 +39,8 @@ fn transforms<K: Kernel<Gf2p8_11d>>() -> [(&'static str, Transform); 8] {
         ("fft_sharded_dit4", |s, l, k| {
             K::fft_sharded_dit4(&CantorBasisLut11d, s, l, k, Gf2p8_11d::zero())
         }),
-        ("ifft_sharded", |s, l, k| {
-            K::ifft_sharded(&CantorBasisLut11d, s, l, k, Gf2p8_11d::zero())
+        ("ifft_sharded_unrolled", |s, l, k| {
+            K::ifft_sharded_unrolled(s, l, k, Gf2p8_11d::zero())
         }),
         ("ifft_sharded_dit2", |s, l, k| {
             K::ifft_sharded_dit2(&CantorBasisLut11d, s, l, k, Gf2p8_11d::zero())

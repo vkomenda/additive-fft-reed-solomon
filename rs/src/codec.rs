@@ -280,7 +280,6 @@ where
         // The first chunk seeds the accumulator, so parity needs no zeroing.
         parity.copy_from_slice(&message[..parity_len]);
         K::ifft_sharded(
-            &self.basis,
             parity,
             shard_len,
             t_log,
@@ -290,13 +289,13 @@ where
         for i in 1..k / T {
             workspace.copy_from_slice(&message[i * parity_len..(i + 1) * parity_len]);
             let omega = self.basis.get_subspace_point_lut(((i + 1) * T) as u8);
-            K::ifft_sharded(&self.basis, workspace, shard_len, t_log, omega);
+            K::ifft_sharded(workspace, shard_len, t_log, omega);
             for (p, w) in parity.iter_mut().zip(workspace.iter()) {
                 *p = p.add(*w);
             }
         }
 
-        K::fft_sharded(&self.basis, parity, shard_len, t_log, G::zero());
+        K::fft_sharded(parity, shard_len, t_log, G::zero());
     }
 
     /// Syndrome calculation (scalar).
@@ -365,9 +364,9 @@ where
 
         // Copy parity shards into workspace, then recover polynomial coefficients
         workspace[0..T * shard_len].copy_from_slice(&received[0..T * shard_len]);
-        K::ifft_sharded(&self.basis, workspace, shard_len, t_log, G::zero());
+        K::ifft_sharded(workspace, shard_len, t_log, G::zero());
         let omega = self.basis.get_subspace_point_lut(T as u8);
-        K::fft_sharded(&self.basis, workspace, shard_len, t_log, omega);
+        K::fft_sharded(workspace, shard_len, t_log, omega);
 
         received[T * shard_len..].copy_from_slice(&workspace[..T * shard_len]);
     }
@@ -553,13 +552,7 @@ where
 
         // Chunk 0: parity block at ω_0
         workspace[..T * shard_len].copy_from_slice(&received[..T * shard_len]);
-        K::ifft_sharded(
-            &self.basis,
-            &mut workspace[..T * shard_len],
-            shard_len,
-            t_log,
-            G::zero(),
-        );
+        K::ifft_sharded(&mut workspace[..T * shard_len], shard_len, t_log, G::zero());
 
         // Message chunks/shards, each shifted by one more ωT
         for chunk in 1..(N / T) {
@@ -567,7 +560,7 @@ where
             let (acc, rest) = workspace.split_at_mut(T * shard_len);
             let tmp = &mut rest[..T * shard_len];
             tmp.copy_from_slice(&received[chunk * T * shard_len..(chunk + 1) * T * shard_len]);
-            K::ifft_sharded(&self.basis, tmp, shard_len, t_log, omega);
+            K::ifft_sharded(tmp, shard_len, t_log, omega);
             for (w, t) in acc.iter_mut().zip(tmp.iter()) {
                 *w = w.add(*t);
             }
@@ -585,7 +578,7 @@ where
         }
 
         // Evaluate s at all n points treating shards work[T..] as zeros.
-        K::fft_sharded_zero_padded(workspace, shard_len, n_log, t_log);
+        K::fft_sharded_zero_padded_unrolled(workspace, shard_len, n_log, t_log);
 
         // Pointwise multiply: work[i] := work[i] · λ(ω_i)
         for i in 0..N {
@@ -596,7 +589,7 @@ where
         }
 
         // X-basis coefficients of (s·λ); q is in work[T .. T+e]
-        K::ifft_sharded(&self.basis, workspace, shard_len, n_log, G::zero());
+        K::ifft_sharded(workspace, shard_len, n_log, G::zero());
 
         // Shift q from work[T..T+e] down to work[0..e], zero work shards from e to next pow2
         workspace.copy_within(T * shard_len..(T + e) * shard_len, 0);
@@ -605,7 +598,7 @@ where
         let log_support = support.trailing_zeros() as u8;
 
         // Evaluate q at all n points while treating work[1 << log_support..] as zeros
-        K::fft_sharded_zero_padded(workspace, shard_len, n_log, log_support);
+        K::fft_sharded_zero_padded_unrolled(workspace, shard_len, n_log, log_support);
 
         // (Forney) Eq 78: u(ω_i) = q(ω_i) / λ'(ω_i)
         for (&pos, d) in erasure_positions.iter().zip(denoms) {
@@ -681,7 +674,7 @@ where
         }
         debug_assert_eq!(p, e);
 
-        K::ifft_sharded(&self.basis, received, shard_len, n_log, G::zero());
+        K::ifft_sharded(received, shard_len, n_log, G::zero());
 
         // Formal derivative. In the Cantor basis every subspace polynomial derivative is one, so
         // this becomes an XOR linear map.
@@ -691,7 +684,7 @@ where
             dst[(i - w) * shard_len..].poly_add_in_place(&src[..w * shard_len]);
         }
 
-        K::fft_sharded(&self.basis, received, shard_len, n_log, G::zero());
+        K::fft_sharded(received, shard_len, n_log, G::zero());
 
         // Forney (similar to Eq 78): u(ω_j) = q(ω_j) / λ'(ω_j)
         // q(ω_j) = (λ·f)'(ω_j) = λ'(ω_j) · f(ω_j) + λ(ω_j) · f'(ω_j) = λ'(ω_j) · f(ω_j)
