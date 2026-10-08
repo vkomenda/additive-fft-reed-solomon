@@ -18,7 +18,9 @@ pub trait Kernel<G: Gf2p8Lut> {
     const ALIGN: usize;
 
     /// Multiplication by a fixed element of G. Plain, non-SIMD data type.
-    type MulTable: Copy;
+    type MulTable: 'static + Copy;
+
+    const NODE_MUL: &'static [Self::MulTable; 510];
 
     fn mul_table(twiddle: G) -> Self::MulTable;
 
@@ -354,6 +356,29 @@ pub trait Kernel<G: Gf2p8Lut> {
             debug_assert!(tail_mul.is_none());
         }
     }
+
+    fn ifft_sharded_dit4_indexed(shards: &mut [G], shard_len: usize, k: u8, t: usize) {
+        let n = 1usize << k;
+        let m = |l: u8, x: usize| &Self::NODE_MUL[node_mul_index(l, x)];
+
+        let mut lo = 0u8;
+        while lo + 1 < k {
+            let d = 1usize << lo;
+            for start in (0..n).step_by(4 * d) {
+                let x = t ^ start;
+                let (m01, m23, m02) = (m(lo, x), m(lo, x ^ (2 * d)), m(lo + 1, x));
+                if Self::is_zero_mul(m01) && Self::is_zero_mul(m02) {
+                    Self::butterfly_inv_dit4_zero(shards, shard_len, start, d, *m23);
+                } else {
+                    Self::butterfly_inv_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
+                }
+            }
+            lo += 2;
+        }
+        if lo + 1 == k {
+            Self::butterfly_inv_dit2(shards, shard_len, 0, n / 2, *m(lo, t));
+        }
+    }
 }
 
 /// Splits the node of `R * d` shards starting at shard `base` into `R` equal
@@ -372,4 +397,11 @@ pub(crate) fn shard_groups<G, const R: usize>(
         .map(|p| p.chunks_exact_mut(shard_len));
     let mut parts: [_; R] = std::array::from_fn(|_| parts.next().unwrap());
     (0..d).map(move |_| parts.each_mut().map(|p| p.next().unwrap()))
+}
+
+/// Multiplier for level l node whose first shard has Cantor subspace index x. W_l(ω_x) depends only
+/// on x >> l, so level l needs 256 >> l entries.
+#[inline]
+fn node_mul_index(l: u8, x: usize) -> usize {
+    (512 - (512 >> l)) + (x >> l)
 }
