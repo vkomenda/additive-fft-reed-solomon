@@ -153,6 +153,7 @@ pub trait Kernel<G: Gf2p8Lut> {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
         let node_beta = |start: usize| beta.add(basis.get_subspace_point_lut(start as u8));
+        let mt = |level: u8, beta: G| Self::mul_table(Self::twiddle(basis, level, beta));
 
         let mut l = k;
         while l >= 2 {
@@ -162,22 +163,21 @@ pub trait Kernel<G: Gf2p8Lut> {
             for start in (0..n).step_by(4 * d) {
                 let beta_l = node_beta(start);
                 let beta_r = node_beta(start + 2 * d);
-                Self::butterfly_fwd_dit4(
-                    shards,
-                    shard_len,
-                    start,
-                    d,
-                    Self::mul_table(Self::twiddle(basis, lo, beta_l)),
-                    Self::mul_table(Self::twiddle(basis, lo, beta_r)),
-                    Self::mul_table(Self::twiddle(basis, hi, beta_l)),
-                );
+                let m01 = mt(lo, beta_l);
+                let m23 = mt(lo, beta_r);
+                let m02 = mt(hi, beta_l);
+                if Self::is_zero_mul(&m01) && Self::is_zero_mul(&m02) {
+                    Self::butterfly_fwd_dit4_zero(shards, shard_len, start, d, m23);
+                } else {
+                    Self::butterfly_fwd_dit4(shards, shard_len, start, d, m01, m23, m02);
+                }
             }
             l -= 2;
         }
 
         if l == 1 {
             for start in (0..n).step_by(2) {
-                let m = Self::mul_table(Self::twiddle(basis, 0, node_beta(start)));
+                let m = mt(0, node_beta(start));
                 Self::butterfly_fwd_dit2(shards, shard_len, start, 1, m);
             }
         }
@@ -218,8 +218,9 @@ pub trait Kernel<G: Gf2p8Lut> {
         }
     }
 
-    /// FFT that mirrors the `ifft_sharded_dit4_with` traversal order and thus reuses IFFT body and
-    /// tail MulTables.
+    /// FFT that mirrors the `ifft_sharded_dit4_with` radix-2 first traversal order and thus reuses
+    /// IFFT body and tail MulTable schedules. FFT with this traversal order also runs faster than
+    /// radix-2 last FFT, which is the main reason for making this function the common FFT driver.
     #[inline(always)]
     fn fft_sharded_dit4_with(
         shards: &mut [G],
@@ -233,10 +234,11 @@ pub trait Kernel<G: Gf2p8Lut> {
 
         if k % 2 == 1 {
             let m = tail_mul.expect("odd k needs a tail multiplier");
+            let d = n / 2;
             if Self::is_zero_mul(m) {
-                Self::butterfly_fwd_dit2_zero(shards, shard_len, 0, n / 2);
+                Self::butterfly_fwd_dit2_zero(shards, shard_len, 0, d);
             } else {
-                Self::butterfly_fwd_dit2(shards, shard_len, 0, n / 2, *m);
+                Self::butterfly_fwd_dit2(shards, shard_len, 0, d, *m);
             }
         } else {
             debug_assert!(tail_mul.is_none());
@@ -296,6 +298,7 @@ pub trait Kernel<G: Gf2p8Lut> {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
         let node_beta = |start: usize| beta.add(basis.get_subspace_point_lut(start as u8));
+        let mt = |level: u8, beta: G| Self::mul_table(Self::twiddle(basis, level, beta));
 
         let mut lo = 0u8;
         while lo + 1 < k {
@@ -304,25 +307,25 @@ pub trait Kernel<G: Gf2p8Lut> {
             for start in (0..n).step_by(4 * d) {
                 let beta_l = node_beta(start);
                 let beta_r = node_beta(start + 2 * d);
-                Self::butterfly_inv_dit4(
-                    shards,
-                    shard_len,
-                    start,
-                    d,
-                    Self::mul_table(Self::twiddle(basis, lo, beta_l)),
-                    Self::mul_table(Self::twiddle(basis, lo, beta_r)),
-                    Self::mul_table(Self::twiddle(basis, hi, beta_l)),
-                );
+                let m01 = mt(lo, beta_l);
+                let m23 = mt(lo, beta_r);
+                let m02 = mt(hi, beta_l);
+                if Self::is_zero_mul(&m01) && Self::is_zero_mul(&m02) {
+                    Self::butterfly_inv_dit4_zero(shards, shard_len, start, d, m23);
+                } else {
+                    Self::butterfly_inv_dit4(shards, shard_len, start, d, m01, m23, m02);
+                }
             }
             lo += 2;
         }
 
         if lo + 1 == k {
-            let m = Self::mul_table(Self::twiddle(basis, lo, beta));
+            let m = mt(lo, beta);
             Self::butterfly_inv_dit2(shards, shard_len, 0, n / 2, m);
         }
     }
 
+    /// Common IFFT driver for MulTable schedules that match the radix-2 first traversal order.
     #[inline(always)]
     fn ifft_sharded_dit4_with(
         shards: &mut [G],

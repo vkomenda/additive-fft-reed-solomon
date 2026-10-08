@@ -1,5 +1,7 @@
 use super::{Kernel, shard_groups};
-use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
+#[cfg(test)]
+use crate::gf2p8lut::CantorBasisLut;
+use crate::gf2p8lut::Gf2p8Lut;
 use crate::poly_11d_lut::CantorBasisLut11d;
 use crate::poly_11d_lut::generated::{self as tables, CANTOR_SUBSPACE, EXP_TABLE, MUL_TABLE};
 use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8, Gf2p8_11d, Z255};
@@ -168,6 +170,7 @@ fn butterfly_inv_dit4_zero<G: Gf2p8>(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn fft_sharded_recursive<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [G],
@@ -220,6 +223,7 @@ pub(crate) fn fft_sharded_zero_padded_recursive<G: Gf2p8Lut>(
     fft_sharded_zero_padded_recursive(basis, hi, shard_len, k - 1, next_beta, log_support);
 }
 
+#[cfg(test)]
 pub(crate) fn ifft_sharded_recursive<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [G],
@@ -361,7 +365,7 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
                 _ => unreachable!("k={k} must be in 0..=8"),
             }
         } else {
-            fft_sharded_recursive(&CantorBasisLut11d, shards, shard_len, k, beta);
+            Self::fft_sharded_dit4(&CantorBasisLut11d, shards, shard_len, k, beta);
         }
     }
 
@@ -453,7 +457,7 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
                 (8, b) if b == CANTOR_SUBSPACE[128] => {
                     unrolled_11d::ifft_sharded_lut_256_e7(shards, shard_len)
                 }
-                _ => ifft_sharded_recursive(&CantorBasisLut11d, shards, shard_len, k, beta),
+                _ => Self::ifft_sharded_dit4(&CantorBasisLut11d, shards, shard_len, k, beta),
             }
         }
     }
@@ -528,13 +532,7 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
         if beta == Gf2p8_11d::zero() {
             match k {
                 0 => {}
-                1 => Self::fft_sharded_dit4_with(
-                    shards,
-                    shard_len,
-                    k,
-                    &tables::IFFT_DIT4_LUT_K1_O0,
-                    tables::IFFT_DIT4_LUT_K1_O0_TAIL.as_ref(),
-                ),
+                1 => unrolled_11d::fft_sharded_lut_2(shards, shard_len),
                 2 => Self::fft_sharded_dit4_with(
                     shards,
                     shard_len,

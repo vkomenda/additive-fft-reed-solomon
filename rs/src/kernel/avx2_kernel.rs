@@ -1,6 +1,8 @@
 use super::{Kernel, shard_groups};
+#[cfg(test)]
+use crate::gf2p8lut::CantorBasisLut;
 use crate::{
-    gf2p8lut::{CantorBasisLut, Gf2p8Lut},
+    gf2p8lut::Gf2p8Lut,
     poly_11d_lut::{
         CantorBasisLut11d,
         generated::{self as tables, CANTOR_SUBSPACE, NIBBLE_MUL_BY_LOG, NIBBLE_MUL_TABLE},
@@ -460,6 +462,7 @@ fn butterfly_inv_dit4_zero<G: Gf2p8>(
     }
 }
 
+#[cfg(test)]
 #[target_feature(enable = "avx2")]
 fn fft_sharded_recursive<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
@@ -491,6 +494,7 @@ fn fft_sharded_recursive<G: Gf2p8Lut>(
     fft_sharded_recursive(basis, &mut shards[h..], shard_len, k - 1, next_beta);
 }
 
+#[cfg(test)]
 #[target_feature(enable = "avx2")]
 fn ifft_sharded_recursive<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
@@ -655,13 +659,7 @@ fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11
     if beta == Gf2p8_11d::zero() {
         match k {
             0 => {}
-            1 => K::fft_sharded_dit4_with(
-                shards,
-                shard_len,
-                k,
-                &tables::IFFT_DIT4_NIBBLE_K1_O0,
-                tables::IFFT_DIT4_NIBBLE_K1_O0_TAIL.as_ref(),
-            ),
+            1 => unrolled_11d::fft_sharded_avx2_2(shards, shard_len),
             2 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
@@ -725,13 +723,7 @@ fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_1
     if beta == Gf2p8_11d::zero() {
         match k {
             0 => {}
-            1 => K::ifft_sharded_dit4_with(
-                shards,
-                shard_len,
-                k,
-                &tables::IFFT_DIT4_NIBBLE_K1_O0,
-                tables::IFFT_DIT4_NIBBLE_K1_O0_TAIL.as_ref(),
-            ),
+            1 => unrolled_11d::ifft_sharded_avx2_2(shards, shard_len),
             2 => K::ifft_sharded_dit4_with(
                 shards,
                 shard_len,
@@ -786,13 +778,10 @@ fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_1
     } else {
         match (k, u8::from(beta)) {
             (0, _) => {}
-            (1, b) if b == CANTOR_SUBSPACE[1] => K::ifft_sharded_dit4_with(
-                shards,
-                shard_len,
-                k,
-                &tables::IFFT_DIT4_NIBBLE_K1_O1,
-                tables::IFFT_DIT4_NIBBLE_K1_O1_TAIL.as_ref(),
-            ),
+            (1, b) if b == CANTOR_SUBSPACE[1] => {
+                unrolled_11d::ifft_sharded_avx2_2_01(shards, shard_len)
+            }
+
             (2, b) if b == CANTOR_SUBSPACE[2] => K::ifft_sharded_dit4_with(
                 shards,
                 shard_len,
@@ -961,7 +950,7 @@ impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
                     _ => unreachable!("k={k} must be in 0..=8"),
                 }
             } else {
-                fft_sharded_recursive(&CantorBasisLut11d, shards, shard_len, k, beta);
+                Self::fft_sharded_dit4(&CantorBasisLut11d, shards, shard_len, k, beta);
             }
         }
     }
@@ -1058,7 +1047,7 @@ impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
                     (8, b) if b == CANTOR_SUBSPACE[128] => {
                         unrolled_11d::ifft_sharded_avx2_256_e7(shards, shard_len)
                     }
-                    _ => ifft_sharded_recursive(&CantorBasisLut11d, shards, shard_len, k, beta),
+                    _ => Self::ifft_sharded_dit4(&CantorBasisLut11d, shards, shard_len, k, beta),
                 }
             }
         }
