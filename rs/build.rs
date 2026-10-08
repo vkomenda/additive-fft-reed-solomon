@@ -206,11 +206,11 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
         write!(f, "{}", self.attr)?;
         writeln!(
             f,
-            "pub fn {}fft_sharded_{}_{n}{}(shards: &mut [{}], shard_len: usize) {{",
+            "pub fn {}fft_sharded_{}_k{k}{}(shards: &mut [{}], shard_len: usize) {{",
             if is_ifft { "i" } else { "" },
             self.name,
             if beta != G::zero() {
-                format!("_{:02x}", beta.into())
+                format!("_o{:02x}", beta.into())
             } else {
                 "".to_string()
             },
@@ -218,9 +218,9 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
         )?;
         writeln!(f, "    debug_assert_eq!(shards.len(), {n} * shard_len);")?;
         if !is_ifft {
-            self.write_fft(f, basis, lut, k, beta, 0)?;
+            self.write_fft(f, basis, lut, k - 1, beta, 0)?;
         } else {
-            self.write_ifft(f, basis, lut, k, beta, 0)?;
+            self.write_ifft(f, basis, lut, k - 1, beta, 0)?;
         }
         writeln!(f, "}}")?;
         writeln!(f)?;
@@ -263,17 +263,17 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
         k: u8,
         log_support: u8,
     ) -> io::Result<()> {
-        let n = 2 << k;
+        let n = 1 << k;
         let support = 1 << log_support;
         write!(f, "{}", self.cfg)?;
         write!(f, "{}", self.attr)?;
         writeln!(
             f,
-            "pub fn fft_sharded_zero_padded_{}_{n}_{support}(shards: &mut [{}], shard_len: usize) {{",
+            "pub fn fft_sharded_zero_padded_{}_k{k}_s{support}(shards: &mut [{}], shard_len: usize) {{",
             self.name, self.g
         )?;
         writeln!(f, "    debug_assert_eq!(shards.len(), {n} * shard_len);")?;
-        self.write_fft_zero_padded(f, basis, lut, k, G::zero(), 0, log_support)?;
+        self.write_fft_zero_padded(f, basis, lut, k - 1, G::zero(), 0, log_support)?;
         writeln!(f, "}}")?;
         writeln!(f)?;
         Ok(())
@@ -298,20 +298,19 @@ use super::{{butterfly_fwd, butterfly_inv, {}}};
             self.g, self.mul_table_import, self.extra_imports,
         )?;
 
-        for k in 0..8 {
-            let n = 2usize << k;
+        for k in 1..=8u8 {
+            let n = 1usize << k;
             self.write_fft_case(f, basis, sub_poly_luts, n, k, G::zero(), false)?;
             self.write_fft_case(f, basis, sub_poly_luts, n, k, G::zero(), true)?;
         }
 
-        for k in 0..8 {
-            let n = 2usize << k;
-            let t = 1usize << k;
-            let omega = subspace_points[t];
+        for k in 1..8u8 {
+            let n = 1usize << k;
+            let omega = subspace_points[n];
             self.write_fft_case(f, basis, sub_poly_luts, n, k, omega, true)?;
         }
 
-        for k in 0..8 {
+        for k in 1..=8u8 {
             for log_support in 0..=k {
                 self.write_fft_zero_padded_case(f, basis, sub_poly_luts, k, log_support)?;
             }
@@ -662,8 +661,9 @@ fn main() {
 
     let sub_poly_luts8: &[[Gf2p8_11d; 256]; 8] = sub_poly_luts[..8].try_into().unwrap();
 
-    let cases: Vec<_> = (0..8u8)
-        .flat_map(|k| vec![(k + 1, 0), (k + 1, 1usize << k)])
+    let cases: Vec<_> = (1..=8u8)
+        .map(|k| (k, 0))
+        .chain((1..8u8).map(|k| (k, 1usize << k)))
         .collect();
     write_dit4_schedules(
         &mut f,

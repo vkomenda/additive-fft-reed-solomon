@@ -659,7 +659,13 @@ fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11
     if beta == Gf2p8_11d::zero() {
         match k {
             0 => {}
-            1 => unrolled_11d::fft_sharded_avx2_2(shards, shard_len),
+            1 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K1_O0,
+                tables::IFFT_DIT4_NIBBLE_K1_O0_TAIL.as_ref(),
+            ),
             2 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
@@ -723,7 +729,13 @@ fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_1
     if beta == Gf2p8_11d::zero() {
         match k {
             0 => {}
-            1 => unrolled_11d::ifft_sharded_avx2_2(shards, shard_len),
+            1 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &tables::IFFT_DIT4_NIBBLE_K1_O0,
+                tables::IFFT_DIT4_NIBBLE_K1_O0_TAIL.as_ref(),
+            ),
             2 => K::ifft_sharded_dit4_with(
                 shards,
                 shard_len,
@@ -778,58 +790,54 @@ fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_1
     } else {
         match (k, u8::from(beta)) {
             (0, _) => {}
-            (1, b) if b == CANTOR_SUBSPACE[1] => {
-                unrolled_11d::ifft_sharded_avx2_2_01(shards, shard_len)
-            }
-
-            (2, b) if b == CANTOR_SUBSPACE[2] => K::ifft_sharded_dit4_with(
+            (1, b) if b == CANTOR_SUBSPACE[2] => K::ifft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
-                &tables::IFFT_DIT4_NIBBLE_K2_O2,
-                tables::IFFT_DIT4_NIBBLE_K2_O2_TAIL.as_ref(),
+                &tables::IFFT_DIT4_NIBBLE_K1_O2,
+                tables::IFFT_DIT4_NIBBLE_K1_O2_TAIL.as_ref(),
             ),
-            (3, b) if b == CANTOR_SUBSPACE[4] => K::ifft_sharded_dit4_with(
+            (2, b) if b == CANTOR_SUBSPACE[4] => K::ifft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
-                &tables::IFFT_DIT4_NIBBLE_K3_O4,
-                tables::IFFT_DIT4_NIBBLE_K3_O4_TAIL.as_ref(),
+                &tables::IFFT_DIT4_NIBBLE_K2_O4,
+                tables::IFFT_DIT4_NIBBLE_K2_O4_TAIL.as_ref(),
             ),
-            (4, b) if b == CANTOR_SUBSPACE[8] => K::ifft_sharded_dit4_with(
+            (3, b) if b == CANTOR_SUBSPACE[8] => K::ifft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
-                &tables::IFFT_DIT4_NIBBLE_K4_O8,
-                tables::IFFT_DIT4_NIBBLE_K4_O8_TAIL.as_ref(),
+                &tables::IFFT_DIT4_NIBBLE_K3_O8,
+                tables::IFFT_DIT4_NIBBLE_K3_O8_TAIL.as_ref(),
             ),
-            (5, b) if b == CANTOR_SUBSPACE[16] => K::ifft_sharded_dit4_with(
+            (4, b) if b == CANTOR_SUBSPACE[16] => K::ifft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
-                &tables::IFFT_DIT4_NIBBLE_K5_O16,
-                tables::IFFT_DIT4_NIBBLE_K5_O16_TAIL.as_ref(),
+                &tables::IFFT_DIT4_NIBBLE_K4_O16,
+                tables::IFFT_DIT4_NIBBLE_K4_O16_TAIL.as_ref(),
             ),
-            (6, b) if b == CANTOR_SUBSPACE[32] => K::ifft_sharded_dit4_with(
+            (5, b) if b == CANTOR_SUBSPACE[32] => K::ifft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
-                &tables::IFFT_DIT4_NIBBLE_K6_O32,
-                tables::IFFT_DIT4_NIBBLE_K6_O32_TAIL.as_ref(),
+                &tables::IFFT_DIT4_NIBBLE_K5_O32,
+                tables::IFFT_DIT4_NIBBLE_K5_O32_TAIL.as_ref(),
             ),
-            (7, b) if b == CANTOR_SUBSPACE[64] => K::ifft_sharded_dit4_with(
+            (6, b) if b == CANTOR_SUBSPACE[64] => K::ifft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
-                &tables::IFFT_DIT4_NIBBLE_K7_O64,
-                tables::IFFT_DIT4_NIBBLE_K7_O64_TAIL.as_ref(),
+                &tables::IFFT_DIT4_NIBBLE_K6_O64,
+                tables::IFFT_DIT4_NIBBLE_K6_O64_TAIL.as_ref(),
             ),
-            (8, b) if b == CANTOR_SUBSPACE[128] => K::ifft_sharded_dit4_with(
+            (7, b) if b == CANTOR_SUBSPACE[128] => K::ifft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
-                &tables::IFFT_DIT4_NIBBLE_K8_O128,
-                tables::IFFT_DIT4_NIBBLE_K8_O128_TAIL.as_ref(),
+                &tables::IFFT_DIT4_NIBBLE_K7_O128,
+                tables::IFFT_DIT4_NIBBLE_K7_O128_TAIL.as_ref(),
             ),
             _ => K::ifft_sharded_dit4(&CantorBasisLut11d, shards, shard_len, k, beta),
         }
@@ -942,42 +950,42 @@ impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
     ) {
         unsafe {
             match (k, log_support) {
-                (1, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_2_1(shards, shard_len),
-                (2, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_4_1(shards, shard_len),
-                (2, 1) => unrolled_11d::fft_sharded_zero_padded_avx2_4_2(shards, shard_len),
-                (3, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_8_1(shards, shard_len),
-                (3, 1) => unrolled_11d::fft_sharded_zero_padded_avx2_8_2(shards, shard_len),
-                (3, 2) => unrolled_11d::fft_sharded_zero_padded_avx2_8_4(shards, shard_len),
-                (4, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_16_1(shards, shard_len),
-                (4, 1) => unrolled_11d::fft_sharded_zero_padded_avx2_16_2(shards, shard_len),
-                (4, 2) => unrolled_11d::fft_sharded_zero_padded_avx2_16_4(shards, shard_len),
-                (4, 3) => unrolled_11d::fft_sharded_zero_padded_avx2_16_8(shards, shard_len),
-                (5, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_32_1(shards, shard_len),
-                (5, 1) => unrolled_11d::fft_sharded_zero_padded_avx2_32_2(shards, shard_len),
-                (5, 2) => unrolled_11d::fft_sharded_zero_padded_avx2_32_4(shards, shard_len),
-                (5, 3) => unrolled_11d::fft_sharded_zero_padded_avx2_32_8(shards, shard_len),
-                (5, 4) => unrolled_11d::fft_sharded_zero_padded_avx2_32_16(shards, shard_len),
-                (6, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_64_1(shards, shard_len),
-                (6, 1) => unrolled_11d::fft_sharded_zero_padded_avx2_64_2(shards, shard_len),
-                (6, 2) => unrolled_11d::fft_sharded_zero_padded_avx2_64_4(shards, shard_len),
-                (6, 3) => unrolled_11d::fft_sharded_zero_padded_avx2_64_8(shards, shard_len),
-                (6, 4) => unrolled_11d::fft_sharded_zero_padded_avx2_64_16(shards, shard_len),
-                (6, 5) => unrolled_11d::fft_sharded_zero_padded_avx2_64_32(shards, shard_len),
-                (7, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_128_1(shards, shard_len),
-                (7, 1) => unrolled_11d::fft_sharded_zero_padded_avx2_128_2(shards, shard_len),
-                (7, 2) => unrolled_11d::fft_sharded_zero_padded_avx2_128_4(shards, shard_len),
-                (7, 3) => unrolled_11d::fft_sharded_zero_padded_avx2_128_8(shards, shard_len),
-                (7, 4) => unrolled_11d::fft_sharded_zero_padded_avx2_128_16(shards, shard_len),
-                (7, 5) => unrolled_11d::fft_sharded_zero_padded_avx2_128_32(shards, shard_len),
-                (7, 6) => unrolled_11d::fft_sharded_zero_padded_avx2_128_64(shards, shard_len),
-                (8, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_256_1(shards, shard_len),
-                (8, 1) => unrolled_11d::fft_sharded_zero_padded_avx2_256_2(shards, shard_len),
-                (8, 2) => unrolled_11d::fft_sharded_zero_padded_avx2_256_4(shards, shard_len),
-                (8, 3) => unrolled_11d::fft_sharded_zero_padded_avx2_256_8(shards, shard_len),
-                (8, 4) => unrolled_11d::fft_sharded_zero_padded_avx2_256_16(shards, shard_len),
-                (8, 5) => unrolled_11d::fft_sharded_zero_padded_avx2_256_32(shards, shard_len),
-                (8, 6) => unrolled_11d::fft_sharded_zero_padded_avx2_256_64(shards, shard_len),
-                (8, 7) => unrolled_11d::fft_sharded_zero_padded_avx2_256_128(shards, shard_len),
+                (1, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_k1_s1(shards, shard_len),
+                (2, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_k2_s1(shards, shard_len),
+                (2, 1) => unrolled_11d::fft_sharded_zero_padded_avx2_k2_s2(shards, shard_len),
+                (3, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_k3_s1(shards, shard_len),
+                (3, 1) => unrolled_11d::fft_sharded_zero_padded_avx2_k3_s2(shards, shard_len),
+                (3, 2) => unrolled_11d::fft_sharded_zero_padded_avx2_k3_s4(shards, shard_len),
+                (4, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_k4_s1(shards, shard_len),
+                (4, 1) => unrolled_11d::fft_sharded_zero_padded_avx2_k4_s2(shards, shard_len),
+                (4, 2) => unrolled_11d::fft_sharded_zero_padded_avx2_k4_s4(shards, shard_len),
+                (4, 3) => unrolled_11d::fft_sharded_zero_padded_avx2_k4_s8(shards, shard_len),
+                (5, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_k5_s1(shards, shard_len),
+                (5, 1) => unrolled_11d::fft_sharded_zero_padded_avx2_k5_s2(shards, shard_len),
+                (5, 2) => unrolled_11d::fft_sharded_zero_padded_avx2_k5_s4(shards, shard_len),
+                (5, 3) => unrolled_11d::fft_sharded_zero_padded_avx2_k5_s8(shards, shard_len),
+                (5, 4) => unrolled_11d::fft_sharded_zero_padded_avx2_k5_s16(shards, shard_len),
+                (6, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_k6_s1(shards, shard_len),
+                (6, 1) => unrolled_11d::fft_sharded_zero_padded_avx2_k6_s2(shards, shard_len),
+                (6, 2) => unrolled_11d::fft_sharded_zero_padded_avx2_k6_s4(shards, shard_len),
+                (6, 3) => unrolled_11d::fft_sharded_zero_padded_avx2_k6_s8(shards, shard_len),
+                (6, 4) => unrolled_11d::fft_sharded_zero_padded_avx2_k6_s16(shards, shard_len),
+                (6, 5) => unrolled_11d::fft_sharded_zero_padded_avx2_k6_s32(shards, shard_len),
+                (7, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_k7_s1(shards, shard_len),
+                (7, 1) => unrolled_11d::fft_sharded_zero_padded_avx2_k7_s2(shards, shard_len),
+                (7, 2) => unrolled_11d::fft_sharded_zero_padded_avx2_k7_s4(shards, shard_len),
+                (7, 3) => unrolled_11d::fft_sharded_zero_padded_avx2_k7_s8(shards, shard_len),
+                (7, 4) => unrolled_11d::fft_sharded_zero_padded_avx2_k7_s16(shards, shard_len),
+                (7, 5) => unrolled_11d::fft_sharded_zero_padded_avx2_k7_s32(shards, shard_len),
+                (7, 6) => unrolled_11d::fft_sharded_zero_padded_avx2_k7_s64(shards, shard_len),
+                (8, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_k8_s1(shards, shard_len),
+                (8, 1) => unrolled_11d::fft_sharded_zero_padded_avx2_k8_s2(shards, shard_len),
+                (8, 2) => unrolled_11d::fft_sharded_zero_padded_avx2_k8_s4(shards, shard_len),
+                (8, 3) => unrolled_11d::fft_sharded_zero_padded_avx2_k8_s8(shards, shard_len),
+                (8, 4) => unrolled_11d::fft_sharded_zero_padded_avx2_k8_s16(shards, shard_len),
+                (8, 5) => unrolled_11d::fft_sharded_zero_padded_avx2_k8_s32(shards, shard_len),
+                (8, 6) => unrolled_11d::fft_sharded_zero_padded_avx2_k8_s64(shards, shard_len),
+                (8, 7) => unrolled_11d::fft_sharded_zero_padded_avx2_k8_s128(shards, shard_len),
                 _ => unreachable!("k={k} must be in 1..=8 and log_support must be < k"),
             }
         }
