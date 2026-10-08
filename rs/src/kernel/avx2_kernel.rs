@@ -162,7 +162,6 @@ fn butterfly_fwd_dit2_zero<G: Gf2p8>(shards: &mut [G], shard_len: usize, base: u
                     let va = _mm256_loadu_si256(a.add(i) as *const __m256i);
                     let vb = _mm256_loadu_si256(b.add(i) as *const __m256i);
                     let vb = _mm256_xor_si256(vb, va); // b + g0 = g1
-                    _mm256_storeu_si256(a.add(i) as *mut __m256i, va);
                     _mm256_storeu_si256(b.add(i) as *mut __m256i, vb);
                 }
                 i += 32;
@@ -942,12 +941,7 @@ impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
         }
     }
 
-    fn fft_sharded_zero_padded_unrolled(
-        shards: &mut [Gf2p8_11d],
-        shard_len: usize,
-        k: u8,
-        log_support: u8,
-    ) {
+    fn fft_sharded_zero_padded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, log_support: u8) {
         unsafe {
             match (k, log_support) {
                 (1, 0) => unrolled_11d::fft_sharded_zero_padded_avx2_k1_s1(shards, shard_len),

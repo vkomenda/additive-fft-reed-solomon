@@ -578,7 +578,7 @@ where
         }
 
         // Evaluate s at all n points treating shards work[T..] as zeros.
-        K::fft_sharded_zero_padded_unrolled(workspace, shard_len, n_log, t_log);
+        K::fft_sharded_zero_padded(workspace, shard_len, n_log, t_log);
 
         // Pointwise multiply: work[i] := work[i] · λ(ω_i)
         for i in 0..N {
@@ -598,7 +598,7 @@ where
         let log_support = support.trailing_zeros() as u8;
 
         // Evaluate q at all n points while treating work[1 << log_support..] as zeros
-        K::fft_sharded_zero_padded_unrolled(workspace, shard_len, n_log, log_support);
+        K::fft_sharded_zero_padded(workspace, shard_len, n_log, log_support);
 
         // (Forney) Eq 78: u(ω_i) = q(ω_i) / λ'(ω_i)
         for (&pos, d) in erasure_positions.iter().zip(denoms) {

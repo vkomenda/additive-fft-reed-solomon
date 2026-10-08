@@ -350,12 +350,7 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
         butterfly_inv_dit4_zero(shards, shard_len, base, d, m23);
     }
 
-    fn fft_sharded_zero_padded_unrolled(
-        shards: &mut [Gf2p8_11d],
-        shard_len: usize,
-        k: u8,
-        log_support: u8,
-    ) {
+    fn fft_sharded_zero_padded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, log_support: u8) {
         match (k, log_support) {
             (1, 0) => unrolled_11d::fft_sharded_zero_padded_lut_k1_s1(shards, shard_len),
             (2, 0) => unrolled_11d::fft_sharded_zero_padded_lut_k2_s1(shards, shard_len),
@@ -589,25 +584,27 @@ mod test {
 
         let mut rng = SmallRng::seed_from_u64(42);
 
-        let k = 5;
-        let n = 1 << k;
-        let log_support = 3;
-        let support = 1 << log_support;
+        for k in 1..=8u8 {
+            let n = 1 << k;
+            for log_support in 0..k {
+                let support = 1 << log_support;
 
-        let mut a = vec![Gf2p8_11d::zero(); n * SHARD_LEN];
-        let support_len = support * SHARD_LEN;
-        rng.fill_bytes(unsafe {
-            std::slice::from_raw_parts_mut(a.as_mut_ptr() as *mut u8, support_len)
-        });
-        a[support * SHARD_LEN..].fill(Gf2p8_11d::zero());
-        let mut b = a.clone();
-        b[support * SHARD_LEN..].fill(Gf2p8_11d::from(0xaa));
+                let mut a = vec![Gf2p8_11d::zero(); n * SHARD_LEN];
+                let support_len = support * SHARD_LEN;
+                rng.fill_bytes(unsafe {
+                    std::slice::from_raw_parts_mut(a.as_mut_ptr() as *mut u8, support_len)
+                });
+                a[support * SHARD_LEN..].fill(Gf2p8_11d::zero());
+                let mut b = a.clone();
+                b[support * SHARD_LEN..].fill(Gf2p8_11d::from(0xaa));
 
-        let basis = CantorBasisLut11d;
-        fft_sharded_recursive(&basis, &mut a, SHARD_LEN, k, Gf2p8_11d::zero());
-        unrolled_11d::fft_sharded_zero_padded_lut_k5_s8(&mut b, SHARD_LEN);
+                let basis = CantorBasisLut11d;
+                fft_sharded_recursive(&basis, &mut a, SHARD_LEN, k, Gf2p8_11d::zero());
+                LutKernel::<Gf2p8_11d>::fft_sharded_zero_padded(&mut b, SHARD_LEN, k, log_support);
 
-        assert_eq!(a, b);
+                assert_eq!(a, b);
+            }
+        }
     }
 
     #[test]

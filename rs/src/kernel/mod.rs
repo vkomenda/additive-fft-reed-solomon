@@ -85,7 +85,7 @@ pub trait Kernel<G: Gf2p8Lut> {
     );
 
     /// Unrolled forward transform where shards [1 << log_support..] are treated as zeros.
-    fn fft_sharded_zero_padded_unrolled(shards: &mut [G], shard_len: usize, k: u8, log_support: u8);
+    fn fft_sharded_zero_padded(shards: &mut [G], shard_len: usize, k: u8, log_support: u8);
 
     fn fft_sharded_radix2_last(shards: &mut [G], shard_len: usize, k: u8, beta: G);
 
