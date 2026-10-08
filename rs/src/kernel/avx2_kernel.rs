@@ -588,6 +588,7 @@ fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, be
 
     if beta == Gf2p8_11d::zero() {
         match k {
+            0 => {}
             1 => K::fft_sharded_dit4_radix2_last_with(
                 shards,
                 shard_len,
@@ -644,7 +645,7 @@ fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, be
                 &tables::FFT_DIT4_NIBBLE_K8_O0,
                 &tables::FFT_DIT4_NIBBLE_K8_O0_TAIL,
             ),
-            _ => unreachable!("k={k} must be in 1..=8"),
+            _ => unreachable!("k={k} must be in 0..=8"),
         }
     } else {
         todo!();

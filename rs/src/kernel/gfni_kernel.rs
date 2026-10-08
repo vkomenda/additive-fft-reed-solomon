@@ -668,6 +668,7 @@ fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11
 
     if beta == Gf2p8_11d::zero() {
         match k {
+            0 => {}
             1 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
