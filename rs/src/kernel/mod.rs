@@ -84,14 +84,8 @@ pub trait Kernel<G: Gf2p8Lut> {
         m23: Self::MulTable,
     );
 
-    /// Unrolled DIT2 forward transform
-    fn fft_sharded_unrolled(shards: &mut [G], shard_len: usize, k: u8, beta: G);
-
     /// Unrolled forward transform where shards [1 << log_support..] are treated as zeros.
     fn fft_sharded_zero_padded_unrolled(shards: &mut [G], shard_len: usize, k: u8, log_support: u8);
-
-    /// Unrolled DIT2 inverse transform
-    fn ifft_sharded_unrolled(shards: &mut [G], shard_len: usize, k: u8, beta: G);
 
     fn fft_sharded_radix2_last(shards: &mut [G], shard_len: usize, k: u8, beta: G);
 

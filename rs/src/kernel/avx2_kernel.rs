@@ -934,27 +934,6 @@ impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
         }
     }
 
-    fn fft_sharded_unrolled(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        unsafe {
-            if beta == Gf2p8_11d::zero() {
-                match k {
-                    0 => {}
-                    1 => unrolled_11d::fft_sharded_avx2_2(shards, shard_len),
-                    2 => unrolled_11d::fft_sharded_avx2_4(shards, shard_len),
-                    3 => unrolled_11d::fft_sharded_avx2_8(shards, shard_len),
-                    4 => unrolled_11d::fft_sharded_avx2_16(shards, shard_len),
-                    5 => unrolled_11d::fft_sharded_avx2_32(shards, shard_len),
-                    6 => unrolled_11d::fft_sharded_avx2_64(shards, shard_len),
-                    7 => unrolled_11d::fft_sharded_avx2_128(shards, shard_len),
-                    8 => unrolled_11d::fft_sharded_avx2_256(shards, shard_len),
-                    _ => unreachable!("k={k} must be in 0..=8"),
-                }
-            } else {
-                Self::fft_sharded_dit4(&CantorBasisLut11d, shards, shard_len, k, beta);
-            }
-        }
-    }
-
     fn fft_sharded_zero_padded_unrolled(
         shards: &mut [Gf2p8_11d],
         shard_len: usize,
@@ -1000,55 +979,6 @@ impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
                 (8, 6) => unrolled_11d::fft_sharded_zero_padded_avx2_256_64(shards, shard_len),
                 (8, 7) => unrolled_11d::fft_sharded_zero_padded_avx2_256_128(shards, shard_len),
                 _ => unreachable!("k={k} must be in 1..=8 and log_support must be < k"),
-            }
-        }
-    }
-
-    fn ifft_sharded_unrolled(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        unsafe {
-            if beta == Gf2p8_11d::zero() {
-                match k {
-                    0 => {}
-                    1 => unrolled_11d::ifft_sharded_avx2_2(shards, shard_len),
-                    2 => unrolled_11d::ifft_sharded_avx2_4(shards, shard_len),
-                    3 => unrolled_11d::ifft_sharded_avx2_8(shards, shard_len),
-                    4 => unrolled_11d::ifft_sharded_avx2_16(shards, shard_len),
-                    5 => unrolled_11d::ifft_sharded_avx2_32(shards, shard_len),
-                    6 => unrolled_11d::ifft_sharded_avx2_64(shards, shard_len),
-                    7 => unrolled_11d::ifft_sharded_avx2_128(shards, shard_len),
-                    8 => unrolled_11d::ifft_sharded_avx2_256(shards, shard_len),
-                    _ => unreachable!("k={k} must be in 0..=8"),
-                }
-            } else {
-                match (k, u8::from(beta)) {
-                    (0, _) => {}
-                    (1, b) if b == CANTOR_SUBSPACE[1] => {
-                        unrolled_11d::ifft_sharded_avx2_2_01(shards, shard_len)
-                    }
-
-                    (2, b) if b == CANTOR_SUBSPACE[2] => {
-                        unrolled_11d::ifft_sharded_avx2_4_d6(shards, shard_len)
-                    }
-                    (3, b) if b == CANTOR_SUBSPACE[4] => {
-                        unrolled_11d::ifft_sharded_avx2_8_98(shards, shard_len)
-                    }
-                    (4, b) if b == CANTOR_SUBSPACE[8] => {
-                        unrolled_11d::ifft_sharded_avx2_16_92(shards, shard_len)
-                    }
-                    (5, b) if b == CANTOR_SUBSPACE[16] => {
-                        unrolled_11d::ifft_sharded_avx2_32_56(shards, shard_len)
-                    }
-                    (6, b) if b == CANTOR_SUBSPACE[32] => {
-                        unrolled_11d::ifft_sharded_avx2_64_c8(shards, shard_len)
-                    }
-                    (7, b) if b == CANTOR_SUBSPACE[64] => {
-                        unrolled_11d::ifft_sharded_avx2_128_58(shards, shard_len)
-                    }
-                    (8, b) if b == CANTOR_SUBSPACE[128] => {
-                        unrolled_11d::ifft_sharded_avx2_256_e7(shards, shard_len)
-                    }
-                    _ => Self::ifft_sharded_dit4(&CantorBasisLut11d, shards, shard_len, k, beta),
-                }
             }
         }
     }
