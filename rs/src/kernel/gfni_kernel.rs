@@ -725,7 +725,7 @@ fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11
                 &tables::IFFT_DIT4_GFNI_K8_O0,
                 tables::IFFT_DIT4_GFNI_K8_O0_TAIL.as_ref(),
             ),
-            _ => unreachable!("k={k} must be in 1..=8"),
+            _ => unreachable!("k={k} must be in 0..=8"),
         }
     } else {
         K::fft_sharded_dit4(&CantorBasisLut11d, shards, shard_len, k, beta);
@@ -738,6 +738,7 @@ fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_1
 
     if beta == Gf2p8_11d::zero() {
         match k {
+            0 => {}
             1 => K::ifft_sharded_dit4_with(
                 shards,
                 shard_len,
@@ -794,7 +795,7 @@ fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_1
                 &tables::IFFT_DIT4_GFNI_K8_O0,
                 tables::IFFT_DIT4_GFNI_K8_O0_TAIL.as_ref(),
             ),
-            _ => unreachable!("k={k} must be in 1..=8"),
+            _ => unreachable!("k={k} must be in 0..=8"),
         }
     } else {
         match (k, u8::from(beta)) {
