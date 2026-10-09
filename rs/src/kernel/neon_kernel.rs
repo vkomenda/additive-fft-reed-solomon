@@ -914,7 +914,7 @@ impl Kernel<Gf2p8_11d> for NeonKernel<Gf2p8_11d> {
 #[cfg(native_neon)]
 mod tests {
     use super::*;
-    use crate::{kernel::lut_kernel, poly_11d_lut::CantorBasisLut11d};
+    use crate::{gf2p8lut::CantorBasisLut, kernel::lut_kernel, poly_11d_lut::CantorBasisLut11d};
     use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
 
     #[test]
@@ -953,7 +953,7 @@ mod tests {
     /// NEON FFT produces the same evaluations as the LUT butterfly.
     /// shard_len covers: pure tail (15), aligned (16), aligned + tail (17), two aligned (32).
     #[test]
-    fn fft_neon_matches_lut() {
+    fn fft_neon_matches_lut_rec() {
         let basis = CantorBasisLut11d;
         for shard_len in [1, 15, 16, 17, 32] {
             for k in 1u8..=4 {
@@ -963,7 +963,7 @@ mod tests {
                 let mut expected = make_shards(n, shard_len);
                 let mut actual = expected.clone();
 
-                lut_kernel::fft_sharded(&basis, &mut expected, shard_len, k, beta);
+                lut_kernel::fft_sharded_recursive(&basis, &mut expected, shard_len, k, beta);
                 fft_sharded(&mut actual, shard_len, k, beta);
 
                 assert_eq!(expected, actual, "k={k} shard_len={shard_len}");
@@ -973,7 +973,7 @@ mod tests {
 
     /// NEON IFFT produces the same coefficients as the LUT butterfly.
     #[test]
-    fn ifft_neon_matches_lut() {
+    fn ifft_neon_matches_lut_rec() {
         let basis = CantorBasisLut11d;
         for shard_len in [1, 15, 16, 17, 32] {
             for k in 1u8..=4 {
@@ -982,7 +982,7 @@ mod tests {
                 let mut expected = make_shards(n, shard_len);
                 let mut actual = expected.clone();
 
-                lut_kernel::ifft_sharded(&basis, &mut expected, shard_len, k, beta);
+                lut_kernel::ifft_sharded_recursive(&basis, &mut expected, shard_len, k, beta);
                 ifft_sharded(&mut actual, shard_len, k, beta);
 
                 assert_eq!(expected, actual, "k={k} shard_len={shard_len}");
