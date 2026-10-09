@@ -416,6 +416,40 @@ pub trait Kernel<G: Gf2p8Lut> {
             Self::butterfly_inv_dit2(shards, shard_len, 0, n / 2, *m(lo, t));
         }
     }
+
+    fn fft_sharded_dit2_indexed(shards: &mut [G], shard_len: usize, k: u8, t: usize) {
+        let n = 1 << k;
+        for l in (0..k).rev() {
+            let d = 1 << l;
+            for start in (0..n).step_by(2 * d) {
+                let x = t ^ start;
+                Self::butterfly_fwd_dit2(
+                    shards,
+                    shard_len,
+                    start,
+                    d,
+                    Self::NODE_MUL[node_mul_index(l, x)],
+                );
+            }
+        }
+    }
+
+    fn ifft_sharded_dit2_indexed(shards: &mut [G], shard_len: usize, k: u8, t: usize) {
+        let n = 1usize << k;
+        for l in 0..k {
+            let d = 1usize << l;
+            for start in (0..n).step_by(2 * d) {
+                let x = t ^ start;
+                Self::butterfly_inv_dit2(
+                    shards,
+                    shard_len,
+                    start,
+                    d,
+                    Self::NODE_MUL[node_mul_index(l, x)],
+                );
+            }
+        }
+    }
 }
 
 /// Splits the node of `R * d` shards starting at shard `base` into `R` equal
