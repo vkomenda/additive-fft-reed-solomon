@@ -1,7 +1,8 @@
 use super::{Kernel, shard_groups};
-use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
-use crate::poly_11d_lut::CantorBasisLut11d;
-use crate::poly_11d_lut::generated::{self as tables, CANTOR_SUBSPACE, EXP_TABLE, MUL_TABLE};
+#[cfg(test)]
+use crate::gf2p8lut::CantorBasisLut;
+use crate::gf2p8lut::Gf2p8Lut;
+use crate::poly_11d_lut::generated::{self as tables, EXP_TABLE, MUL_TABLE};
 use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8, Gf2p8_11d, Z255};
 use std::marker::PhantomData;
 
@@ -168,6 +169,7 @@ fn butterfly_inv_dit4_zero<G: Gf2p8>(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn fft_sharded_recursive<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [G],
@@ -220,6 +222,7 @@ pub(crate) fn fft_sharded_zero_padded_recursive<G: Gf2p8Lut>(
     fft_sharded_zero_padded_recursive(basis, hi, shard_len, k - 1, next_beta, log_support);
 }
 
+#[cfg(test)]
 pub(crate) fn ifft_sharded_recursive<G: Gf2p8Lut>(
     basis: &impl CantorBasisLut<G>,
     shards: &mut [G],
@@ -269,6 +272,8 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
     const ALIGN: usize = 1;
 
     type MulTable = MulTable;
+
+    const NODE_MUL: &'static [Self::MulTable; 510] = &tables::NODE_MUL_LUT;
 
     fn mul_table(t: Gf2p8_11d) -> Self::MulTable {
         &MUL_TABLE[t.into_usize()]
@@ -403,7 +408,8 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
                 _ => unreachable!("k={k} must be in 0..=8"),
             }
         } else {
-            fft_sharded_recursive(&CantorBasisLut11d, shards, shard_len, k, beta);
+            let t = tables::CANTOR_SUBSPACE_INDEX[beta.into_usize()] as usize;
+            Self::fft_sharded_dit4_indexed(shards, shard_len, k, t);
         }
     }
 
@@ -422,31 +428,33 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
                 _ => unreachable!("k={k} must be in 0..=8"),
             }
         } else {
-            match (k, u8::from(beta)) {
-                (0, _) => {}
-                (1, b) if b == CANTOR_SUBSPACE[2] => {
-                    unrolled_11d::ifft_sharded_lut_k1_od6(shards, shard_len)
-                }
-                (2, b) if b == CANTOR_SUBSPACE[4] => {
-                    unrolled_11d::ifft_sharded_lut_k2_o98(shards, shard_len)
-                }
-                (3, b) if b == CANTOR_SUBSPACE[8] => {
-                    unrolled_11d::ifft_sharded_lut_k3_o92(shards, shard_len)
-                }
-                (4, b) if b == CANTOR_SUBSPACE[16] => {
-                    unrolled_11d::ifft_sharded_lut_k4_o56(shards, shard_len)
-                }
-                (5, b) if b == CANTOR_SUBSPACE[32] => {
-                    unrolled_11d::ifft_sharded_lut_k5_oc8(shards, shard_len)
-                }
-                (6, b) if b == CANTOR_SUBSPACE[64] => {
-                    unrolled_11d::ifft_sharded_lut_k6_o58(shards, shard_len)
-                }
-                (7, b) if b == CANTOR_SUBSPACE[128] => {
-                    unrolled_11d::ifft_sharded_lut_k7_oe7(shards, shard_len)
-                }
-                _ => ifft_sharded_recursive(&CantorBasisLut11d, shards, shard_len, k, beta),
-            }
+            let t = tables::CANTOR_SUBSPACE_INDEX[beta.into_usize()] as usize;
+            Self::ifft_sharded_dit4_indexed(shards, shard_len, k, t);
+            // match (k, u8::from(beta)) {
+            //     (0, _) => {}
+            //     (1, b) if b == CANTOR_SUBSPACE[2] => {
+            //         unrolled_11d::ifft_sharded_lut_k1_od6(shards, shard_len)
+            //     }
+            //     (2, b) if b == CANTOR_SUBSPACE[4] => {
+            //         unrolled_11d::ifft_sharded_lut_k2_o98(shards, shard_len)
+            //     }
+            //     (3, b) if b == CANTOR_SUBSPACE[8] => {
+            //         unrolled_11d::ifft_sharded_lut_k3_o92(shards, shard_len)
+            //     }
+            //     (4, b) if b == CANTOR_SUBSPACE[16] => {
+            //         unrolled_11d::ifft_sharded_lut_k4_o56(shards, shard_len)
+            //     }
+            //     (5, b) if b == CANTOR_SUBSPACE[32] => {
+            //         unrolled_11d::ifft_sharded_lut_k5_oc8(shards, shard_len)
+            //     }
+            //     (6, b) if b == CANTOR_SUBSPACE[64] => {
+            //         unrolled_11d::ifft_sharded_lut_k6_o58(shards, shard_len)
+            //     }
+            //     (7, b) if b == CANTOR_SUBSPACE[128] => {
+            //         unrolled_11d::ifft_sharded_lut_k7_oe7(shards, shard_len)
+            //     }
+            //     _ => ifft_sharded_recursive(&CantorBasisLut11d, shards, shard_len, k, beta),
+            // }
         }
     }
 
@@ -512,7 +520,9 @@ impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
                 _ => unreachable!("k={k} must be in 1..=8"),
             }
         } else {
-            fft_sharded_recursive(&CantorBasisLut11d, shards, shard_len, k, beta);
+            // Radix-2 first, actually
+            let t = tables::CANTOR_SUBSPACE_INDEX[beta.into_usize()] as usize;
+            Self::fft_sharded_dit4_indexed(shards, shard_len, k, t);
         }
     }
 

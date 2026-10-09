@@ -720,8 +720,8 @@ mod test {
                 if j == usize::from(p) {
                     continue;
                 }
-                let w = ssp(j as u8).add(ssp(p));
-                assert_eq!(EXP_TABLE[ev[j].0 as usize], w.into());
+                let w: u8 = ssp(j as u8).add(ssp(p)).into();
+                assert_eq!(EXP_TABLE[ev[j].0 as usize], w);
             }
         }
     }

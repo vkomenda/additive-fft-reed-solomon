@@ -570,6 +570,102 @@ fn write_dit4_schedules<G: Gf2p8>(
     Ok(())
 }
 
+/// Writes the matrix for multiplication by W_l(ω_x), for each level l and each x >> l. Level l
+/// occupies 256 >> l entries starting at 512 - (512 >> l), matching node_mul_index in
+/// kernel/mod.rs.
+fn write_node_mul_lut<G: Gf2p8 + fmt::Debug>(
+    f: &mut impl Write,
+    sub_poly_luts: &[[G; FIELD_SIZE]; 9],
+    subspace_points: &[G; FIELD_SIZE],
+) -> io::Result<()> {
+    writeln!(f, "pub static NODE_MUL_LUT: [&'static [u8; 256]; 510] = [")?;
+    for l in 0..8u8 {
+        writeln!(f, "    // level {l}")?;
+        let count = 256usize >> l;
+        for j in 0..count {
+            let w = subspace_points[j << l];
+            let t = if l == 0 {
+                w
+            } else {
+                sub_poly_luts[l as usize][w.into_usize()]
+            };
+            if j % 4 == 0 {
+                write!(f, "    ")?;
+            }
+            write!(f, "&MUL_TABLE[{}],", t.into())?;
+            if j % 4 == 3 || j == count - 1 {
+                writeln!(f)?;
+            } else {
+                write!(f, " ")?;
+            }
+        }
+    }
+    writeln!(f, "];")
+}
+
+fn write_node_mul_nibble<G: Gf2p8 + fmt::Debug>(
+    f: &mut impl Write,
+    sub_poly_luts: &[[G; FIELD_SIZE]; 9],
+    subspace_points: &[G; FIELD_SIZE],
+) -> io::Result<()> {
+    writeln!(
+        f,
+        "pub static NODE_MUL_NIBBLE: [&([u8; 16], [u8; 16]); 510] = ["
+    )?;
+    for l in 0..8u8 {
+        writeln!(f, "    // level {l}")?;
+        let count = 256usize >> l;
+        for j in 0..count {
+            let w = subspace_points[j << l];
+            let t = if l == 0 {
+                w
+            } else {
+                sub_poly_luts[l as usize][w.into_usize()]
+            };
+            if j % 4 == 0 {
+                write!(f, "    ")?;
+            }
+            write!(f, "&NIBBLE_MUL_TABLE[{}],", t.into())?;
+            if j % 4 == 3 || j == count - 1 {
+                writeln!(f)?;
+            } else {
+                write!(f, " ")?;
+            }
+        }
+    }
+    writeln!(f, "];")
+}
+
+fn write_node_mul_gfni<G: Gf2p8 + fmt::Debug>(
+    f: &mut impl Write,
+    sub_poly_luts: &[[G; FIELD_SIZE]; 9],
+    subspace_points: &[G; FIELD_SIZE],
+) -> io::Result<()> {
+    writeln!(f, "pub static NODE_MUL_GFNI: [u64; 510] = [")?;
+    for l in 0..8u8 {
+        writeln!(f, "    // level {l}")?;
+        let count = 256usize >> l;
+        for j in 0..count {
+            let w = subspace_points[j << l];
+            let t = if l == 0 {
+                w
+            } else {
+                sub_poly_luts[l as usize][w.into_usize()]
+            };
+            if j % 4 == 0 {
+                write!(f, "    ")?;
+            }
+            write!(f, "0x{:016x},", t.gfni_mul_matrix())?;
+            if j % 4 == 3 || j == count - 1 {
+                writeln!(f)?;
+            } else {
+                write!(f, " ")?;
+            }
+        }
+    }
+    writeln!(f, "];")
+}
+
 fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("tables_11d.rs");
@@ -577,7 +673,7 @@ fn main() {
 
     let (exp_table, log_table) = Gf2p8_11d::exp_log_tables();
     let inv_table = Gf2p8_11d::inv_table(&exp_table, &log_table);
-    write!(f, "\npub static EXP_TABLE: [u8; {}] = [", EXP_TABLE_SIZE).unwrap();
+    write!(f, "pub static EXP_TABLE: [u8; {}] = [", EXP_TABLE_SIZE).unwrap();
     write_points(&mut f, exp_table.into_iter(), false);
     write!(f, "\npub static LOG_TABLE: [u8; {}] = [", FIELD_SIZE).unwrap();
     write_points(&mut f, log_table.into_iter(), false);
@@ -640,6 +736,19 @@ fn main() {
     write!(f, "\npub static CANTOR_SUBSPACE: [u8; {}] = [", num_points).unwrap();
     write_points(&mut f, subspace_points.into_iter(), false);
 
+    // The inverse of CANTOR_SUBSPACE
+    let mut subspace_index = [0u8; FIELD_SIZE];
+    for (i, &w) in subspace_points.iter().enumerate() {
+        subspace_index[w.into_usize()] = i as u8;
+    }
+    write!(
+        f,
+        "\npub static CANTOR_SUBSPACE_INDEX: [u8; {}] = [",
+        num_points
+    )
+    .unwrap();
+    write_bytes(&mut f, subspace_index.into_iter(), false);
+
     let sub_poly_luts = basis.gen_all_subspace_poly_luts();
 
     writeln!(
@@ -689,6 +798,10 @@ fn main() {
         &cases,
     )
     .unwrap();
+
+    write_node_mul_lut(&mut f, &sub_poly_luts, &subspace_points).unwrap();
+    write_node_mul_nibble(&mut f, &sub_poly_luts, &subspace_points).unwrap();
+    write_node_mul_gfni(&mut f, &sub_poly_luts, &subspace_points).unwrap();
 
     let dest_kernel_lut = Path::new(&out_dir).join("unrolled_lut_kernel_11d.rs");
     let mut fkl = BufWriter::new(File::create(&dest_kernel_lut).unwrap());

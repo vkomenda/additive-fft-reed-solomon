@@ -3,10 +3,7 @@ use super::{Kernel, shard_groups};
 use crate::gf2p8lut::CantorBasisLut;
 use crate::{
     gf2p8lut::Gf2p8Lut,
-    poly_11d_lut::{
-        CantorBasisLut11d,
-        generated::{self as tables, CANTOR_SUBSPACE, GFNI_MUL_BY_LOG, GFNI_MUL_TABLE},
-    },
+    poly_11d_lut::generated::{self as tables, GFNI_MUL_BY_LOG, GFNI_MUL_TABLE},
 };
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, Z255};
 use core::arch::x86_64::*;
@@ -658,7 +655,8 @@ fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, be
             _ => unreachable!("k={k} must be in 1..=8"),
         }
     } else {
-        todo!();
+        let t = tables::CANTOR_SUBSPACE_INDEX[beta.into_usize()] as usize;
+        K::fft_sharded_dit4_indexed(shards, shard_len, k, t);
     }
 }
 
@@ -728,7 +726,8 @@ fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11
             _ => unreachable!("k={k} must be in 0..=8"),
         }
     } else {
-        K::fft_sharded_dit4(&CantorBasisLut11d, shards, shard_len, k, beta);
+        let t = tables::CANTOR_SUBSPACE_INDEX[beta.into_usize()] as usize;
+        K::fft_sharded_dit4_indexed(shards, shard_len, k, t);
     }
 }
 
@@ -798,60 +797,62 @@ fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_1
             _ => unreachable!("k={k} must be in 0..=8"),
         }
     } else {
-        match (k, u8::from(beta)) {
-            (0, _) => {}
-            (1, b) if b == CANTOR_SUBSPACE[2] => K::ifft_sharded_dit4_with(
-                shards,
-                shard_len,
-                k,
-                &tables::IFFT_DIT4_GFNI_K1_O2,
-                tables::IFFT_DIT4_GFNI_K1_O2_TAIL.as_ref(),
-            ),
+        let t = tables::CANTOR_SUBSPACE_INDEX[beta.into_usize()] as usize;
+        K::ifft_sharded_dit4_indexed(shards, shard_len, k, t);
+        // match (k, u8::from(beta)) {
+        //     (0, _) => {}
+        //     (1, b) if b == CANTOR_SUBSPACE[2] => K::ifft_sharded_dit4_with(
+        //         shards,
+        //         shard_len,
+        //         k,
+        //         &tables::IFFT_DIT4_GFNI_K1_O2,
+        //         tables::IFFT_DIT4_GFNI_K1_O2_TAIL.as_ref(),
+        //     ),
 
-            (2, b) if b == CANTOR_SUBSPACE[4] => K::ifft_sharded_dit4_with(
-                shards,
-                shard_len,
-                k,
-                &tables::IFFT_DIT4_GFNI_K2_O4,
-                tables::IFFT_DIT4_GFNI_K2_O4_TAIL.as_ref(),
-            ),
-            (3, b) if b == CANTOR_SUBSPACE[8] => K::ifft_sharded_dit4_with(
-                shards,
-                shard_len,
-                k,
-                &tables::IFFT_DIT4_GFNI_K3_O8,
-                tables::IFFT_DIT4_GFNI_K3_O8_TAIL.as_ref(),
-            ),
-            (4, b) if b == CANTOR_SUBSPACE[16] => K::ifft_sharded_dit4_with(
-                shards,
-                shard_len,
-                k,
-                &tables::IFFT_DIT4_GFNI_K4_O16,
-                tables::IFFT_DIT4_GFNI_K4_O16_TAIL.as_ref(),
-            ),
-            (5, b) if b == CANTOR_SUBSPACE[32] => K::ifft_sharded_dit4_with(
-                shards,
-                shard_len,
-                k,
-                &tables::IFFT_DIT4_GFNI_K5_O32,
-                tables::IFFT_DIT4_GFNI_K5_O32_TAIL.as_ref(),
-            ),
-            (6, b) if b == CANTOR_SUBSPACE[64] => K::ifft_sharded_dit4_with(
-                shards,
-                shard_len,
-                k,
-                &tables::IFFT_DIT4_GFNI_K6_O64,
-                tables::IFFT_DIT4_GFNI_K6_O64_TAIL.as_ref(),
-            ),
-            (7, b) if b == CANTOR_SUBSPACE[128] => K::ifft_sharded_dit4_with(
-                shards,
-                shard_len,
-                k,
-                &tables::IFFT_DIT4_GFNI_K7_O128,
-                tables::IFFT_DIT4_GFNI_K7_O128_TAIL.as_ref(),
-            ),
-            _ => K::ifft_sharded_dit4(&CantorBasisLut11d, shards, shard_len, k, beta),
-        }
+        //     (2, b) if b == CANTOR_SUBSPACE[4] => K::ifft_sharded_dit4_with(
+        //         shards,
+        //         shard_len,
+        //         k,
+        //         &tables::IFFT_DIT4_GFNI_K2_O4,
+        //         tables::IFFT_DIT4_GFNI_K2_O4_TAIL.as_ref(),
+        //     ),
+        //     (3, b) if b == CANTOR_SUBSPACE[8] => K::ifft_sharded_dit4_with(
+        //         shards,
+        //         shard_len,
+        //         k,
+        //         &tables::IFFT_DIT4_GFNI_K3_O8,
+        //         tables::IFFT_DIT4_GFNI_K3_O8_TAIL.as_ref(),
+        //     ),
+        //     (4, b) if b == CANTOR_SUBSPACE[16] => K::ifft_sharded_dit4_with(
+        //         shards,
+        //         shard_len,
+        //         k,
+        //         &tables::IFFT_DIT4_GFNI_K4_O16,
+        //         tables::IFFT_DIT4_GFNI_K4_O16_TAIL.as_ref(),
+        //     ),
+        //     (5, b) if b == CANTOR_SUBSPACE[32] => K::ifft_sharded_dit4_with(
+        //         shards,
+        //         shard_len,
+        //         k,
+        //         &tables::IFFT_DIT4_GFNI_K5_O32,
+        //         tables::IFFT_DIT4_GFNI_K5_O32_TAIL.as_ref(),
+        //     ),
+        //     (6, b) if b == CANTOR_SUBSPACE[64] => K::ifft_sharded_dit4_with(
+        //         shards,
+        //         shard_len,
+        //         k,
+        //         &tables::IFFT_DIT4_GFNI_K6_O64,
+        //         tables::IFFT_DIT4_GFNI_K6_O64_TAIL.as_ref(),
+        //     ),
+        //     (7, b) if b == CANTOR_SUBSPACE[128] => K::ifft_sharded_dit4_with(
+        //         shards,
+        //         shard_len,
+        //         k,
+        //         &tables::IFFT_DIT4_GFNI_K7_O128,
+        //         tables::IFFT_DIT4_GFNI_K7_O128_TAIL.as_ref(),
+        //     ),
+        //     _ => K::ifft_sharded_dit4(&CantorBasisLut11d, shards, shard_len, k, beta),
+        // }
     }
 }
 
@@ -862,6 +863,8 @@ impl Kernel<Gf2p8_11d> for GfniKernel<Gf2p8_11d> {
     const ALIGN: usize = 64;
 
     type MulTable = u64;
+
+    const NODE_MUL: &'static [Self::MulTable; 510] = &tables::NODE_MUL_GFNI;
 
     fn mul_table(twiddle: Gf2p8_11d) -> Self::MulTable {
         twiddle.gfni_mul_matrix_lut()

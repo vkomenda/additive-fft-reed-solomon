@@ -357,6 +357,43 @@ pub trait Kernel<G: Gf2p8Lut> {
         }
     }
 
+    fn fft_sharded_dit4_indexed(shards: &mut [G], shard_len: usize, k: u8, t: usize) {
+        let n = 1 << k;
+        let m = |l: u8, x: usize| &Self::NODE_MUL[node_mul_index(l, x)];
+
+        if k % 2 == 1 {
+            let hi = k - 1;
+            let d = n / 2;
+            if t < (1 << hi) {
+                Self::butterfly_fwd_dit2_zero(shards, shard_len, 0, d);
+            } else {
+                Self::butterfly_fwd_dit2(shards, shard_len, 0, d, *m(hi, t));
+            }
+        }
+
+        if k >= 2 {
+            let top = k - 2 - (k % 2);
+            for lo in (0..=top).rev().step_by(2) {
+                let d = 1usize << lo;
+                for start in (0..n).step_by(4 * d) {
+                    let x = t ^ start;
+                    if x < d {
+                        Self::butterfly_fwd_dit4_zero(
+                            shards,
+                            shard_len,
+                            start,
+                            d,
+                            *m(lo, x ^ (2 * d)),
+                        );
+                    } else {
+                        let (m01, m23, m02) = (m(lo, x), m(lo, x ^ (2 * d)), m(lo + 1, x));
+                        Self::butterfly_fwd_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
+                    }
+                }
+            }
+        }
+    }
+
     fn ifft_sharded_dit4_indexed(shards: &mut [G], shard_len: usize, k: u8, t: usize) {
         let n = 1usize << k;
         let m = |l: u8, x: usize| &Self::NODE_MUL[node_mul_index(l, x)];
@@ -366,10 +403,10 @@ pub trait Kernel<G: Gf2p8Lut> {
             let d = 1usize << lo;
             for start in (0..n).step_by(4 * d) {
                 let x = t ^ start;
-                let (m01, m23, m02) = (m(lo, x), m(lo, x ^ (2 * d)), m(lo + 1, x));
-                if Self::is_zero_mul(m01) && Self::is_zero_mul(m02) {
-                    Self::butterfly_inv_dit4_zero(shards, shard_len, start, d, *m23);
+                if x < d {
+                    Self::butterfly_inv_dit4_zero(shards, shard_len, start, d, *m(lo, x ^ (2 * d)));
                 } else {
+                    let (m01, m23, m02) = (m(lo, x), m(lo, x ^ (2 * d)), m(lo + 1, x));
                     Self::butterfly_inv_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
                 }
             }
