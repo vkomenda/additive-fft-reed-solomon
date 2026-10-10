@@ -36,7 +36,7 @@ Additive RS codes evaluate the message polynomial at all 256 elements of the add
 
 See the [summary](docs/benches.md).
 
-The results are better on GFNI and about the same on AVX2 in absolute terms compared to (Malkovsky/galois)[mal] which is, according to their benchmarks, at least as fast or faster than other comparable libraries such as [LeopardRS][leo]. Comparing the case n=256, T=128, shard length 1 KiB, our GFNI encoder has demonstrated twice the throughput.
+The results are better on GFNI and about the same on AVX2 in absolute terms compared to [Malkovsky/galois][mal] which is, according to their benchmarks, at least as fast or faster than other comparable libraries such as [LeopardRS][leo]. Comparing the case n=256, T=128, shard length 1 KiB, our GFNI encoder has demonstrated twice the throughput.
 
 
 ## Possible usecases
