@@ -23,50 +23,20 @@ Additive RS codes is one of the two classes of RS codes, with the other class be
 
 Multiplicative RS codes are the most common due to posessing a textbook implementation. Libraries such as [reed-solomon-erasure][rse], [ISA-L][isa-l], [Backblaze][backblaze] and [Klaus Post's reedsolomon][klauspost] all implement multiplicative RS codes. In addition, all four are erasure-only - broken shard positions must be known in advance. The multiplicative RS implementations evaluate the message polynomial at elements of the multiplicative group of GF(2^8), a cyclic group of order 255. This limits the code length to 255 and makes encoding an O(k·n) product of a precomputed Cauchy generator matrix and the message vector. Decoding is O(k^3), which comes from Gaussian elimination of the k×k submatrix of the encoding matrix corresponding to the correct rows. Some implementations amortise this by precomputing or caching inverses for common erasure patterns, but the one-time cost is still O(k^3).
 
-Additive RS codes evaluate the message polynomial at all 256 elements of the additive group, a GF(2)-vector space, whose power subspace structure admits a radix-2 FFT. Encoding and decoding both run in O(n log(n)) field operations, and the natural code length is 256.
+Additive RS codes evaluate the message polynomial at all 256 elements of the additive group, a GF(2)-vector space, whose power subspace structure admits a radix-2 FFT. Encoding and erasure decoding run in O(n log(T)) and O(n log(n)) field operations respectively.
 
 ||ISA-L, reed-solomon-erasure, Backblaze|Cauchy with structure|LNH additive FFT|
 |---|---|---|---|
 |encoding         |O(k·T) |O(k·T) |O(n log(T))                 |
-|erasure decoding |O(k^3) |O(k^2) |O(n log(T))                 |
+|erasure decoding |O(k^3) |O(k^2) |O(n log(n))                 |
 |error correction | ❌    |O(n·T) |O(n log(T) + T log(log(T))) |
 
 
 ## Benchmarks
 
-Benchmarks are run by `cargo bench`. Here is a representative set of results, time and throughput, obtained on an AMD EPYC 9575F for input-output buffers aligned to 64 bytes. Throughput is measured in the number of message input payload bytes. Aligned input-output buffers are noticeably faster to encode and recover - in some cases by as much as 20%.
+See the [summary](docs/benches.md).
 
-### `Codec::encode_systematic_sharded`
-
-![systematic encoding of T parity shards from T data shards (gfni), T=n/2, shard length 64 B](docs/charts/encode_systematic_sharded_gfni_64.svg)
-![systematic encoding of T parity shards from T data shards (gfni), T=n/2, shard length 1 KiB](docs/charts/encode_systematic_sharded_gfni_1024.svg)
-![systematic encoding of T parity shards from T data shards (gfni), T=n/2, shard length 64 KiB](docs/charts/encode_systematic_sharded_gfni_65536.svg)
-
-![systematic encoding of T parity shards from T data shards (avx2), T=n/2, shard length 64 B](docs/charts/encode_systematic_sharded_avx2_64.svg)
-![systematic encoding of T parity shards from T data shards (avx2), T=n/2, shard length 1 KiB](docs/charts/encode_systematic_sharded_avx2_1024.svg)
-![systematic encoding of T parity shards from T data shards (avx2), T=n/2, shard length 64 KiB](docs/charts/encode_systematic_sharded_avx2_65536.svg)
-
-### `Codec::recover_erasures_sharded_clobber`
-
-![recovery of random T erased shards (faster algo) (gfni), T=n/2, shard length 64 B](docs/charts/recover_erasures_sharded_clobber_gfni_64.svg)
-![recovery of random T erased shards (faster algo) (gfni), T=n/2, shard length 1 KiB](docs/charts/recover_erasures_sharded_clobber_gfni_1024.svg)
-![recovery of random T erased shards (faster algo) (gfni), T=n/2, shard length 64 KiB](docs/charts/recover_erasures_sharded_clobber_gfni_65536.svg)
-
-![recovery of random T erased shards (faster algo) (avx2), T=n/2, shard length 64 B](docs/charts/recover_erasures_sharded_clobber_avx2_64.svg)
-![recovery of random T erased shards (faster algo) (avx2), T=n/2, shard length 1 KiB](docs/charts/recover_erasures_sharded_clobber_avx2_1024.svg)
-![recovery of random T erased shards (faster algo) (avx2), T=n/2, shard length 64 KiB](docs/charts/recover_erasures_sharded_clobber_avx2_65536.svg)
-
-### `Codec::recover_erasures_sharded`
-
-![recovery of random T erased shards (LNH original) (gfni), T=n/2, shard length 64 B](docs/charts/recover_erasures_sharded_gfni_64.svg)
-![recovery of random T erased shards (LNH original) (gfni), T=n/2, shard length 1 KiB](docs/charts/recover_erasures_sharded_gfni_1024.svg)
-![recovery of random T erased shards (LNH original) (gfni), T=n/2, shard length 64 KiB](docs/charts/recover_erasures_sharded_gfni_65536.svg)
-
-![recovery of random T erased shards (LNH original) (avx2), T=n/2, shard length 64 B](docs/charts/recover_erasures_sharded_avx2_64.svg)
-![recovery of random T erased shards (LNH original) (avx2), T=n/2, shard length 1 KiB](docs/charts/recover_erasures_sharded_avx2_1024.svg)
-![recovery of random T erased shards (LNH original) (avx2), T=n/2, shard length 64 KiB](docs/charts/recover_erasures_sharded_avx2_65536.svg)
-
-The results shown are better on GFNI in absolute terms compared to [Malkovsky/galois](https://github.com/Malkovsky/galois) which is, according to their benchmarks, faster than other comparable libraries such as [LeopardRS](https://github.com/catid/leopard).
+The results are better on GFNI and about the same on AVX2 in absolute terms compared to (Malkovsky/galois)[mal] which is, according to their benchmarks, at least as fast or faster than other comparable libraries such as [LeopardRS][leo]. Comparing the case n=256, T=128, shard length 1 KiB, our GFNI encoder has demonstrated twice the throughput.
 
 
 ## Possible usecases
@@ -107,7 +77,9 @@ The results shown are better on GFNI in absolute terms compared to [Malkovsky/ga
 
 [lnh]: https://arxiv.org/abs/1503.05761
 [lch]: https://arxiv.org/abs/1404.3458
-[rse]:      https://github.com/rust-rse/reed-solomon-erasure
-[isa-l]:    https://github.com/intel/isa-l
+[rse]: https://github.com/rust-rse/reed-solomon-erasure
+[isa-l]: https://github.com/intel/isa-l
 [backblaze]: https://github.com/Backblaze/JavaReedSolomon
 [klauspost]: https://github.com/klauspost/reedsolomon
+[leo]: https://github.com/catid/leopard
+[mal]: https://github.com/Malkovsky/galois
