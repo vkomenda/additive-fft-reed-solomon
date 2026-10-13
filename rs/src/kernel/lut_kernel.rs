@@ -1,7 +1,6 @@
 use super::{Kernel, shard_groups};
-use crate::gf2p8lut::Gf2p8Lut;
-#[cfg(test)]
-use crate::gf2p8lut::SubspaceBasisLut;
+use crate::gf2p8lut::{Gf2p8Lut, SubspaceBasisLut};
+use crate::poly_11d_lut::CantorBasisLut11d;
 use crate::poly_11d_lut::generated::{self as tables, CANTOR_SUBSPACE, EXP_TABLE, MUL_TABLE};
 use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8, Gf2p8_11d, Z255};
 use std::marker::PhantomData;
@@ -266,9 +265,9 @@ pub(crate) fn scale_in_place<G: Gf2p8Lut>(dst: &mut [G], scalar: G) {
 }
 
 #[derive(Default)]
-pub struct LutKernel<G: Gf2p8Lut>(PhantomData<G>);
+pub struct LutKernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(PhantomData<(G, B)>);
 
-impl Kernel<Gf2p8_11d> for LutKernel<Gf2p8_11d> {
+impl Kernel<Gf2p8_11d, CantorBasisLut11d> for LutKernel<Gf2p8_11d, CantorBasisLut11d> {
     const ALIGN: usize = 1;
 
     type MulTable = MulTable;
@@ -604,9 +603,13 @@ mod test {
                 let mut b = a.clone();
                 b[support * SHARD_LEN..].fill(Gf2p8_11d::from(0xaa));
 
-                let basis = CantorBasisLut11d;
-                fft_sharded_recursive(&basis, &mut a, SHARD_LEN, k, Gf2p8_11d::zero());
-                LutKernel::<Gf2p8_11d>::fft_sharded_zero_padded(&mut b, SHARD_LEN, k, log_support);
+                fft_sharded_recursive(&CantorBasisLut11d, &mut a, SHARD_LEN, k, Gf2p8_11d::zero());
+                LutKernel::<Gf2p8_11d, CantorBasisLut11d>::fft_sharded_zero_padded(
+                    &mut b,
+                    SHARD_LEN,
+                    k,
+                    log_support,
+                );
 
                 assert_eq!(a, b);
             }

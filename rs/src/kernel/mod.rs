@@ -9,7 +9,7 @@ pub mod neon_kernel;
 use crate::gf2p8lut::{Gf2p8Lut, SubspaceBasisLut};
 use additive_fft_reed_solomon_gf2p8::Z255;
 
-pub trait Kernel<G: Gf2p8Lut> {
+pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
     /// Shard buffer byte alignment multiple to maximize SIMD performance. Every buffer must start
     /// at an address which is a multiple of this constant. The length of every shard in the buffer
     /// must be a multiple of this constant. Unaligned buffers will work but may be noticeably
@@ -105,7 +105,7 @@ pub trait Kernel<G: Gf2p8Lut> {
     fn scale_in_place_by_log(dst: &mut [G], log_m: Z255);
 
     #[inline]
-    fn twiddle(basis: &impl SubspaceBasisLut<G>, level: u8, beta: G) -> G {
+    fn twiddle(basis: &B, level: u8, beta: G) -> G {
         if level == 0 {
             beta
         } else {
@@ -113,13 +113,7 @@ pub trait Kernel<G: Gf2p8Lut> {
         }
     }
 
-    fn fft_sharded_dit2(
-        basis: &impl SubspaceBasisLut<G>,
-        shards: &mut [G],
-        shard_len: usize,
-        k: u8,
-        beta: G,
-    ) {
+    fn fft_sharded_dit2(basis: &B, shards: &mut [G], shard_len: usize, k: u8, beta: G) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
 
@@ -138,13 +132,7 @@ pub trait Kernel<G: Gf2p8Lut> {
         }
     }
 
-    fn fft_sharded_dit4(
-        basis: &impl SubspaceBasisLut<G>,
-        shards: &mut [G],
-        shard_len: usize,
-        k: u8,
-        beta: G,
-    ) {
+    fn fft_sharded_dit4(basis: &B, shards: &mut [G], shard_len: usize, k: u8, beta: G) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
         let node_beta = |start: usize| beta.add(basis.get_subspace_point_lut(start as u8));
@@ -258,13 +246,7 @@ pub trait Kernel<G: Gf2p8Lut> {
         debug_assert_eq!(end, 0);
     }
 
-    fn ifft_sharded_dit2(
-        basis: &impl SubspaceBasisLut<G>,
-        shards: &mut [G],
-        shard_len: usize,
-        k: u8,
-        beta: G,
-    ) {
+    fn ifft_sharded_dit2(basis: &B, shards: &mut [G], shard_len: usize, k: u8, beta: G) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
 
@@ -283,13 +265,7 @@ pub trait Kernel<G: Gf2p8Lut> {
         }
     }
 
-    fn ifft_sharded_dit4(
-        basis: &impl SubspaceBasisLut<G>,
-        shards: &mut [G],
-        shard_len: usize,
-        k: u8,
-        beta: G,
-    ) {
+    fn ifft_sharded_dit4(basis: &B, shards: &mut [G], shard_len: usize, k: u8, beta: G) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
         let node_beta = |start: usize| beta.add(basis.get_subspace_point_lut(start as u8));

@@ -1,6 +1,7 @@
 use super::{Kernel, shard_groups};
 use crate::{
-    gf2p8lut::Gf2p8Lut,
+    gf2p8lut::{Gf2p8Lut, SubspaceBasisLut},
+    poly_11d_lut::CantorBasisLut11d,
     poly_11d_lut::generated::{
         self as tables, CANTOR_SUBSPACE, NIBBLE_MUL_BY_LOG, NIBBLE_MUL_TABLE,
     },
@@ -486,7 +487,7 @@ fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: &NibbleMulTable) {
 }
 
 fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-    type K = NeonKernel<Gf2p8_11d>;
+    type K = NeonKernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
         match k {
@@ -556,7 +557,7 @@ fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, be
 }
 
 fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-    type K = NeonKernel<Gf2p8_11d>;
+    type K = NeonKernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
         match k {
@@ -626,7 +627,7 @@ fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11
 }
 
 fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-    type K = NeonKernel<Gf2p8_11d>;
+    type K = NeonKernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
         match k {
@@ -750,9 +751,9 @@ fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_1
 }
 
 #[derive(Default)]
-pub struct NeonKernel<G: Gf2p8Lut>(PhantomData<G>);
+pub struct NeonKernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(PhantomData<(G, B)>);
 
-impl Kernel<Gf2p8_11d> for NeonKernel<Gf2p8_11d> {
+impl Kernel<Gf2p8_11d, CantorBasisLut11d> for NeonKernel<Gf2p8_11d, CantorBasisLut11d> {
     const ALIGN: usize = 16;
 
     type MulTable = MulTable;

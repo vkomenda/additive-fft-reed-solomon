@@ -1,8 +1,7 @@
 use super::{Kernel, shard_groups};
-#[cfg(test)]
-use crate::gf2p8lut::SubspaceBasisLut;
 use crate::{
-    gf2p8lut::Gf2p8Lut,
+    gf2p8lut::{Gf2p8Lut, SubspaceBasisLut},
+    poly_11d_lut::CantorBasisLut11d,
     poly_11d_lut::generated::{self as tables, GFNI_MUL_BY_LOG, GFNI_MUL_TABLE},
 };
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, Z255};
@@ -592,7 +591,7 @@ fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, mat: __m512i) {
 
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
 fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-    type K = GfniKernel<Gf2p8_11d>;
+    type K = GfniKernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
         match k {
@@ -662,7 +661,7 @@ fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, be
 
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
 fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-    type K = GfniKernel<Gf2p8_11d>;
+    type K = GfniKernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
         match k {
@@ -733,7 +732,7 @@ fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11
 
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
 fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-    type K = GfniKernel<Gf2p8_11d>;
+    type K = GfniKernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
         match k {
@@ -857,9 +856,9 @@ fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_1
 }
 
 #[derive(Default)]
-pub struct GfniKernel<G: Gf2p8Lut>(PhantomData<G>);
+pub struct GfniKernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(PhantomData<(G, B)>);
 
-impl Kernel<Gf2p8_11d> for GfniKernel<Gf2p8_11d> {
+impl Kernel<Gf2p8_11d, CantorBasisLut11d> for GfniKernel<Gf2p8_11d, CantorBasisLut11d> {
     const ALIGN: usize = 64;
 
     type MulTable = u64;

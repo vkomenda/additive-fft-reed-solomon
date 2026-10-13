@@ -1,8 +1,7 @@
 use super::{Kernel, shard_groups};
-#[cfg(test)]
-use crate::gf2p8lut::SubspaceBasisLut;
+use crate::poly_11d_lut::CantorBasisLut11d;
 use crate::{
-    gf2p8lut::Gf2p8Lut,
+    gf2p8lut::{Gf2p8Lut, SubspaceBasisLut},
     poly_11d_lut::generated::{
         self as tables, CANTOR_SUBSPACE, NIBBLE_MUL_BY_LOG, NIBBLE_MUL_TABLE,
     },
@@ -583,7 +582,7 @@ fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: &NibbleMulTable) {
 
 #[target_feature(enable = "avx2")]
 fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-    type K = Avx2Kernel<Gf2p8_11d>;
+    type K = Avx2Kernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
         match k {
@@ -654,7 +653,7 @@ fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, be
 
 #[target_feature(enable = "avx2")]
 fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-    type K = Avx2Kernel<Gf2p8_11d>;
+    type K = Avx2Kernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
         match k {
@@ -725,7 +724,7 @@ fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11
 
 #[target_feature(enable = "avx2")]
 fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-    type K = Avx2Kernel<Gf2p8_11d>;
+    type K = Avx2Kernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
         match k {
@@ -849,9 +848,9 @@ fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_1
 }
 
 #[derive(Default)]
-pub struct Avx2Kernel<G: Gf2p8Lut>(PhantomData<G>);
+pub struct Avx2Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(PhantomData<(G, B)>);
 
-impl Kernel<Gf2p8_11d> for Avx2Kernel<Gf2p8_11d> {
+impl Kernel<Gf2p8_11d, CantorBasisLut11d> for Avx2Kernel<Gf2p8_11d, CantorBasisLut11d> {
     const ALIGN: usize = 32;
 
     type MulTable = MulTable;

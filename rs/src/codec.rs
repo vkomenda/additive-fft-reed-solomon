@@ -20,7 +20,7 @@ impl<G, B, K, const N: usize, const T: usize> Codec<G, B, K, N, T>
 where
     G: Gf2p8Lut,
     B: SubspaceBasisLut<G> + Default,
-    K: Kernel<G>,
+    K: Kernel<G, B>,
 {
     pub fn new() -> Self {
         Self {
