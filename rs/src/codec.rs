@@ -1,7 +1,7 @@
 use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, field::Z255};
 
 use crate::{
-    gf2p8lut::{CantorBasisLut, Gf2p8Lut},
+    gf2p8lut::{Gf2p8Lut, SubspaceBasisLut},
     kernel::Kernel,
     poly_arith::{
         CantorBasisPolyArith, CantorBasisPolySliceArith, PolyMutSliceArith, PolySliceArith, poly,
@@ -19,7 +19,7 @@ pub struct Codec<G, B, K, const N: usize, const T: usize> {
 impl<G, B, K, const N: usize, const T: usize> Codec<G, B, K, N, T>
 where
     G: Gf2p8Lut,
-    B: CantorBasisLut<G> + Default,
+    B: SubspaceBasisLut<G> + Default,
     K: Kernel<G>,
 {
     pub fn new() -> Self {

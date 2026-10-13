@@ -1,4 +1,4 @@
-use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
+use crate::gf2p8lut::{Gf2p8Lut, SubspaceBasisLut};
 use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8, Gf2p8_11d, Z255};
 
 pub mod generated {
@@ -32,17 +32,13 @@ impl Gf2p8Lut for Gf2p8_11d {
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct CantorBasisLut11d;
 
-impl CantorBasisLut<Gf2p8_11d> for CantorBasisLut11d {
+impl SubspaceBasisLut<Gf2p8_11d> for CantorBasisLut11d {
     fn get_basis_point_lut(&self, i: u8) -> Gf2p8_11d {
         generated::CANTOR_BASIS[i as usize].into()
     }
 
     fn get_subspace_point_lut(&self, i: u8) -> Gf2p8_11d {
         generated::CANTOR_SUBSPACE[i as usize].into()
-    }
-
-    fn get_subspace_poly_coeff_lut(&self, k: u8) -> u8 {
-        generated::SUBSPACE_POLY_COEFFS[k as usize].into()
     }
 
     fn eval_subspace_poly_lut(&self, k: u8, x: Gf2p8_11d) -> Gf2p8_11d {
@@ -61,7 +57,7 @@ mod tests {
     use crate::poly_arith::{
         CantorBasisPolyArith, CantorBasisPolySliceArith, PolySliceArith, poly,
     };
-    use additive_fft_reed_solomon_gf2p8::{CantorBasis, CantorBasis11d, FIELD_SIZE, Gf2p8};
+    use additive_fft_reed_solomon_gf2p8::{CantorBasis11d, FIELD_SIZE, Gf2p8, SubspaceBasis};
 
     #[test]
     fn mul_lut_correctness() {

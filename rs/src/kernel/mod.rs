@@ -6,9 +6,8 @@ pub mod lut_kernel;
 #[cfg(native_neon)]
 pub mod neon_kernel;
 
+use crate::gf2p8lut::{Gf2p8Lut, SubspaceBasisLut};
 use additive_fft_reed_solomon_gf2p8::Z255;
-
-use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
 
 pub trait Kernel<G: Gf2p8Lut> {
     /// Shard buffer byte alignment multiple to maximize SIMD performance. Every buffer must start
@@ -106,7 +105,7 @@ pub trait Kernel<G: Gf2p8Lut> {
     fn scale_in_place_by_log(dst: &mut [G], log_m: Z255);
 
     #[inline]
-    fn twiddle(basis: &impl CantorBasisLut<G>, level: u8, beta: G) -> G {
+    fn twiddle(basis: &impl SubspaceBasisLut<G>, level: u8, beta: G) -> G {
         if level == 0 {
             beta
         } else {
@@ -115,7 +114,7 @@ pub trait Kernel<G: Gf2p8Lut> {
     }
 
     fn fft_sharded_dit2(
-        basis: &impl CantorBasisLut<G>,
+        basis: &impl SubspaceBasisLut<G>,
         shards: &mut [G],
         shard_len: usize,
         k: u8,
@@ -140,7 +139,7 @@ pub trait Kernel<G: Gf2p8Lut> {
     }
 
     fn fft_sharded_dit4(
-        basis: &impl CantorBasisLut<G>,
+        basis: &impl SubspaceBasisLut<G>,
         shards: &mut [G],
         shard_len: usize,
         k: u8,
@@ -260,7 +259,7 @@ pub trait Kernel<G: Gf2p8Lut> {
     }
 
     fn ifft_sharded_dit2(
-        basis: &impl CantorBasisLut<G>,
+        basis: &impl SubspaceBasisLut<G>,
         shards: &mut [G],
         shard_len: usize,
         k: u8,
@@ -285,7 +284,7 @@ pub trait Kernel<G: Gf2p8Lut> {
     }
 
     fn ifft_sharded_dit4(
-        basis: &impl CantorBasisLut<G>,
+        basis: &impl SubspaceBasisLut<G>,
         shards: &mut [G],
         shard_len: usize,
         k: u8,

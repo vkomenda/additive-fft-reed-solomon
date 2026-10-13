@@ -1,6 +1,6 @@
 use additive_fft_reed_solomon_gf2p8::NibbleMulTable;
 use additive_fft_reed_solomon_gf2p8::{
-    CantorBasis, CantorBasis11d, EXP_TABLE_SIZE, FIELD_SIZE, Gf2p8, Gf2p8_11d,
+    CantorBasis11d, Gf2p8, Gf2p8_11d, SubspaceBasis, EXP_TABLE_SIZE, FIELD_SIZE,
 };
 use std::env;
 use std::fmt;
@@ -762,11 +762,6 @@ fn main() {
         write_points(&mut f, lut.into_iter(), true);
     }
     writeln!(f, "];").unwrap();
-
-    let sub_poly_coeffs_iter = CantorBasis11d::gen_subspace_poly_coeffs();
-
-    write!(f, "\npub const SUBSPACE_POLY_COEFFS: [u8; 9] = [").unwrap();
-    write_points(&mut f, sub_poly_coeffs_iter, false);
 
     let sub_poly_luts8: &[[Gf2p8_11d; 256]; 8] = sub_poly_luts[..8].try_into().unwrap();
 

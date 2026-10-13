@@ -1,7 +1,7 @@
 use super::{Kernel, shard_groups};
-#[cfg(test)]
-use crate::gf2p8lut::CantorBasisLut;
 use crate::gf2p8lut::Gf2p8Lut;
+#[cfg(test)]
+use crate::gf2p8lut::SubspaceBasisLut;
 use crate::poly_11d_lut::generated::{self as tables, CANTOR_SUBSPACE, EXP_TABLE, MUL_TABLE};
 use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8, Gf2p8_11d, Z255};
 use std::marker::PhantomData;
@@ -171,7 +171,7 @@ fn butterfly_inv_dit4_zero<G: Gf2p8>(
 
 #[cfg(test)]
 pub(crate) fn fft_sharded_recursive<G: Gf2p8Lut>(
-    basis: &impl CantorBasisLut<G>,
+    basis: &impl SubspaceBasisLut<G>,
     shards: &mut [G],
     shard_len: usize,
     k: u8,
@@ -200,7 +200,7 @@ pub(crate) fn fft_sharded_recursive<G: Gf2p8Lut>(
 
 #[cfg(test)]
 pub(crate) fn fft_sharded_zero_padded_recursive<G: Gf2p8Lut>(
-    basis: &impl CantorBasisLut<G>,
+    basis: &impl SubspaceBasisLut<G>,
     shards: &mut [G],
     shard_len: usize,
     k: u8,
@@ -224,7 +224,7 @@ pub(crate) fn fft_sharded_zero_padded_recursive<G: Gf2p8Lut>(
 
 #[cfg(test)]
 pub(crate) fn ifft_sharded_recursive<G: Gf2p8Lut>(
-    basis: &impl CantorBasisLut<G>,
+    basis: &impl SubspaceBasisLut<G>,
     shards: &mut [G],
     shard_len: usize,
     k: u8,

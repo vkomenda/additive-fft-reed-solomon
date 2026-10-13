@@ -1,4 +1,4 @@
-pub use crate::field::{CantorBasis, Gf2p8};
+pub use crate::field::{Gf2p8, SubspaceBasis};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 #[repr(transparent)]
@@ -43,9 +43,69 @@ impl IntoIterator for CantorBasis11d {
     }
 }
 
-impl CantorBasis<Gf2p8_11d> for CantorBasis11d {}
+impl SubspaceBasis<Gf2p8_11d> for CantorBasis11d {
+    fn new() -> Self {
+        let mut basis = Vec::new();
+
+        // Start with v0 = 1
+        let mut current = Gf2p8_11d::one();
+        basis.push(current);
+
+        // Try to extend the chain using v_i^2 + v_i = v_{i-1}
+        while let Some(next) = current.solve_quadratic() {
+            // We have two solutions: 'next' and 'next + 1'.
+            // We must pick the one with Trace 0 to ensure the next level exists.
+            if !next.trace() {
+                current = next;
+            } else {
+                current = next.add(Gf2p8_11d::one());
+            }
+            basis.push(current);
+
+            // Stop if we hit 8 elements (full field) or can't solve anymore
+            if basis.len() == 8 {
+                break;
+            }
+        }
+        basis.into_iter().collect()
+    }
+}
 
 impl AsRef<[Gf2p8_11d]> for CantorBasis11d {
+    fn as_ref(&self) -> &[Gf2p8_11d] {
+        self.0.as_ref()
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct StandardBasis11d(pub [Gf2p8_11d; 8]);
+
+impl FromIterator<Gf2p8_11d> for StandardBasis11d {
+    fn from_iter<I: IntoIterator<Item = Gf2p8_11d>>(iter: I) -> Self {
+        let mut arr = [0u8.into(); 8];
+        for (slot, item) in arr.iter_mut().zip(iter) {
+            *slot = item;
+        }
+        Self(arr)
+    }
+}
+
+impl IntoIterator for StandardBasis11d {
+    type Item = Gf2p8_11d;
+    type IntoIter = std::array::IntoIter<Gf2p8_11d, 8>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl SubspaceBasis<Gf2p8_11d> for StandardBasis11d {
+    fn new() -> Self {
+        (0..8).map(|j| Gf2p8_11d::from(1u8 << j)).collect()
+    }
+}
+
+impl AsRef<[Gf2p8_11d]> for StandardBasis11d {
     fn as_ref(&self) -> &[Gf2p8_11d] {
         self.0.as_ref()
     }

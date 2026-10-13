@@ -243,34 +243,10 @@ impl Z255 {
     }
 }
 
-pub trait CantorBasis<G: Gf2p8>:
+pub trait SubspaceBasis<G: Gf2p8>:
     Sized + Copy + Clone + FromIterator<G> + IntoIterator<Item = G> + AsRef<[G]>
 {
-    fn new() -> Self {
-        let mut basis = Vec::new();
-
-        // Start with v0 = 1
-        let mut current: G = G::one();
-        basis.push(current);
-
-        // Try to extend the chain using v_i^2 + v_i = v_{i-1}
-        while let Some(next) = current.solve_quadratic() {
-            // We have two solutions: 'next' and 'next + 1'.
-            // We must pick the one with Trace 0 to ensure the next level exists.
-            if !next.trace() {
-                current = next;
-            } else {
-                current = next.add(G::one());
-            }
-            basis.push(current);
-
-            // Stop if we hit 8 elements (full field) or can't solve anymore
-            if basis.len() == 8 {
-                break;
-            }
-        }
-        basis.into_iter().collect()
-    }
+    fn new() -> Self;
 
     /// Evaluates the erasure locator polynomial E(x) at point alpha_i.
     /// E(x) = product over missing indices j of (x ^ alpha_j).
@@ -449,24 +425,6 @@ pub trait CantorBasis<G: Gf2p8>:
         }
 
         derivs
-    }
-
-    /// Generates bitmasks of subspace polynomials $s_k$ coefficients of the $x^2^i$ terms for
-    /// $2 <= i <= 8$. Coefficient of $x$ is always 1 and is thus hard-coded in `CantorBasisLut`.
-    fn gen_subspace_poly_coeffs() -> impl Iterator<Item = u8> {
-        let mut masks = [0u16; 9];
-
-        // Base case: s_0(x) = x^1 (bit 0 set)
-        masks[0] = 0b000000001;
-
-        for j in 0..8 {
-            // s_{j+1} = s_j^2 + s_j
-            // Squaring a linearized polynomial is a bit shift.
-            // Adding in GF(2^8) is XOR.
-            masks[j + 1] = (masks[j] << 1) ^ masks[j];
-        }
-
-        masks.into_iter().map(|m| (m >> 1) as u8)
     }
 
     fn iter_log_walsh(&self, log: &[u8; FIELD_SIZE]) -> impl Iterator<Item = u8> {

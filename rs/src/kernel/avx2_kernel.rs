@@ -1,6 +1,6 @@
 use super::{Kernel, shard_groups};
 #[cfg(test)]
-use crate::gf2p8lut::CantorBasisLut;
+use crate::gf2p8lut::SubspaceBasisLut;
 use crate::{
     gf2p8lut::Gf2p8Lut,
     poly_11d_lut::generated::{
@@ -463,7 +463,7 @@ fn butterfly_inv_dit4_zero<G: Gf2p8>(
 #[cfg(test)]
 #[target_feature(enable = "avx2")]
 fn fft_sharded_recursive<G: Gf2p8Lut>(
-    basis: &impl CantorBasisLut<G>,
+    basis: &impl SubspaceBasisLut<G>,
     shards: &mut [G],
     shard_len: usize,
     k: u8,
@@ -495,7 +495,7 @@ fn fft_sharded_recursive<G: Gf2p8Lut>(
 #[cfg(test)]
 #[target_feature(enable = "avx2")]
 fn ifft_sharded_recursive<G: Gf2p8Lut>(
-    basis: &impl CantorBasisLut<G>,
+    basis: &impl SubspaceBasisLut<G>,
     shards: &mut [G],
     shard_len: usize,
     k: u8,

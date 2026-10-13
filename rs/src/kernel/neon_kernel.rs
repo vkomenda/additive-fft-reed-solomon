@@ -914,7 +914,7 @@ impl Kernel<Gf2p8_11d> for NeonKernel<Gf2p8_11d> {
 #[cfg(native_neon)]
 mod tests {
     use super::*;
-    use crate::{gf2p8lut::CantorBasisLut, kernel::lut_kernel, poly_11d_lut::CantorBasisLut11d};
+    use crate::{gf2p8lut::SubspaceBasisLut, kernel::lut_kernel, poly_11d_lut::CantorBasisLut11d};
     use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
 
     #[test]

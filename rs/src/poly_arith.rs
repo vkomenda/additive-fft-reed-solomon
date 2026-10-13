@@ -1,4 +1,4 @@
-use crate::gf2p8lut::{CantorBasisLut, Gf2p8Lut};
+use crate::gf2p8lut::{Gf2p8Lut, SubspaceBasisLut};
 use additive_fft_reed_solomon_gf2p8::Gf2p8;
 
 /// Basis-independent arithmetic on slices as polynomials.
@@ -118,7 +118,7 @@ pub mod poly {
 }
 
 /// Basis-dependent polynomial arithmetic.
-pub trait CantorBasisPolySliceArith<G: Gf2p8Lut>: CantorBasisLut<G> {
+pub trait CantorBasisPolySliceArith<G: Gf2p8Lut>: SubspaceBasisLut<G> {
     /// Algorithm 1 in LNH paper.
     ///
     /// The input coefficients `coeff` represent a polynomial in the basis X. That is,
@@ -190,7 +190,7 @@ pub trait CantorBasisPolySliceArith<G: Gf2p8Lut>: CantorBasisLut<G> {
     }
 }
 
-impl<G: Gf2p8Lut, T: CantorBasisLut<G>> CantorBasisPolySliceArith<G> for T {}
+impl<G: Gf2p8Lut, T: SubspaceBasisLut<G>> CantorBasisPolySliceArith<G> for T {}
 
 pub trait CantorBasisPolyArith<G: Gf2p8Lut, const N: usize>: CantorBasisPolySliceArith<G> {
     /// Polynomial multiplication in the basis X.
@@ -320,4 +320,4 @@ pub trait CantorBasisPolyArith<G: Gf2p8Lut, const N: usize>: CantorBasisPolySlic
     }
 }
 
-impl<G: Gf2p8Lut, T: CantorBasisLut<G>, const N: usize> CantorBasisPolyArith<G, N> for T {}
+impl<G: Gf2p8Lut, T: SubspaceBasisLut<G>, const N: usize> CantorBasisPolyArith<G, N> for T {}
