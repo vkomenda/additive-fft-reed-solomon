@@ -1,6 +1,6 @@
 use additive_fft_reed_solomon_gf2p8::NibbleMulTable;
 use additive_fft_reed_solomon_gf2p8::{
-    CantorBasis11d, Gf2p8, Gf2p8_11d, SubspaceBasis, EXP_TABLE_SIZE, FIELD_SIZE,
+    CantorBasis11d, EXP_TABLE_SIZE, FIELD_SIZE, Gf2p8, Gf2p8_11d, SubspaceBasis,
 };
 use std::env;
 use std::fmt;
@@ -681,7 +681,6 @@ fn main() {
     write_points(&mut f, inv_table.into_iter(), false);
 
     let basis = CantorBasis11d::new();
-
     write!(f, "\npub const CANTOR_BASIS: [u8; 8] = [").unwrap();
     write_points(&mut f, basis.into_iter(), false);
 
@@ -762,6 +761,14 @@ fn main() {
         write_points(&mut f, lut.into_iter(), true);
     }
     writeln!(f, "];").unwrap();
+
+    let derivs = basis.gen_deriv_subspace_poly_lut();
+    let deriv_const: [Gf2p8_11d; 8] = std::array::from_fn(|i| {
+        let s_i_v_i = sub_poly_luts[i][basis.as_ref()[i].into_usize()];
+        derivs[i].mul(Gf2p8_11d::from(inv_table[s_i_v_i.into_usize()]))
+    });
+    write!(f, "\npub static SUBSPACE_POLY_DERIVS: [u8; 8] = [").unwrap();
+    write_points(&mut f, deriv_const.into_iter(), false);
 
     let sub_poly_luts8: &[[Gf2p8_11d; 256]; 8] = sub_poly_luts[..8].try_into().unwrap();
 
