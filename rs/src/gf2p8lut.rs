@@ -38,37 +38,37 @@ pub trait Gf2p8Lut: Gf2p8 {
 
 /// Precompted lookup table operations on the Cantor basis subspace.
 pub trait SubspaceBasisLut<G: Gf2p8Lut> {
-    fn get_basis_point_lut(&self, i: u8) -> G;
+    fn get_basis_point_lut(i: u8) -> G;
 
     /// Evaluates the erasure locator polynomial E(x) at point alpha_i.
     /// E(x) = product over missing indices j of (x ^ alpha_j).
-    fn eval_erasure_locator_poly_lut(&self, i: u8, erased_indices: &[u8]) -> G {
-        let alpha_i = self.get_subspace_point_lut(i);
+    fn eval_erasure_locator_poly_lut(i: u8, erased_indices: &[u8]) -> G {
+        let alpha_i = Self::get_subspace_point_lut(i);
         let mut eval: G = G::one();
 
         for &j in erased_indices {
             if i == j {
                 continue;
             }
-            let alpha_j = self.get_subspace_point_lut(j);
+            let alpha_j = Self::get_subspace_point_lut(j);
             eval = eval.mul_lut(alpha_i.add(alpha_j));
         }
         eval
     }
 
     /// Returns the i-th point $s_i(v_i)$ in the basis subspace.
-    fn get_subspace_point_lut(&self, i: u8) -> G;
+    fn get_subspace_point_lut(i: u8) -> G;
 
-    fn eval_subspace_poly_lut(&self, k: u8, x: G) -> G;
+    fn eval_subspace_poly_lut(k: u8, x: G) -> G;
 
     /// A basis of the algebraic ring $F_{2^m}[x]/(x^{2^m}-x)$ which forms the evaluation space.
-    fn compute_evaluation_space_basis_point(&self, i: u8, x: G) -> G {
+    fn compute_evaluation_space_basis_point(i: u8, x: G) -> G {
         let m = 8;
         let mut result: G = G::one();
         let mut s_j_x = x;
 
         for j in 0..m {
-            let b_j = self.eval_subspace_poly_lut(j, x);
+            let b_j = Self::eval_subspace_poly_lut(j, x);
 
             if (i >> j) & 1 == 1 {
                 let term = s_j_x.mul_lut(b_j.inv_lut());
@@ -83,7 +83,7 @@ pub trait SubspaceBasisLut<G: Gf2p8Lut> {
         result
     }
 
-    fn log_walsh_lut(&self) -> &'static [Z255; FIELD_SIZE];
+    fn log_walsh_lut() -> &'static [Z255; FIELD_SIZE];
 }
 
 // /// The Lin-Chung-Han basis

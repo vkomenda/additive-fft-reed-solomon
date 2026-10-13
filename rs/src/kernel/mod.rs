@@ -105,38 +105,38 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
     fn scale_in_place_by_log(dst: &mut [G], log_m: Z255);
 
     #[inline]
-    fn twiddle(basis: &B, level: u8, beta: G) -> G {
+    fn twiddle(level: u8, beta: G) -> G {
         if level == 0 {
             beta
         } else {
-            basis.eval_subspace_poly_lut(level, beta)
+            B::eval_subspace_poly_lut(level, beta)
         }
     }
 
-    fn fft_sharded_dit2(basis: &B, shards: &mut [G], shard_len: usize, k: u8, beta: G) {
+    fn fft_sharded_dit2(shards: &mut [G], shard_len: usize, k: u8, beta: G) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
 
         for l in (0..k).rev() {
             let d = 1 << l;
             for start in (0..n).step_by(2 * d) {
-                let node_beta = beta.add(basis.get_subspace_point_lut(start as u8));
+                let node_beta = beta.add(B::get_subspace_point_lut(start as u8));
                 Self::butterfly_fwd_dit2(
                     shards,
                     shard_len,
                     start,
                     d,
-                    Self::mul_table(Self::twiddle(basis, l, node_beta)),
+                    Self::mul_table(Self::twiddle(l, node_beta)),
                 );
             }
         }
     }
 
-    fn fft_sharded_dit4(basis: &B, shards: &mut [G], shard_len: usize, k: u8, beta: G) {
+    fn fft_sharded_dit4(shards: &mut [G], shard_len: usize, k: u8, beta: G) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
-        let node_beta = |start: usize| beta.add(basis.get_subspace_point_lut(start as u8));
-        let mt = |level: u8, beta: G| Self::mul_table(Self::twiddle(basis, level, beta));
+        let node_beta = |start: usize| beta.add(B::get_subspace_point_lut(start as u8));
+        let mt = |level: u8, beta: G| Self::mul_table(Self::twiddle(level, beta));
 
         let mut l = k;
         while l >= 2 {
@@ -246,30 +246,30 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         debug_assert_eq!(end, 0);
     }
 
-    fn ifft_sharded_dit2(basis: &B, shards: &mut [G], shard_len: usize, k: u8, beta: G) {
+    fn ifft_sharded_dit2(shards: &mut [G], shard_len: usize, k: u8, beta: G) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
 
         for l in 0..k {
             let d = 1 << l;
             for start in (0..n).step_by(2 * d) {
-                let node_beta = beta.add(basis.get_subspace_point_lut(start as u8));
+                let node_beta = beta.add(B::get_subspace_point_lut(start as u8));
                 Self::butterfly_inv_dit2(
                     shards,
                     shard_len,
                     start,
                     d,
-                    Self::mul_table(Self::twiddle(basis, l, node_beta)),
+                    Self::mul_table(Self::twiddle(l, node_beta)),
                 );
             }
         }
     }
 
-    fn ifft_sharded_dit4(basis: &B, shards: &mut [G], shard_len: usize, k: u8, beta: G) {
+    fn ifft_sharded_dit4(shards: &mut [G], shard_len: usize, k: u8, beta: G) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
-        let node_beta = |start: usize| beta.add(basis.get_subspace_point_lut(start as u8));
-        let mt = |level: u8, beta: G| Self::mul_table(Self::twiddle(basis, level, beta));
+        let node_beta = |start: usize| beta.add(B::get_subspace_point_lut(start as u8));
+        let mt = |level: u8, beta: G| Self::mul_table(Self::twiddle(level, beta));
 
         let mut lo = 0u8;
         while lo + 1 < k {

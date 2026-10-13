@@ -955,16 +955,20 @@ mod tests {
     /// shard_len covers: pure tail (15), aligned (16), aligned + tail (17), two aligned (32).
     #[test]
     fn fft_neon_matches_lut_rec() {
-        let basis = CantorBasisLut11d;
         for shard_len in [1, 15, 16, 17, 32] {
             for k in 1u8..=4 {
                 let n = 1 << k;
                 // Non-zero beta so twiddles are not trivially zero.
-                let beta = basis.get_subspace_point_lut(n as u8);
+                let beta = CantorBasisLut11d::get_subspace_point_lut(n as u8);
                 let mut expected = make_shards(n, shard_len);
                 let mut actual = expected.clone();
 
-                lut_kernel::fft_sharded_recursive(&basis, &mut expected, shard_len, k, beta);
+                lut_kernel::fft_sharded_recursive::<_, CantorBasisLut11d>(
+                    &mut expected,
+                    shard_len,
+                    k,
+                    beta,
+                );
                 fft_sharded(&mut actual, shard_len, k, beta);
 
                 assert_eq!(expected, actual, "k={k} shard_len={shard_len}");
@@ -975,15 +979,19 @@ mod tests {
     /// NEON IFFT produces the same coefficients as the LUT butterfly.
     #[test]
     fn ifft_neon_matches_lut_rec() {
-        let basis = CantorBasisLut11d;
         for shard_len in [1, 15, 16, 17, 32] {
             for k in 1u8..=4 {
                 let n = 1 << k;
-                let beta = basis.get_subspace_point_lut(n as u8);
+                let beta = CantorBasisLut11d::get_subspace_point_lut(n as u8);
                 let mut expected = make_shards(n, shard_len);
                 let mut actual = expected.clone();
 
-                lut_kernel::ifft_sharded_recursive(&basis, &mut expected, shard_len, k, beta);
+                lut_kernel::ifft_sharded_recursive::<_, CantorBasisLut11d>(
+                    &mut expected,
+                    shard_len,
+                    k,
+                    beta,
+                );
                 ifft_sharded(&mut actual, shard_len, k, beta);
 
                 assert_eq!(expected, actual, "k={k} shard_len={shard_len}");
@@ -994,11 +1002,10 @@ mod tests {
     /// IFFT;FFT ~= Id.
     #[test]
     fn ifft_then_fft_neon_is_identity() {
-        let basis = CantorBasisLut11d;
         for shard_len in [1, 15, 16, 17] {
             for k in 1u8..=4 {
                 let n = 1 << k;
-                let beta = basis.get_subspace_point_lut(n as u8);
+                let beta = CantorBasisLut11d::get_subspace_point_lut(n as u8);
                 let original = make_shards(n, shard_len);
                 let mut data = original.clone();
 

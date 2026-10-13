@@ -135,7 +135,7 @@ pub trait CantorBasisPolySliceArith<G: Gf2p8Lut>: SubspaceBasisLut<G> {
         let half = 1 << (k - 1);
 
         // Fetch the twiddle factor T = s_{k-1}(beta)
-        let twiddle = self.eval_subspace_poly_lut(k - 1, beta);
+        let twiddle = Self::eval_subspace_poly_lut(k - 1, beta);
 
         // Butterfly stage (line 3-6)
         for i in 0..half {
@@ -158,7 +158,7 @@ pub trait CantorBasisPolySliceArith<G: Gf2p8Lut>: SubspaceBasisLut<G> {
         self.fft_scalar(&mut coeffs[..half], k - 1, beta);
 
         // Right branch: FFT(g_1, k-1, v_{k-1} + beta)
-        let next_beta = beta.add(self.get_basis_point_lut(k - 1));
+        let next_beta = beta.add(Self::get_basis_point_lut(k - 1));
         self.fft_scalar(&mut coeffs[half..], k - 1, next_beta);
     }
 
@@ -172,10 +172,10 @@ pub trait CantorBasisPolySliceArith<G: Gf2p8Lut>: SubspaceBasisLut<G> {
 
         self.ifft_scalar(&mut evals[..half], k - 1, beta);
 
-        let next_beta = beta.add(self.get_basis_point_lut(k - 1));
+        let next_beta = beta.add(Self::get_basis_point_lut(k - 1));
         self.ifft_scalar(&mut evals[half..], k - 1, next_beta);
 
-        let twiddle = self.eval_subspace_poly_lut(k - 1, beta);
+        let twiddle = Self::eval_subspace_poly_lut(k - 1, beta);
 
         for i in 0..half {
             let g_i_0 = evals[i];

@@ -470,8 +470,7 @@ fn butterfly_inv_dit4_zero<G: Gf2p8>(
 
 #[cfg(test)]
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
-fn fft_sharded_recursive<G: Gf2p8Lut>(
-    basis: &impl SubspaceBasisLut<G>,
+fn fft_sharded_recursive<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(
     shards: &mut [G],
     shard_len: usize,
     k: u8,
@@ -481,7 +480,7 @@ fn fft_sharded_recursive<G: Gf2p8Lut>(
         return;
     }
     let half = 1usize << (k - 1);
-    let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
+    let twiddle = B::eval_subspace_poly_lut(k - 1, beta);
     let mat = _mm512_set1_epi64(twiddle.gfni_mul_matrix_lut() as i64);
 
     for i in 0..half {
@@ -494,16 +493,15 @@ fn fft_sharded_recursive<G: Gf2p8Lut>(
         );
     }
 
-    let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
+    let next_beta = beta.add(B::get_basis_point_lut(k - 1));
     let h = half * shard_len;
-    fft_sharded_recursive(basis, &mut shards[..h], shard_len, k - 1, beta);
-    fft_sharded_recursive(basis, &mut shards[h..], shard_len, k - 1, next_beta);
+    fft_sharded_recursive::<_, B>(&mut shards[..h], shard_len, k - 1, beta);
+    fft_sharded_recursive::<_, B>(&mut shards[h..], shard_len, k - 1, next_beta);
 }
 
 #[cfg(test)]
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
-fn ifft_sharded_recursive<G: Gf2p8Lut>(
-    basis: &impl SubspaceBasisLut<G>,
+fn ifft_sharded_recursive<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(
     shards: &mut [G],
     shard_len: usize,
     k: u8,
@@ -514,23 +512,11 @@ fn ifft_sharded_recursive<G: Gf2p8Lut>(
     }
     let half = 1usize << (k - 1);
 
-    let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
-    ifft_sharded_recursive(
-        basis,
-        &mut shards[..half * shard_len],
-        shard_len,
-        k - 1,
-        beta,
-    );
-    ifft_sharded_recursive(
-        basis,
-        &mut shards[half * shard_len..],
-        shard_len,
-        k - 1,
-        next_beta,
-    );
+    let next_beta = beta.add(B::get_basis_point_lut(k - 1));
+    ifft_sharded_recursive::<_, B>(&mut shards[..half * shard_len], shard_len, k - 1, beta);
+    ifft_sharded_recursive::<_, B>(&mut shards[half * shard_len..], shard_len, k - 1, next_beta);
 
-    let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
+    let twiddle = B::eval_subspace_poly_lut(k - 1, beta);
     let mat = _mm512_set1_epi64(twiddle.gfni_mul_matrix_lut() as i64);
 
     for i in 0..half {

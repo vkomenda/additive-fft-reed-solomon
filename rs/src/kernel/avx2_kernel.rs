@@ -461,8 +461,7 @@ fn butterfly_inv_dit4_zero<G: Gf2p8>(
 
 #[cfg(test)]
 #[target_feature(enable = "avx2")]
-fn fft_sharded_recursive<G: Gf2p8Lut>(
-    basis: &impl SubspaceBasisLut<G>,
+fn fft_sharded_recursive<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(
     shards: &mut [G],
     shard_len: usize,
     k: u8,
@@ -472,7 +471,7 @@ fn fft_sharded_recursive<G: Gf2p8Lut>(
         return;
     }
     let half = 1usize << (k - 1);
-    let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
+    let twiddle = B::eval_subspace_poly_lut(k - 1, beta);
     let m = &NIBBLE_MUL_TABLE[twiddle.into_usize()];
 
     for i in 0..half {
@@ -485,16 +484,15 @@ fn fft_sharded_recursive<G: Gf2p8Lut>(
         );
     }
 
-    let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
+    let next_beta = beta.add(B::get_basis_point_lut(k - 1));
     let h = half * shard_len;
-    fft_sharded_recursive(basis, &mut shards[..h], shard_len, k - 1, beta);
-    fft_sharded_recursive(basis, &mut shards[h..], shard_len, k - 1, next_beta);
+    fft_sharded_recursive::<_, B>(&mut shards[..h], shard_len, k - 1, beta);
+    fft_sharded_recursive::<_, B>(&mut shards[h..], shard_len, k - 1, next_beta);
 }
 
 #[cfg(test)]
 #[target_feature(enable = "avx2")]
-fn ifft_sharded_recursive<G: Gf2p8Lut>(
-    basis: &impl SubspaceBasisLut<G>,
+fn ifft_sharded_recursive<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(
     shards: &mut [G],
     shard_len: usize,
     k: u8,
@@ -505,23 +503,11 @@ fn ifft_sharded_recursive<G: Gf2p8Lut>(
     }
     let half = 1usize << (k - 1);
 
-    let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
-    ifft_sharded_recursive(
-        basis,
-        &mut shards[..half * shard_len],
-        shard_len,
-        k - 1,
-        beta,
-    );
-    ifft_sharded_recursive(
-        basis,
-        &mut shards[half * shard_len..],
-        shard_len,
-        k - 1,
-        next_beta,
-    );
+    let next_beta = beta.add(B::get_basis_point_lut(k - 1));
+    ifft_sharded_recursive::<_, B>(&mut shards[..half * shard_len], shard_len, k - 1, beta);
+    ifft_sharded_recursive::<_, B>(&mut shards[half * shard_len..], shard_len, k - 1, next_beta);
 
-    let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
+    let twiddle = B::eval_subspace_poly_lut(k - 1, beta);
     let m = &NIBBLE_MUL_TABLE[twiddle.into_usize()];
 
     for i in 0..half {
@@ -1084,18 +1070,22 @@ mod tests {
     /// shard_len covers: pure tail (15), aligned (16), aligned + tail (17), two aligned (32).
     #[test]
     fn fft_rec_avx2_matches_lut() {
-        let basis = CantorBasisLut11d;
         for shard_len in [1, 15, 16, 17, 32] {
             for k in 1u8..=4 {
                 let n = 1 << k;
                 // Non-zero beta so twiddles are not trivially zero.
-                let beta = basis.get_subspace_point_lut(n as u8);
+                let beta = CantorBasisLut11d::get_subspace_point_lut(n as u8);
                 let mut expected = make_shards(n, shard_len);
                 let mut actual = expected.clone();
 
-                lut_kernel::fft_sharded_recursive(&basis, &mut expected, shard_len, k, beta);
+                lut_kernel::fft_sharded_recursive::<_, CantorBasisLut11d>(
+                    &mut expected,
+                    shard_len,
+                    k,
+                    beta,
+                );
                 unsafe {
-                    fft_sharded_recursive(&basis, &mut actual, shard_len, k, beta);
+                    fft_sharded_recursive::<_, CantorBasisLut11d>(&mut actual, shard_len, k, beta);
                 }
 
                 assert_eq!(expected, actual, "k={k} shard_len={shard_len}");
@@ -1106,17 +1096,21 @@ mod tests {
     /// AVX2 IFFT produces the same coefficients as the LUT butterfly.
     #[test]
     fn ifft_rec_avx2_matches_lut() {
-        let basis = CantorBasisLut11d;
         for shard_len in [1, 15, 16, 17, 32] {
             for k in 1u8..=4 {
                 let n = 1 << k;
-                let beta = basis.get_subspace_point_lut(n as u8);
+                let beta = CantorBasisLut11d::get_subspace_point_lut(n as u8);
                 let mut expected = make_shards(n, shard_len);
                 let mut actual = expected.clone();
 
-                lut_kernel::ifft_sharded_recursive(&basis, &mut expected, shard_len, k, beta);
+                lut_kernel::ifft_sharded_recursive::<_, CantorBasisLut11d>(
+                    &mut expected,
+                    shard_len,
+                    k,
+                    beta,
+                );
                 unsafe {
-                    ifft_sharded_recursive(&basis, &mut actual, shard_len, k, beta);
+                    ifft_sharded_recursive::<_, CantorBasisLut11d>(&mut actual, shard_len, k, beta);
                 }
 
                 assert_eq!(expected, actual, "k={k} shard_len={shard_len}");
@@ -1130,7 +1124,7 @@ mod tests {
         for shard_len in [1, 15, 16, 17] {
             for k in 1u8..=4 {
                 let n = 1 << k;
-                let beta = CantorBasisLut11d.get_subspace_point_lut(n as u8);
+                let beta = CantorBasisLut11d::get_subspace_point_lut(n as u8);
                 let original = make_shards(n, shard_len);
                 let mut data = original.clone();
 
@@ -1146,7 +1140,6 @@ mod tests {
 
     #[test]
     fn fft_sharded_radix2_last_matches_fft_sharded_rec() {
-        let basis = CantorBasisLut11d;
         for shard_len in [1, 15, 16, 17, 32] {
             for k in 1u8..=8 {
                 let n = 1 << k;
@@ -1154,7 +1147,12 @@ mod tests {
                 let mut actual = expected.clone();
 
                 unsafe {
-                    fft_sharded_recursive(&basis, &mut expected, shard_len, k, Gf2p8_11d::zero());
+                    fft_sharded_recursive::<_, CantorBasisLut11d>(
+                        &mut expected,
+                        shard_len,
+                        k,
+                        Gf2p8_11d::zero(),
+                    );
                     fft_sharded_radix2_last(&mut actual, shard_len, k, Gf2p8_11d::zero());
                 }
 
@@ -1165,7 +1163,6 @@ mod tests {
 
     #[test]
     fn fft_sharded_matches_fft_sharded_rec() {
-        let basis = CantorBasisLut11d;
         for shard_len in [1, 15, 16, 17, 32] {
             for k in 1u8..=8 {
                 let n = 1 << k;
@@ -1173,7 +1170,12 @@ mod tests {
                 let mut actual = expected.clone();
 
                 unsafe {
-                    fft_sharded_recursive(&basis, &mut expected, shard_len, k, Gf2p8_11d::zero());
+                    fft_sharded_recursive::<_, CantorBasisLut11d>(
+                        &mut expected,
+                        shard_len,
+                        k,
+                        Gf2p8_11d::zero(),
+                    );
                     fft_sharded(&mut actual, shard_len, k, Gf2p8_11d::zero());
                 }
 
@@ -1184,7 +1186,6 @@ mod tests {
 
     #[test]
     fn ifft_sharded_matches_ifft_sharded_rec() {
-        let basis = CantorBasisLut11d;
         for shard_len in [1, 15, 16, 17, 32] {
             for k in 1u8..=8 {
                 let n = 1 << k;
@@ -1192,7 +1193,12 @@ mod tests {
                 let mut actual = expected.clone();
 
                 unsafe {
-                    ifft_sharded_recursive(&basis, &mut expected, shard_len, k, Gf2p8_11d::zero());
+                    ifft_sharded_recursive::<_, CantorBasisLut11d>(
+                        &mut expected,
+                        shard_len,
+                        k,
+                        Gf2p8_11d::zero(),
+                    );
                     ifft_sharded(&mut actual, shard_len, k, Gf2p8_11d::zero());
                 }
 

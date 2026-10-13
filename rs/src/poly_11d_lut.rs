@@ -33,19 +33,19 @@ impl Gf2p8Lut for Gf2p8_11d {
 pub struct CantorBasisLut11d;
 
 impl SubspaceBasisLut<Gf2p8_11d> for CantorBasisLut11d {
-    fn get_basis_point_lut(&self, i: u8) -> Gf2p8_11d {
+    fn get_basis_point_lut(i: u8) -> Gf2p8_11d {
         generated::CANTOR_BASIS[i as usize].into()
     }
 
-    fn get_subspace_point_lut(&self, i: u8) -> Gf2p8_11d {
+    fn get_subspace_point_lut(i: u8) -> Gf2p8_11d {
         generated::CANTOR_SUBSPACE[i as usize].into()
     }
 
-    fn eval_subspace_poly_lut(&self, k: u8, x: Gf2p8_11d) -> Gf2p8_11d {
+    fn eval_subspace_poly_lut(k: u8, x: Gf2p8_11d) -> Gf2p8_11d {
         generated::SUBSPACE_POLY_VALUES[k as usize][x.into_usize()].into()
     }
 
-    fn log_walsh_lut(&self) -> &'static [Z255; FIELD_SIZE] {
+    fn log_walsh_lut() -> &'static [Z255; FIELD_SIZE] {
         unsafe { &*(&generated::LOG_WALSH_TABLE as *const _ as *const [Z255; FIELD_SIZE]) }
     }
 }
@@ -409,25 +409,23 @@ mod tests {
 
     #[test]
     fn field_non_degeneracy() {
-        let basis = CantorBasisLut11d;
-
         for k in 1..=7 {
-            let v_k = basis.get_subspace_point_lut(1 << k);
-            let v_k_minus_1 = basis.get_subspace_point_lut(1 << (k - 1));
-            let s_k_minus_1_v_k = basis.eval_subspace_poly_lut(k - 1, v_k);
-            let s_k_minus_1_v_k_minus_1 = basis.eval_subspace_poly_lut(k - 1, v_k_minus_1);
+            let v_k = CantorBasisLut11d::get_subspace_point_lut(1 << k);
+            let v_k_minus_1 = CantorBasisLut11d::get_subspace_point_lut(1 << (k - 1));
+            let s_k_minus_1_v_k = CantorBasisLut11d::eval_subspace_poly_lut(k - 1, v_k);
+            let s_k_minus_1_v_k_minus_1 =
+                CantorBasisLut11d::eval_subspace_poly_lut(k - 1, v_k_minus_1);
             assert_ne!(s_k_minus_1_v_k_minus_1, s_k_minus_1_v_k);
         }
     }
 
     #[test]
     fn subspace_poly_trace() {
-        let basis = CantorBasisLut11d;
         let p2: Vec<u8> = (0..8).map(|i| 2u8.pow(i)).collect();
 
         let points: Vec<_> = p2
             .iter()
-            .map(|&p| u8::from(basis.get_subspace_point_lut(p)))
+            .map(|&p| u8::from(CantorBasisLut11d::get_subspace_point_lut(p)))
             .collect();
         assert_eq!(points, [1, 214, 152, 146, 86, 200, 88, 231]);
     }

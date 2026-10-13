@@ -102,9 +102,7 @@ where
         debug_assert!(g >= 2);
         let q = 1usize << (g - 2); // 2^{g-2}
         let h = 1usize << (g - 1); // 2^{g-1}
-        let c = self
-            .basis
-            .eval_subspace_poly_lut(g - 2, self.basis.get_subspace_point_lut(1u8 << (g - 2)));
+        let c = B::eval_subspace_poly_lut(g - 2, B::get_subspace_point_lut(1u8 << (g - 2)));
 
         let mut p_ll = [G::zero(); N];
         let mut p_m = [G::zero(); N];
@@ -236,11 +234,11 @@ where
         // The first message chunk accumulates in parity.
         parity.copy_from_slice(&message[..T]);
         self.basis
-            .ifft_scalar(parity, t_log, self.basis.get_subspace_point_lut(T as u8));
+            .ifft_scalar(parity, t_log, B::get_subspace_point_lut(T as u8));
 
         for i in 1..k_msg / T {
             workspace[..T].copy_from_slice(&message[i * T..(i + 1) * T]);
-            let omega = self.basis.get_subspace_point_lut(((i + 1) * T) as u8);
+            let omega = B::get_subspace_point_lut(((i + 1) * T) as u8);
             self.basis.ifft_scalar(&mut workspace[..T], t_log, omega);
             parity.poly_add_in_place(&workspace[..T]);
         }
@@ -279,16 +277,11 @@ where
 
         // The first chunk seeds the accumulator, so parity needs no zeroing.
         parity.copy_from_slice(&message[..parity_len]);
-        K::ifft_sharded(
-            parity,
-            shard_len,
-            t_log,
-            self.basis.get_subspace_point_lut(T as u8),
-        );
+        K::ifft_sharded(parity, shard_len, t_log, B::get_subspace_point_lut(T as u8));
 
         for i in 1..k / T {
             workspace.copy_from_slice(&message[i * parity_len..(i + 1) * parity_len]);
-            let omega = self.basis.get_subspace_point_lut(((i + 1) * T) as u8);
+            let omega = B::get_subspace_point_lut(((i + 1) * T) as u8);
             K::ifft_sharded(workspace, shard_len, t_log, omega);
             for (p, w) in parity.iter_mut().zip(workspace.iter()) {
                 *p = p.add(*w);
@@ -317,7 +310,7 @@ where
 
             // beta corresponds to the starting point of the i-th chunk: omega_{i*T}
             let omega_idx = (i * T) as u8;
-            let beta = self.basis.get_subspace_point_lut(omega_idx);
+            let beta = B::get_subspace_point_lut(omega_idx);
             let t_log = T.trailing_zeros() as u8;
             // Perform the partial IFFT (Algorithm 2)
             // This moves the chunk from evaluation space to basis X coefficients
@@ -340,11 +333,8 @@ where
 
         workspace[..T].copy_from_slice(&received[..T]);
         self.basis.ifft_scalar(&mut workspace, t_log, G::zero());
-        self.basis.fft_scalar(
-            &mut workspace,
-            t_log,
-            self.basis.get_subspace_point_lut(T as u8),
-        );
+        self.basis
+            .fft_scalar(&mut workspace, t_log, B::get_subspace_point_lut(T as u8));
 
         received[T..].copy_from_slice(&workspace[..T]);
     }
@@ -365,7 +355,7 @@ where
         // Copy parity shards into workspace, then recover polynomial coefficients
         workspace[0..T * shard_len].copy_from_slice(&received[0..T * shard_len]);
         K::ifft_sharded(workspace, shard_len, t_log, G::zero());
-        let omega = self.basis.get_subspace_point_lut(T as u8);
+        let omega = B::get_subspace_point_lut(T as u8);
         K::fft_sharded(workspace, shard_len, t_log, omega);
 
         received[T * shard_len..].copy_from_slice(&workspace[..T * shard_len]);
@@ -413,7 +403,7 @@ where
         let mut error_indices: Vec<usize> = Vec::with_capacity(deg_lambda);
 
         'root: for chunk in 0..(N / T) {
-            let beta = self.basis.get_subspace_point_lut((chunk * T) as u8);
+            let beta = B::get_subspace_point_lut((chunk * T) as u8);
             let mut evals = lambda;
             self.basis.fft_scalar(&mut evals[..T], t_log, beta);
 
@@ -445,7 +435,7 @@ where
                 continue;
             }
 
-            let beta = self.basis.get_subspace_point_lut((chunk * T) as u8);
+            let beta = B::get_subspace_point_lut((chunk * T) as u8);
 
             let mut q_evals = v1;
             let mut lp_evals = lambdap;
@@ -473,7 +463,7 @@ where
 
         let mut pts = [G::zero(); N];
         for (k, &pos) in erasure_positions.iter().enumerate() {
-            pts[k] = self.basis.get_subspace_point_lut(pos);
+            pts[k] = B::get_subspace_point_lut(pos);
         }
 
         let mut ping = [G::zero(); N];
@@ -556,7 +546,7 @@ where
 
         // Message chunks/shards, each shifted by one more ωT
         for chunk in 1..(N / T) {
-            let omega = self.basis.get_subspace_point_lut((chunk * T) as u8);
+            let omega = B::get_subspace_point_lut((chunk * T) as u8);
             let (acc, rest) = workspace.split_at_mut(T * shard_len);
             let tmp = &mut rest[..T * shard_len];
             tmp.copy_from_slice(&received[chunk * T * shard_len..(chunk + 1) * T * shard_len]);
@@ -569,7 +559,7 @@ where
         // Horner evaluation of λ in the monomial basis at all N Cantor subspace points
         let mut lambda_evals = [G::zero(); N];
         for (i, u) in lambda_evals.iter_mut().enumerate() {
-            let p = self.basis.get_subspace_point_lut(i as u8);
+            let p = B::get_subspace_point_lut(i as u8);
             let mut v = lambda[e]; // monic coefficient = G::one()
             for j in (0..e).rev() {
                 v = v.mul_lut(p).add(lambda[j]);
@@ -623,7 +613,7 @@ where
         }
 
         Z255::fwht(&mut ev, support);
-        for (e, &w) in ev.iter_mut().zip(self.basis.log_walsh_lut().iter()) {
+        for (e, &w) in ev.iter_mut().zip(B::log_walsh_lut().iter()) {
             *e = e.mul(w);
         }
         Z255::fwht(&mut ev, FIELD_SIZE);
@@ -706,13 +696,16 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{RsLut, poly_11d_lut::generated::EXP_TABLE};
+    use crate::{
+        RsLut,
+        poly_11d_lut::{CantorBasisLut11d, generated::EXP_TABLE},
+    };
     use additive_fft_reed_solomon_gf2p8::Gf2p8;
 
     #[test]
     fn single_erasure_log_eval() {
         let rs: RsLut<256, 128> = Default::default();
-        let ssp = |k: u8| rs.basis.get_subspace_point_lut(k);
+        let ssp = |k: u8| CantorBasisLut11d::get_subspace_point_lut(k);
 
         for p in 0..=255 {
             let ev = rs.locator_log_evals(&[p], FIELD_SIZE);

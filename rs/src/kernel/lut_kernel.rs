@@ -169,8 +169,7 @@ fn butterfly_inv_dit4_zero<G: Gf2p8>(
 }
 
 #[cfg(test)]
-pub(crate) fn fft_sharded_recursive<G: Gf2p8Lut>(
-    basis: &impl SubspaceBasisLut<G>,
+pub(crate) fn fft_sharded_recursive<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(
     shards: &mut [G],
     shard_len: usize,
     k: u8,
@@ -180,7 +179,7 @@ pub(crate) fn fft_sharded_recursive<G: Gf2p8Lut>(
         return;
     }
     let half = 1 << (k - 1);
-    let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
+    let twiddle = B::eval_subspace_poly_lut(k - 1, beta);
     let lut = &MUL_TABLE[twiddle.into_usize()];
 
     // Butterfly with one lut computed for the whole pass
@@ -191,15 +190,14 @@ pub(crate) fn fft_sharded_recursive<G: Gf2p8Lut>(
         butterfly_fwd(a, b, 0, lut);
     }
 
-    let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
+    let next_beta = beta.add(B::get_basis_point_lut(k - 1));
     let h = half * shard_len;
-    fft_sharded_recursive(basis, &mut shards[..h], shard_len, k - 1, beta);
-    fft_sharded_recursive(basis, &mut shards[h..], shard_len, k - 1, next_beta);
+    fft_sharded_recursive::<_, B>(&mut shards[..h], shard_len, k - 1, beta);
+    fft_sharded_recursive::<_, B>(&mut shards[h..], shard_len, k - 1, next_beta);
 }
 
 #[cfg(test)]
-pub(crate) fn fft_sharded_zero_padded_recursive<G: Gf2p8Lut>(
-    basis: &impl SubspaceBasisLut<G>,
+pub(crate) fn fft_sharded_zero_padded_recursive<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(
     shards: &mut [G],
     shard_len: usize,
     k: u8,
@@ -210,20 +208,19 @@ pub(crate) fn fft_sharded_zero_padded_recursive<G: Gf2p8Lut>(
         return;
     }
     if log_support >= k {
-        return fft_sharded_recursive(basis, shards, shard_len, k, beta);
+        return fft_sharded_recursive::<_, B>(shards, shard_len, k, beta);
     }
     let h = (1usize << (k - 1)) * shard_len;
     let (lo, hi) = shards.split_at_mut(h);
     hi.copy_from_slice(lo);
 
-    let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
-    fft_sharded_zero_padded_recursive(basis, lo, shard_len, k - 1, beta, log_support);
-    fft_sharded_zero_padded_recursive(basis, hi, shard_len, k - 1, next_beta, log_support);
+    let next_beta = beta.add(B::get_basis_point_lut(k - 1));
+    fft_sharded_zero_padded_recursive::<_, B>(lo, shard_len, k - 1, beta, log_support);
+    fft_sharded_zero_padded_recursive::<_, B>(hi, shard_len, k - 1, next_beta, log_support);
 }
 
 #[cfg(test)]
-pub(crate) fn ifft_sharded_recursive<G: Gf2p8Lut>(
-    basis: &impl SubspaceBasisLut<G>,
+pub(crate) fn ifft_sharded_recursive<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(
     shards: &mut [G],
     shard_len: usize,
     k: u8,
@@ -234,12 +231,12 @@ pub(crate) fn ifft_sharded_recursive<G: Gf2p8Lut>(
     }
     let half = 1 << (k - 1);
 
-    let next_beta = beta.add(basis.get_basis_point_lut(k - 1));
+    let next_beta = beta.add(B::get_basis_point_lut(k - 1));
     let h = half * shard_len;
-    ifft_sharded_recursive(basis, &mut shards[..h], shard_len, k - 1, beta);
-    ifft_sharded_recursive(basis, &mut shards[h..], shard_len, k - 1, next_beta);
+    ifft_sharded_recursive::<_, B>(&mut shards[..h], shard_len, k - 1, beta);
+    ifft_sharded_recursive::<_, B>(&mut shards[h..], shard_len, k - 1, next_beta);
 
-    let twiddle = basis.eval_subspace_poly_lut(k - 1, beta);
+    let twiddle = B::eval_subspace_poly_lut(k - 1, beta);
     let lut = &MUL_TABLE[twiddle.into_usize()];
 
     for i in 0..half {
@@ -572,11 +569,15 @@ mod test {
                 let mut b = a.clone();
                 b[support * SHARD_LEN..].fill(Gf2p8_11d::from(0xaa));
 
-                let basis = CantorBasisLut11d;
-
                 let beta = Gf2p8_11d::zero();
-                fft_sharded_recursive(&basis, &mut a, SHARD_LEN, k, beta);
-                fft_sharded_zero_padded_recursive(&basis, &mut b, SHARD_LEN, k, beta, log_support);
+                fft_sharded_recursive::<_, CantorBasisLut11d>(&mut a, SHARD_LEN, k, beta);
+                fft_sharded_zero_padded_recursive::<_, CantorBasisLut11d>(
+                    &mut b,
+                    SHARD_LEN,
+                    k,
+                    beta,
+                    log_support,
+                );
 
                 assert_eq!(a, b, "k={k} log_support={log_support}");
             }
@@ -603,8 +604,13 @@ mod test {
                 let mut b = a.clone();
                 b[support * SHARD_LEN..].fill(Gf2p8_11d::from(0xaa));
 
-                fft_sharded_recursive(&CantorBasisLut11d, &mut a, SHARD_LEN, k, Gf2p8_11d::zero());
-                LutKernel::<Gf2p8_11d, CantorBasisLut11d>::fft_sharded_zero_padded(
+                fft_sharded_recursive::<_, CantorBasisLut11d>(
+                    &mut a,
+                    SHARD_LEN,
+                    k,
+                    Gf2p8_11d::zero(),
+                );
+                LutKernel::<_, CantorBasisLut11d>::fft_sharded_zero_padded(
                     &mut b,
                     SHARD_LEN,
                     k,
@@ -664,8 +670,8 @@ mod test {
             });
             let mut b = a.clone();
 
-            fft_sharded_recursive(&CantorBasisLut11d, &mut a, SHARD_LEN, k, beta);
-            LutKernel::fft_sharded_dit4(&CantorBasisLut11d, &mut b, SHARD_LEN, k, beta);
+            fft_sharded_recursive::<_, CantorBasisLut11d>(&mut a, SHARD_LEN, k, beta);
+            LutKernel::fft_sharded_dit4(&mut b, SHARD_LEN, k, beta);
 
             assert_eq!(a, b, "k={k}");
         }
@@ -688,8 +694,8 @@ mod test {
             });
             let mut b = a.clone();
 
-            ifft_sharded_recursive(&CantorBasisLut11d, &mut a, SHARD_LEN, k, beta);
-            LutKernel::ifft_sharded_dit4(&CantorBasisLut11d, &mut b, SHARD_LEN, k, beta);
+            ifft_sharded_recursive::<_, CantorBasisLut11d>(&mut a, SHARD_LEN, k, beta);
+            LutKernel::ifft_sharded_dit4(&mut b, SHARD_LEN, k, beta);
 
             assert_eq!(a, b, "k={k}");
         }
