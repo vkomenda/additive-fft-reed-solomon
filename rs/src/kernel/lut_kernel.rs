@@ -264,6 +264,13 @@ pub(crate) fn scale<G: Gf2p8Lut>(src: &[G], dst: &mut [G], scalar: G) {
     }
 }
 
+pub(crate) fn scale_add<G: Gf2p8Lut>(src: &[G], dst: &mut [G], scalar: G) {
+    let lut = &MUL_TABLE[scalar.into_usize()];
+    for (d, s) in dst.iter_mut().zip(src.iter()) {
+        *d = d.add(G::from(lut[s.into_usize()]));
+    }
+}
+
 pub(crate) fn scale_in_place<G: Gf2p8Lut>(dst: &mut [G], scalar: G) {
     let lut = &MUL_TABLE[scalar.into_usize()];
     for b in dst.iter_mut() {
@@ -534,6 +541,10 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for LutKernel<Gf2p8_11d, CantorBasisLu
 
     fn scale(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
         scale(src, dst, scalar)
+    }
+
+    fn scale_add(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
+        scale_add(src, dst, scalar)
     }
 
     fn scale_in_place(dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {

@@ -7,7 +7,7 @@ pub const EXP_TABLE_SIZE: usize = FIELD_SIZE * 2 - 2;
 /// A table is constructed for a given p from the decomposition x·p = lo(x)·p + hi(x)·p.
 pub type NibbleMulTable = ([u8; 16], [u8; 16]);
 
-pub trait Gf2p8: Sized + Copy + From<u8> + Into<u8> + PartialEq {
+pub trait Gf2p8: 'static + Sized + Copy + From<u8> + Into<u8> + PartialEq {
     const POLY: u16;
     const PRIM_ELEM: Self;
 

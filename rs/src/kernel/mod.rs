@@ -7,6 +7,7 @@ pub mod lut_kernel;
 pub mod neon_kernel;
 
 use crate::gf2p8lut::{Gf2p8Lut, SubspaceBasisLut};
+use crate::poly_arith::PolyMutSliceArith;
 use additive_fft_reed_solomon_gf2p8::Z255;
 
 pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
@@ -99,6 +100,8 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
     fn scale(src: &[G], dst: &mut [G], scalar: G);
 
     fn scale_in_place(dst: &mut [G], scalar: G);
+
+    fn scale_add(src: &[G], dst: &mut [G], scalar: G);
 
     fn scale_by_log(src: &[G], dst: &mut [G], log_m: Z255);
 
@@ -422,6 +425,44 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
                     d,
                     Self::NODE_MUL[node_mul_index(l, x)],
                 );
+            }
+        }
+    }
+
+    fn formal_derivative(shards: &mut [G], shard_len: usize, n_log: u8) {
+        let n = 1usize << n_log;
+        debug_assert_eq!(shards.len(), n * shard_len);
+
+        if B::UNIT_DERIVS {
+            // In a Cantor basis every subspace polynomial derivative is one, so this becomes an XOR
+            // linear map.
+            for u in 1..n {
+                let w = 1 << u.trailing_zeros();
+                let (lo, hi) = shards.split_at_mut(u * shard_len);
+                lo[(u - w) * shard_len..].poly_add_in_place(&hi[..w * shard_len]);
+            }
+        } else {
+            let derivs = B::subspace_poly_deriv_lut();
+            for u in 0..n {
+                let dst = u * shard_len;
+                let mut first = true;
+                for i in 0..n_log {
+                    if u >> i & 1 == 1 {
+                        continue;
+                    }
+                    let src = (u | 1 << i) * shard_len;
+                    let (lo, hi) = shards.split_at_mut(src);
+                    let (d, s) = (&mut lo[dst..dst + shard_len], &hi[..shard_len]);
+                    if first {
+                        Self::scale(s, d, derivs[i as usize]); // d = c_i · s
+                        first = false;
+                    } else {
+                        Self::scale_add(s, d, derivs[i as usize]); // d ^= c_i · s
+                    }
+                }
+                if first {
+                    shards[dst..dst + shard_len].fill(G::zero()); // u = n-1 has no terms
+                }
             }
         }
     }

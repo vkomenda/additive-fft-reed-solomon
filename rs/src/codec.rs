@@ -665,15 +665,7 @@ where
         debug_assert_eq!(p, e);
 
         K::ifft_sharded(received, shard_len, n_log, G::zero());
-
-        // Formal derivative. In the Cantor basis every subspace polynomial derivative is one, so
-        // this becomes an XOR linear map.
-        for i in 1..N {
-            let w = 1 << i.trailing_zeros();
-            let (dst, src) = received.split_at_mut(i * shard_len);
-            dst[(i - w) * shard_len..].poly_add_in_place(&src[..w * shard_len]);
-        }
-
+        K::formal_derivative(&mut received[..], shard_len, n_log);
         K::fft_sharded(received, shard_len, n_log, G::zero());
 
         // Forney (similar to Eq 78): u(ω_j) = q(ω_j) / λ'(ω_j)

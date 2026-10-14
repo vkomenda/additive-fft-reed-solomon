@@ -41,6 +41,8 @@ impl Gf2p8Lut for Gf2p8_11d {
 pub struct CantorBasisLut11d;
 
 impl SubspaceBasisLut<Gf2p8_11d> for CantorBasisLut11d {
+    const UNIT_DERIVS: bool = true;
+
     fn get_basis_point_lut(i: u8) -> Gf2p8_11d {
         generated::cantor::BASIS[i as usize].into()
     }
@@ -56,12 +58,18 @@ impl SubspaceBasisLut<Gf2p8_11d> for CantorBasisLut11d {
     fn log_walsh_lut() -> &'static [Z255; FIELD_SIZE] {
         unsafe { &*(&generated::cantor::LOG_WALSH_TABLE as *const _ as *const [Z255; FIELD_SIZE]) }
     }
+
+    fn subspace_poly_deriv_lut() -> &'static [Gf2p8_11d; 8] {
+        unsafe { &*(&generated::cantor::SUBSPACE_POLY_DERIVS as *const _ as *const [Gf2p8_11d; 8]) }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct StandardBasisLut11d;
 
 impl SubspaceBasisLut<Gf2p8_11d> for StandardBasisLut11d {
+    const UNIT_DERIVS: bool = false;
+
     fn get_basis_point_lut(i: u8) -> Gf2p8_11d {
         generated::standard::BASIS[i as usize].into()
     }
@@ -79,10 +87,17 @@ impl SubspaceBasisLut<Gf2p8_11d> for StandardBasisLut11d {
             &*(&generated::standard::LOG_WALSH_TABLE as *const _ as *const [Z255; FIELD_SIZE])
         }
     }
+
+    fn subspace_poly_deriv_lut() -> &'static [Gf2p8_11d; 8] {
+        unsafe {
+            &*(&generated::standard::SUBSPACE_POLY_DERIVS as *const _ as *const [Gf2p8_11d; 8])
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::generated::{cantor, standard};
     use super::*;
     use crate::RsLut;
     use crate::poly_arith::{
@@ -670,5 +685,18 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn unit_derivs_correct() {
+        let all_one = |d: [u8; 8]| d.iter().all(|c| *c == 1);
+        assert_eq!(
+            CantorBasisLut11d::UNIT_DERIVS,
+            all_one(cantor::SUBSPACE_POLY_DERIVS)
+        );
+        assert_eq!(
+            StandardBasisLut11d::UNIT_DERIVS,
+            all_one(standard::SUBSPACE_POLY_DERIVS)
+        );
     }
 }

@@ -2,9 +2,7 @@ use super::{Kernel, shard_groups};
 use crate::poly_11d_lut::CantorBasisLut11d;
 use crate::{
     gf2p8lut::{Gf2p8Lut, SubspaceBasisLut},
-    poly_11d_lut::generated::{
-        self as tables, NIBBLE_MUL_BY_LOG, NIBBLE_MUL_TABLE, cantor, standard,
-    },
+    poly_11d_lut::generated::{NIBBLE_MUL_BY_LOG, NIBBLE_MUL_TABLE, cantor, standard},
 };
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, NibbleMulTable, Z255};
 use core::arch::x86_64::*;
@@ -532,15 +530,17 @@ fn ifft_sharded_recursive<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(
 }
 
 #[target_feature(enable = "avx2")]
-fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: &NibbleMulTable) {
+fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: MulTable) {
     let mut i = 0;
+    let (m_lo, m_hi) = load_mul_table(m);
+
     {
         let src = src.as_ptr() as *const u8;
         let dst = dst.as_mut_ptr() as *mut u8;
         while i + 32 <= len {
             unsafe {
                 let v = _mm256_loadu_si256(src.add(i) as *const __m256i);
-                let r = mul_vec(v, m);
+                let r = mul_vec_inner(v, m_lo, m_hi);
                 _mm256_storeu_si256(dst.add(i) as *mut __m256i, r);
             }
             i += 32;
@@ -555,14 +555,43 @@ fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: &NibbleMulTable) {
 }
 
 #[target_feature(enable = "avx2")]
-fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: &NibbleMulTable) {
+fn scale_add<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: MulTable) {
     let mut i = 0;
+    let (m_lo, m_hi) = load_mul_table(m);
+
+    {
+        let src = src.as_ptr() as *const u8;
+        let dst = dst.as_mut_ptr() as *mut u8;
+        while i + 32 <= len {
+            unsafe {
+                let v = _mm256_loadu_si256(src.add(i) as *const __m256i);
+                let mut w = _mm256_loadu_si256(dst.add(i) as *const __m256i);
+                let r = mul_vec_inner(v, m_lo, m_hi);
+                w = _mm256_xor_si256(w, r);
+                _mm256_storeu_si256(dst.add(i) as *mut __m256i, w);
+            }
+            i += 32;
+        }
+    }
+    while i < len {
+        let x = src[i];
+        let r = x.nibble_mul(m);
+        dst[i] = dst[i].add(r);
+        i += 1;
+    }
+}
+
+#[target_feature(enable = "avx2")]
+fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: MulTable) {
+    let mut i = 0;
+    let (m_lo, m_hi) = load_mul_table(m);
+
     {
         let dst = dst.as_mut_ptr() as *mut u8;
         while i + 32 <= len {
             unsafe {
                 let v = _mm256_loadu_si256(dst.add(i) as *const __m256i);
-                let r = mul_vec(v, m);
+                let r = mul_vec_inner(v, m_lo, m_hi);
                 _mm256_storeu_si256(dst.add(i) as *mut __m256i, r);
             }
             i += 32;
@@ -1081,6 +1110,13 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for Avx2Kernel<Gf2p8_11d, CantorBasisL
         let m = &NIBBLE_MUL_TABLE[scalar.into_usize()];
         unsafe {
             scale(src, dst, dst.len(), m);
+        }
+    }
+
+    fn scale_add(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
+        let m = &NIBBLE_MUL_TABLE[scalar.into_usize()];
+        unsafe {
+            scale_add(src, dst, dst.len(), m);
         }
     }
 

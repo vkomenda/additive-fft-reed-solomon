@@ -38,6 +38,10 @@ pub trait Gf2p8Lut: Gf2p8 {
 
 /// Precompted lookup table operations on the Cantor basis subspace.
 pub trait SubspaceBasisLut<G: Gf2p8Lut> {
+    /// Whether every normalised subspace polynomial derivative is 1, allowing to reduce the formal
+    /// derivative to an XOR walk. `true` for all Cantor bases.
+    const UNIT_DERIVS: bool;
+
     fn get_basis_point_lut(i: u8) -> G;
 
     /// Evaluates the erasure locator polynomial E(x) at point alpha_i.
@@ -84,6 +88,8 @@ pub trait SubspaceBasisLut<G: Gf2p8Lut> {
     }
 
     fn log_walsh_lut() -> &'static [Z255; FIELD_SIZE];
+
+    fn subspace_poly_deriv_lut() -> &'static [G; 8];
 }
 
 // /// The Lin-Chung-Han basis
