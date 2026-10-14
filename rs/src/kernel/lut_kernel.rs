@@ -1,14 +1,24 @@
 use super::{Kernel, shard_groups};
 use crate::gf2p8lut::{Gf2p8Lut, SubspaceBasisLut};
 use crate::poly_11d_lut::CantorBasisLut11d;
-use crate::poly_11d_lut::generated::{self as tables, CANTOR_SUBSPACE, EXP_TABLE, MUL_TABLE};
+use crate::poly_11d_lut::generated::{EXP_TABLE, MUL_TABLE, cantor, standard};
 use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8, Gf2p8_11d, Z255};
 use std::marker::PhantomData;
 
 type MulTable = &'static [u8; FIELD_SIZE];
 
-pub mod unrolled_11d {
-    include!(concat!(env!("OUT_DIR"), "/unrolled_lut_kernel_11d.rs"));
+pub mod unrolled_11d_cantor {
+    include!(concat!(
+        env!("OUT_DIR"),
+        "/unrolled_lut_kernel_11d_cantor.rs"
+    ));
+}
+
+pub mod unrolled_11d_standard {
+    include!(concat!(
+        env!("OUT_DIR"),
+        "/unrolled_lut_kernel_11d_standard.rs"
+    ));
 }
 
 /// Forward butterfly on one shard pair.
@@ -269,7 +279,7 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for LutKernel<Gf2p8_11d, CantorBasisLu
 
     type MulTable = MulTable;
 
-    const NODE_MUL: &'static [Self::MulTable; 510] = &tables::NODE_MUL_LUT;
+    const NODE_MUL: &'static [Self::MulTable; 510] = &cantor::NODE_MUL_LUT;
 
     fn mul_table(t: Gf2p8_11d) -> Self::MulTable {
         &MUL_TABLE[t.into_usize()]
@@ -349,42 +359,42 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for LutKernel<Gf2p8_11d, CantorBasisLu
 
     fn fft_sharded_zero_padded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, log_support: u8) {
         match (k, log_support) {
-            (1, 0) => unrolled_11d::fft_sharded_zero_padded_lut_k1_s1(shards, shard_len),
-            (2, 0) => unrolled_11d::fft_sharded_zero_padded_lut_k2_s1(shards, shard_len),
-            (2, 1) => unrolled_11d::fft_sharded_zero_padded_lut_k2_s2(shards, shard_len),
-            (3, 0) => unrolled_11d::fft_sharded_zero_padded_lut_k3_s1(shards, shard_len),
-            (3, 1) => unrolled_11d::fft_sharded_zero_padded_lut_k3_s2(shards, shard_len),
-            (3, 2) => unrolled_11d::fft_sharded_zero_padded_lut_k3_s4(shards, shard_len),
-            (4, 0) => unrolled_11d::fft_sharded_zero_padded_lut_k4_s1(shards, shard_len),
-            (4, 1) => unrolled_11d::fft_sharded_zero_padded_lut_k4_s2(shards, shard_len),
-            (4, 2) => unrolled_11d::fft_sharded_zero_padded_lut_k4_s4(shards, shard_len),
-            (4, 3) => unrolled_11d::fft_sharded_zero_padded_lut_k4_s8(shards, shard_len),
-            (5, 0) => unrolled_11d::fft_sharded_zero_padded_lut_k5_s1(shards, shard_len),
-            (5, 1) => unrolled_11d::fft_sharded_zero_padded_lut_k5_s2(shards, shard_len),
-            (5, 2) => unrolled_11d::fft_sharded_zero_padded_lut_k5_s4(shards, shard_len),
-            (5, 3) => unrolled_11d::fft_sharded_zero_padded_lut_k5_s8(shards, shard_len),
-            (5, 4) => unrolled_11d::fft_sharded_zero_padded_lut_k5_s16(shards, shard_len),
-            (6, 0) => unrolled_11d::fft_sharded_zero_padded_lut_k6_s1(shards, shard_len),
-            (6, 1) => unrolled_11d::fft_sharded_zero_padded_lut_k6_s2(shards, shard_len),
-            (6, 2) => unrolled_11d::fft_sharded_zero_padded_lut_k6_s4(shards, shard_len),
-            (6, 3) => unrolled_11d::fft_sharded_zero_padded_lut_k6_s8(shards, shard_len),
-            (6, 4) => unrolled_11d::fft_sharded_zero_padded_lut_k6_s16(shards, shard_len),
-            (6, 5) => unrolled_11d::fft_sharded_zero_padded_lut_k6_s32(shards, shard_len),
-            (7, 0) => unrolled_11d::fft_sharded_zero_padded_lut_k7_s1(shards, shard_len),
-            (7, 1) => unrolled_11d::fft_sharded_zero_padded_lut_k7_s2(shards, shard_len),
-            (7, 2) => unrolled_11d::fft_sharded_zero_padded_lut_k7_s4(shards, shard_len),
-            (7, 3) => unrolled_11d::fft_sharded_zero_padded_lut_k7_s8(shards, shard_len),
-            (7, 4) => unrolled_11d::fft_sharded_zero_padded_lut_k7_s16(shards, shard_len),
-            (7, 5) => unrolled_11d::fft_sharded_zero_padded_lut_k7_s32(shards, shard_len),
-            (7, 6) => unrolled_11d::fft_sharded_zero_padded_lut_k7_s64(shards, shard_len),
-            (8, 0) => unrolled_11d::fft_sharded_zero_padded_lut_k8_s1(shards, shard_len),
-            (8, 1) => unrolled_11d::fft_sharded_zero_padded_lut_k8_s2(shards, shard_len),
-            (8, 2) => unrolled_11d::fft_sharded_zero_padded_lut_k8_s4(shards, shard_len),
-            (8, 3) => unrolled_11d::fft_sharded_zero_padded_lut_k8_s8(shards, shard_len),
-            (8, 4) => unrolled_11d::fft_sharded_zero_padded_lut_k8_s16(shards, shard_len),
-            (8, 5) => unrolled_11d::fft_sharded_zero_padded_lut_k8_s32(shards, shard_len),
-            (8, 6) => unrolled_11d::fft_sharded_zero_padded_lut_k8_s64(shards, shard_len),
-            (8, 7) => unrolled_11d::fft_sharded_zero_padded_lut_k8_s128(shards, shard_len),
+            (1, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k1_s1(shards, shard_len),
+            (2, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k2_s1(shards, shard_len),
+            (2, 1) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k2_s2(shards, shard_len),
+            (3, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k3_s1(shards, shard_len),
+            (3, 1) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k3_s2(shards, shard_len),
+            (3, 2) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k3_s4(shards, shard_len),
+            (4, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k4_s1(shards, shard_len),
+            (4, 1) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k4_s2(shards, shard_len),
+            (4, 2) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k4_s4(shards, shard_len),
+            (4, 3) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k4_s8(shards, shard_len),
+            (5, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k5_s1(shards, shard_len),
+            (5, 1) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k5_s2(shards, shard_len),
+            (5, 2) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k5_s4(shards, shard_len),
+            (5, 3) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k5_s8(shards, shard_len),
+            (5, 4) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k5_s16(shards, shard_len),
+            (6, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k6_s1(shards, shard_len),
+            (6, 1) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k6_s2(shards, shard_len),
+            (6, 2) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k6_s4(shards, shard_len),
+            (6, 3) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k6_s8(shards, shard_len),
+            (6, 4) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k6_s16(shards, shard_len),
+            (6, 5) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k6_s32(shards, shard_len),
+            (7, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k7_s1(shards, shard_len),
+            (7, 1) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k7_s2(shards, shard_len),
+            (7, 2) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k7_s4(shards, shard_len),
+            (7, 3) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k7_s8(shards, shard_len),
+            (7, 4) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k7_s16(shards, shard_len),
+            (7, 5) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k7_s32(shards, shard_len),
+            (7, 6) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k7_s64(shards, shard_len),
+            (8, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k8_s1(shards, shard_len),
+            (8, 1) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k8_s2(shards, shard_len),
+            (8, 2) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k8_s4(shards, shard_len),
+            (8, 3) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k8_s8(shards, shard_len),
+            (8, 4) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k8_s16(shards, shard_len),
+            (8, 5) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k8_s32(shards, shard_len),
+            (8, 6) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k8_s64(shards, shard_len),
+            (8, 7) => unrolled_11d_cantor::fft_sharded_zero_padded_lut_k8_s128(shards, shard_len),
             _ => unreachable!("k={k} must be in 1..=8 and log_support must be < k"),
         }
     }
@@ -393,18 +403,18 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for LutKernel<Gf2p8_11d, CantorBasisLu
         if beta == Gf2p8_11d::zero() {
             match k {
                 0 => {}
-                1 => unrolled_11d::fft_sharded_lut_k1(shards, shard_len),
-                2 => unrolled_11d::fft_sharded_lut_k2(shards, shard_len),
-                3 => unrolled_11d::fft_sharded_lut_k3(shards, shard_len),
-                4 => unrolled_11d::fft_sharded_lut_k4(shards, shard_len),
-                5 => unrolled_11d::fft_sharded_lut_k5(shards, shard_len),
-                6 => unrolled_11d::fft_sharded_lut_k6(shards, shard_len),
-                7 => unrolled_11d::fft_sharded_lut_k7(shards, shard_len),
-                8 => unrolled_11d::fft_sharded_lut_k8(shards, shard_len),
+                1 => unrolled_11d_cantor::fft_sharded_lut_k1(shards, shard_len),
+                2 => unrolled_11d_cantor::fft_sharded_lut_k2(shards, shard_len),
+                3 => unrolled_11d_cantor::fft_sharded_lut_k3(shards, shard_len),
+                4 => unrolled_11d_cantor::fft_sharded_lut_k4(shards, shard_len),
+                5 => unrolled_11d_cantor::fft_sharded_lut_k5(shards, shard_len),
+                6 => unrolled_11d_cantor::fft_sharded_lut_k6(shards, shard_len),
+                7 => unrolled_11d_cantor::fft_sharded_lut_k7(shards, shard_len),
+                8 => unrolled_11d_cantor::fft_sharded_lut_k8(shards, shard_len),
                 _ => unreachable!("k={k} must be in 0..=8"),
             }
         } else {
-            let t = tables::CANTOR_SUBSPACE_INDEX[beta.into_usize()] as usize;
+            let t = cantor::SUBSPACE_INDEX[beta.into_usize()] as usize;
             Self::fft_sharded_dit2_indexed(shards, shard_len, k, t);
         }
     }
@@ -413,42 +423,42 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for LutKernel<Gf2p8_11d, CantorBasisLu
         if beta == Gf2p8::zero() {
             match k {
                 0 => {}
-                1 => unrolled_11d::ifft_sharded_lut_k1(shards, shard_len),
-                2 => unrolled_11d::ifft_sharded_lut_k2(shards, shard_len),
-                3 => unrolled_11d::ifft_sharded_lut_k3(shards, shard_len),
-                4 => unrolled_11d::ifft_sharded_lut_k4(shards, shard_len),
-                5 => unrolled_11d::ifft_sharded_lut_k5(shards, shard_len),
-                6 => unrolled_11d::ifft_sharded_lut_k6(shards, shard_len),
-                7 => unrolled_11d::ifft_sharded_lut_k7(shards, shard_len),
-                8 => unrolled_11d::ifft_sharded_lut_k8(shards, shard_len),
+                1 => unrolled_11d_cantor::ifft_sharded_lut_k1(shards, shard_len),
+                2 => unrolled_11d_cantor::ifft_sharded_lut_k2(shards, shard_len),
+                3 => unrolled_11d_cantor::ifft_sharded_lut_k3(shards, shard_len),
+                4 => unrolled_11d_cantor::ifft_sharded_lut_k4(shards, shard_len),
+                5 => unrolled_11d_cantor::ifft_sharded_lut_k5(shards, shard_len),
+                6 => unrolled_11d_cantor::ifft_sharded_lut_k6(shards, shard_len),
+                7 => unrolled_11d_cantor::ifft_sharded_lut_k7(shards, shard_len),
+                8 => unrolled_11d_cantor::ifft_sharded_lut_k8(shards, shard_len),
                 _ => unreachable!("k={k} must be in 0..=8"),
             }
         } else {
             match (k, u8::from(beta)) {
                 (0, _) => {}
-                (1, b) if b == CANTOR_SUBSPACE[2] => {
-                    unrolled_11d::ifft_sharded_lut_k1_od6(shards, shard_len)
+                (1, b) if b == cantor::SUBSPACE[2] => {
+                    unrolled_11d_cantor::ifft_sharded_lut_k1_od6(shards, shard_len)
                 }
-                (2, b) if b == CANTOR_SUBSPACE[4] => {
-                    unrolled_11d::ifft_sharded_lut_k2_o98(shards, shard_len)
+                (2, b) if b == cantor::SUBSPACE[4] => {
+                    unrolled_11d_cantor::ifft_sharded_lut_k2_o98(shards, shard_len)
                 }
-                (3, b) if b == CANTOR_SUBSPACE[8] => {
-                    unrolled_11d::ifft_sharded_lut_k3_o92(shards, shard_len)
+                (3, b) if b == cantor::SUBSPACE[8] => {
+                    unrolled_11d_cantor::ifft_sharded_lut_k3_o92(shards, shard_len)
                 }
-                (4, b) if b == CANTOR_SUBSPACE[16] => {
-                    unrolled_11d::ifft_sharded_lut_k4_o56(shards, shard_len)
+                (4, b) if b == cantor::SUBSPACE[16] => {
+                    unrolled_11d_cantor::ifft_sharded_lut_k4_o56(shards, shard_len)
                 }
-                (5, b) if b == CANTOR_SUBSPACE[32] => {
-                    unrolled_11d::ifft_sharded_lut_k5_oc8(shards, shard_len)
+                (5, b) if b == cantor::SUBSPACE[32] => {
+                    unrolled_11d_cantor::ifft_sharded_lut_k5_oc8(shards, shard_len)
                 }
-                (6, b) if b == CANTOR_SUBSPACE[64] => {
-                    unrolled_11d::ifft_sharded_lut_k6_o58(shards, shard_len)
+                (6, b) if b == cantor::SUBSPACE[64] => {
+                    unrolled_11d_cantor::ifft_sharded_lut_k6_o58(shards, shard_len)
                 }
-                (7, b) if b == CANTOR_SUBSPACE[128] => {
-                    unrolled_11d::ifft_sharded_lut_k7_oe7(shards, shard_len)
+                (7, b) if b == cantor::SUBSPACE[128] => {
+                    unrolled_11d_cantor::ifft_sharded_lut_k7_oe7(shards, shard_len)
                 }
                 _ => {
-                    let t = tables::CANTOR_SUBSPACE_INDEX[beta.into_usize()] as usize;
+                    let t = cantor::SUBSPACE_INDEX[beta.into_usize()] as usize;
                     Self::ifft_sharded_dit2_indexed(shards, shard_len, k, t);
                 }
             }
@@ -462,62 +472,62 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for LutKernel<Gf2p8_11d, CantorBasisLu
                     shards,
                     shard_len,
                     k,
-                    &tables::FFT_DIT4_LUT_K1_O0,
-                    &tables::FFT_DIT4_LUT_K1_O0_TAIL,
+                    &cantor::FFT_DIT4_LUT_K1_O0,
+                    &cantor::FFT_DIT4_LUT_K1_O0_TAIL,
                 ),
                 2 => Self::fft_sharded_dit4_radix2_last_with(
                     shards,
                     shard_len,
                     k,
-                    &tables::FFT_DIT4_LUT_K2_O0,
-                    &tables::FFT_DIT4_LUT_K2_O0_TAIL,
+                    &cantor::FFT_DIT4_LUT_K2_O0,
+                    &cantor::FFT_DIT4_LUT_K2_O0_TAIL,
                 ),
                 3 => Self::fft_sharded_dit4_radix2_last_with(
                     shards,
                     shard_len,
                     k,
-                    &tables::FFT_DIT4_LUT_K3_O0,
-                    &tables::FFT_DIT4_LUT_K3_O0_TAIL,
+                    &cantor::FFT_DIT4_LUT_K3_O0,
+                    &cantor::FFT_DIT4_LUT_K3_O0_TAIL,
                 ),
                 4 => Self::fft_sharded_dit4_radix2_last_with(
                     shards,
                     shard_len,
                     k,
-                    &tables::FFT_DIT4_LUT_K4_O0,
-                    &tables::FFT_DIT4_LUT_K4_O0_TAIL,
+                    &cantor::FFT_DIT4_LUT_K4_O0,
+                    &cantor::FFT_DIT4_LUT_K4_O0_TAIL,
                 ),
                 5 => Self::fft_sharded_dit4_radix2_last_with(
                     shards,
                     shard_len,
                     k,
-                    &tables::FFT_DIT4_LUT_K5_O0,
-                    &tables::FFT_DIT4_LUT_K5_O0_TAIL,
+                    &cantor::FFT_DIT4_LUT_K5_O0,
+                    &cantor::FFT_DIT4_LUT_K5_O0_TAIL,
                 ),
                 6 => Self::fft_sharded_dit4_radix2_last_with(
                     shards,
                     shard_len,
                     k,
-                    &tables::FFT_DIT4_LUT_K6_O0,
-                    &tables::FFT_DIT4_LUT_K6_O0_TAIL,
+                    &cantor::FFT_DIT4_LUT_K6_O0,
+                    &cantor::FFT_DIT4_LUT_K6_O0_TAIL,
                 ),
                 7 => Self::fft_sharded_dit4_radix2_last_with(
                     shards,
                     shard_len,
                     k,
-                    &tables::FFT_DIT4_LUT_K7_O0,
-                    &tables::FFT_DIT4_LUT_K7_O0_TAIL,
+                    &cantor::FFT_DIT4_LUT_K7_O0,
+                    &cantor::FFT_DIT4_LUT_K7_O0_TAIL,
                 ),
                 8 => Self::fft_sharded_dit4_radix2_last_with(
                     shards,
                     shard_len,
                     k,
-                    &tables::FFT_DIT4_LUT_K8_O0,
-                    &tables::FFT_DIT4_LUT_K8_O0_TAIL,
+                    &cantor::FFT_DIT4_LUT_K8_O0,
+                    &cantor::FFT_DIT4_LUT_K8_O0_TAIL,
                 ),
                 _ => unreachable!("k={k} must be in 1..=8"),
             }
         } else {
-            let t = tables::CANTOR_SUBSPACE_INDEX[beta.into_usize()] as usize;
+            let t = cantor::SUBSPACE_INDEX[beta.into_usize()] as usize;
             Self::fft_sharded_dit2_indexed(shards, shard_len, k, t);
         }
     }

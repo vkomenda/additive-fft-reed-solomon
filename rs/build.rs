@@ -1,8 +1,9 @@
-use additive_fft_reed_solomon_gf2p8::NibbleMulTable;
 use additive_fft_reed_solomon_gf2p8::{
     CantorBasis11d, EXP_TABLE_SIZE, FIELD_SIZE, Gf2p8, Gf2p8_11d, SubspaceBasis,
 };
+use additive_fft_reed_solomon_gf2p8::{NibbleMulTable, StandardBasis11d};
 use std::env;
+use std::ffi::OsString;
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
@@ -666,6 +667,116 @@ fn write_node_mul_gfni<G: Gf2p8 + fmt::Debug>(
     writeln!(f, "];")
 }
 
+fn write_basis_gens(
+    out_dir: &OsString,
+    suffix: &'static str,
+    basis: impl SubspaceBasis<Gf2p8_11d>,
+    log_table: &[u8; FIELD_SIZE],
+    inv_table: &[u8; FIELD_SIZE],
+) -> io::Result<()> {
+    let dest_poly = Path::new(&out_dir).join(format!("poly_11d_{suffix}.rs"));
+    let mut f = BufWriter::new(File::create(&dest_poly)?);
+
+    writeln!(f, "use super::{{MUL_TABLE, NIBBLE_MUL_TABLE}};")?;
+
+    write!(f, "\npub const BASIS: [u8; 8] = [")?;
+    write_points(&mut f, basis.into_iter(), false);
+
+    let log_walsh_iter = basis.iter_log_walsh(&log_table);
+    write!(f, "\npub static LOG_WALSH_TABLE: [u8; {}] = [", FIELD_SIZE)?;
+    write_points(&mut f, log_walsh_iter, false);
+
+    let (num_points, points_iter) = basis.iter_subspace_points();
+    let subspace_points: [Gf2p8_11d; FIELD_SIZE] =
+        points_iter.collect::<Vec<_>>().try_into().unwrap();
+
+    write!(f, "\npub static SUBSPACE: [u8; {}] = [", num_points)?;
+    write_points(&mut f, subspace_points.into_iter(), false);
+
+    // The inverse of SUBSPACE
+    let mut subspace_index = [0u8; FIELD_SIZE];
+    for (i, &w) in subspace_points.iter().enumerate() {
+        subspace_index[w.into_usize()] = i as u8;
+    }
+    write!(f, "\npub static SUBSPACE_INDEX: [u8; {}] = [", num_points)?;
+    write_bytes(&mut f, subspace_index.into_iter(), false);
+
+    let sub_poly_luts = basis.gen_all_subspace_poly_luts();
+
+    writeln!(
+        f,
+        "\npub static SUBSPACE_POLY_VALUES: [[u8; {}]; 9] = [",
+        FIELD_SIZE,
+    )?;
+    for lut in sub_poly_luts {
+        write!(f, "    [")?;
+        write_points(&mut f, lut.into_iter(), true);
+    }
+    writeln!(f, "];")?;
+
+    let deriv_const: [Gf2p8_11d; 8] =
+        basis.gen_norm_subspace_poly_deriv_lut(&sub_poly_luts, inv_table);
+    write!(f, "\npub static SUBSPACE_POLY_DERIVS: [u8; 8] = [")?;
+    write_points(&mut f, deriv_const.into_iter(), false);
+
+    let sub_poly_luts8: &[[Gf2p8_11d; 256]; 8] = sub_poly_luts[..8].try_into().unwrap();
+
+    let cases: Vec<_> = (1..=8u8)
+        .map(|k| (k, 0))
+        .chain((1..8u8).map(|k| (k, 1usize << k)))
+        .collect();
+    write_dit4_schedules(
+        &mut f,
+        &lut_target(),
+        sub_poly_luts8,
+        &subspace_points,
+        &cases,
+    )?;
+    write_dit4_schedules(
+        &mut f,
+        &nibble_target(),
+        sub_poly_luts8,
+        &subspace_points,
+        &cases,
+    )?;
+    write_dit4_schedules(
+        &mut f,
+        &gfni_target(),
+        sub_poly_luts8,
+        &subspace_points,
+        &cases,
+    )?;
+
+    write_node_mul_lut(&mut f, &sub_poly_luts, &subspace_points)?;
+    write_node_mul_nibble(&mut f, &sub_poly_luts, &subspace_points)?;
+    write_node_mul_gfni(&mut f, &sub_poly_luts, &subspace_points)?;
+
+    let dest_kernel_lut = Path::new(&out_dir).join(format!("unrolled_lut_kernel_11d_{suffix}.rs"));
+    let mut fkl = BufWriter::new(File::create(&dest_kernel_lut)?);
+    LUT.write_unrolled_kernel(&mut fkl, basis.as_ref(), sub_poly_luts8, &subspace_points)
+        .expect("LUT kernel");
+
+    let dest_kernel_avx2 =
+        Path::new(&out_dir).join(format!("unrolled_avx2_kernel_11d_{suffix}.rs"));
+    let mut fkg = BufWriter::new(File::create(&dest_kernel_avx2)?);
+    AVX2.write_unrolled_kernel(&mut fkg, basis.as_ref(), sub_poly_luts8, &subspace_points)
+        .expect("AVX2 kernel");
+
+    let dest_kernel_neon =
+        Path::new(&out_dir).join(format!("unrolled_neon_kernel_11d_{suffix}.rs"));
+    let mut fkg = BufWriter::new(File::create(&dest_kernel_neon)?);
+    NEON.write_unrolled_kernel(&mut fkg, basis.as_ref(), sub_poly_luts8, &subspace_points)
+        .expect("NEON kernel");
+
+    let dest_kernel_gfni =
+        Path::new(&out_dir).join(format!("unrolled_gfni_kernel_11d_{suffix}.rs"));
+    let mut fkg = BufWriter::new(File::create(&dest_kernel_gfni)?);
+    GFNI.write_unrolled_kernel(&mut fkg, basis.as_ref(), sub_poly_luts8, &subspace_points)
+        .expect("GFNI kernel");
+
+    Ok(())
+}
+
 fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("tables_11d.rs");
@@ -679,14 +790,6 @@ fn main() {
     write_points(&mut f, log_table.into_iter(), false);
     write!(f, "\npub static INV_TABLE: [u8; {}] = [", FIELD_SIZE).unwrap();
     write_points(&mut f, inv_table.into_iter(), false);
-
-    let basis = CantorBasis11d::new();
-    write!(f, "\npub const CANTOR_BASIS: [u8; 8] = [").unwrap();
-    write_points(&mut f, basis.into_iter(), false);
-
-    let log_walsh_iter = basis.iter_log_walsh(&log_table);
-    write!(f, "\npub static LOG_WALSH_TABLE: [u8; {}] = [", FIELD_SIZE).unwrap();
-    write_points(&mut f, log_walsh_iter, false);
 
     let mul_table_iter =
         (0..FIELD_SIZE).map(|x| Gf2p8_11d(x as u8).make_mul_table(&exp_table, &log_table));
@@ -728,102 +831,11 @@ fn main() {
         std::array::from_fn(|l| nibble_mul_tables[exp_table[l] as usize]);
     write_nibble_mul(&mut f, &nibble_mul_by_log, &"NIBBLE_MUL_BY_LOG");
 
-    let (num_points, points_iter) = basis.iter_subspace_points();
-    let subspace_points: [Gf2p8_11d; FIELD_SIZE] =
-        points_iter.collect::<Vec<_>>().try_into().unwrap();
+    let cantor_basis = CantorBasis11d::new();
+    write_basis_gens(&out_dir, "cantor", cantor_basis, &log_table, &inv_table).unwrap();
 
-    write!(f, "\npub static CANTOR_SUBSPACE: [u8; {}] = [", num_points).unwrap();
-    write_points(&mut f, subspace_points.into_iter(), false);
-
-    // The inverse of CANTOR_SUBSPACE
-    let mut subspace_index = [0u8; FIELD_SIZE];
-    for (i, &w) in subspace_points.iter().enumerate() {
-        subspace_index[w.into_usize()] = i as u8;
-    }
-    write!(
-        f,
-        "\npub static CANTOR_SUBSPACE_INDEX: [u8; {}] = [",
-        num_points
-    )
-    .unwrap();
-    write_bytes(&mut f, subspace_index.into_iter(), false);
-
-    let sub_poly_luts = basis.gen_all_subspace_poly_luts();
-
-    writeln!(
-        f,
-        "\npub static SUBSPACE_POLY_VALUES: [[u8; {}]; 9] = [",
-        FIELD_SIZE,
-    )
-    .unwrap();
-    for lut in sub_poly_luts {
-        write!(f, "    [").unwrap();
-        write_points(&mut f, lut.into_iter(), true);
-    }
-    writeln!(f, "];").unwrap();
-
-    let derivs = basis.gen_deriv_subspace_poly_lut();
-    let deriv_const: [Gf2p8_11d; 8] = std::array::from_fn(|i| {
-        let s_i_v_i = sub_poly_luts[i][basis.as_ref()[i].into_usize()];
-        derivs[i].mul(Gf2p8_11d::from(inv_table[s_i_v_i.into_usize()]))
-    });
-    write!(f, "\npub static SUBSPACE_POLY_DERIVS: [u8; 8] = [").unwrap();
-    write_points(&mut f, deriv_const.into_iter(), false);
-
-    let sub_poly_luts8: &[[Gf2p8_11d; 256]; 8] = sub_poly_luts[..8].try_into().unwrap();
-
-    let cases: Vec<_> = (1..=8u8)
-        .map(|k| (k, 0))
-        .chain((1..8u8).map(|k| (k, 1usize << k)))
-        .collect();
-    write_dit4_schedules(
-        &mut f,
-        &lut_target(),
-        sub_poly_luts8,
-        &subspace_points,
-        &cases,
-    )
-    .unwrap();
-    write_dit4_schedules(
-        &mut f,
-        &nibble_target(),
-        sub_poly_luts8,
-        &subspace_points,
-        &cases,
-    )
-    .unwrap();
-    write_dit4_schedules(
-        &mut f,
-        &gfni_target(),
-        sub_poly_luts8,
-        &subspace_points,
-        &cases,
-    )
-    .unwrap();
-
-    write_node_mul_lut(&mut f, &sub_poly_luts, &subspace_points).unwrap();
-    write_node_mul_nibble(&mut f, &sub_poly_luts, &subspace_points).unwrap();
-    write_node_mul_gfni(&mut f, &sub_poly_luts, &subspace_points).unwrap();
-
-    let dest_kernel_lut = Path::new(&out_dir).join("unrolled_lut_kernel_11d.rs");
-    let mut fkl = BufWriter::new(File::create(&dest_kernel_lut).unwrap());
-    LUT.write_unrolled_kernel(&mut fkl, basis.as_ref(), sub_poly_luts8, &subspace_points)
-        .expect("LUT kernel");
-
-    let dest_kernel_avx2 = Path::new(&out_dir).join("unrolled_avx2_kernel_11d.rs");
-    let mut fkg = BufWriter::new(File::create(&dest_kernel_avx2).unwrap());
-    AVX2.write_unrolled_kernel(&mut fkg, basis.as_ref(), sub_poly_luts8, &subspace_points)
-        .expect("AVX2 kernel");
-
-    let dest_kernel_neon = Path::new(&out_dir).join("unrolled_neon_kernel_11d.rs");
-    let mut fkg = BufWriter::new(File::create(&dest_kernel_neon).unwrap());
-    NEON.write_unrolled_kernel(&mut fkg, basis.as_ref(), sub_poly_luts8, &subspace_points)
-        .expect("NEON kernel");
-
-    let dest_kernel_gfni = Path::new(&out_dir).join("unrolled_gfni_kernel_11d.rs");
-    let mut fkg = BufWriter::new(File::create(&dest_kernel_gfni).unwrap());
-    GFNI.write_unrolled_kernel(&mut fkg, basis.as_ref(), sub_poly_luts8, &subspace_points)
-        .expect("GFNI kernel");
+    let standard_basis = StandardBasis11d::new();
+    write_basis_gens(&out_dir, "standard", standard_basis, &log_table, &inv_table).unwrap();
 
     // CPU feature detection
     let target = std::env::var("TARGET").unwrap();

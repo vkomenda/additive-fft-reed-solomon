@@ -412,7 +412,7 @@ pub trait SubspaceBasis<G: Gf2p8>:
     }
 
     /// Generates the derivatives of subspace polynomial terms.
-    fn gen_deriv_subspace_poly_lut(&self) -> [G; 9] {
+    fn gen_subspace_poly_deriv_lut(&self) -> [G; 9] {
         let mut derivs = [G::one(); 9];
 
         for (i, d) in derivs.iter_mut().enumerate() {
@@ -434,5 +434,20 @@ pub trait SubspaceBasis<G: Gf2p8>:
         }
         Z255::fwht(&mut w, FIELD_SIZE);
         w.into_iter().map(|z| z.0)
+    }
+
+    /// Generates the derivatives of normalised subspace polynomials norm(s_i)(x) = s_i(x)/s_i(v_i)
+    /// satisfying norm(s_i)(v_i) = 1, for i in 0..=7.
+    fn gen_norm_subspace_poly_deriv_lut(
+        &self,
+        sub_poly: &[[G; FIELD_SIZE]; 9],
+        inv: &[u8; FIELD_SIZE],
+    ) -> [G; 8] {
+        let derivs = self.gen_subspace_poly_deriv_lut();
+        let deriv_const: [G; 8] = std::array::from_fn(|i| {
+            let s_i_v_i = sub_poly[i][self.as_ref()[i].into_usize()];
+            derivs[i].mul(G::from(inv[s_i_v_i.into_usize()]))
+        });
+        deriv_const
     }
 }
