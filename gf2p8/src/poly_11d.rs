@@ -263,13 +263,46 @@ mod tests {
     }
 
     #[test]
-    fn deriv_subspace_poly_luts() {
+    fn subspace_poly_deriv_luts() {
         let basis = CantorBasis11d::new();
         assert!(
             basis
-                .gen_deriv_subspace_poly_lut()
+                .gen_subspace_poly_deriv_lut()
                 .iter()
                 .all(|d| *d == Gf2p8_11d::one())
+        );
+    }
+
+    #[test]
+    fn norm_subspace_poly_deriv_luts() {
+        let basis = CantorBasis11d::new();
+        let sub_poly_luts = basis.gen_all_subspace_poly_luts();
+        let (exp_table, log_table) = Gf2p8_11d::exp_log_tables();
+        let inv_table = Gf2p8_11d::inv_table(&exp_table, &log_table);
+        assert!(
+            basis
+                .gen_norm_subspace_poly_deriv_lut(&sub_poly_luts, &inv_table)
+                .iter()
+                .all(|d| *d == Gf2p8_11d::one())
+        );
+    }
+
+    #[test]
+    fn norm_subspace_poly_deriv_luts_standard() {
+        let basis = StandardBasis11d::new();
+        let sub_poly_luts = basis.gen_all_subspace_poly_luts();
+        let (exp_table, log_table) = Gf2p8_11d::exp_log_tables();
+        let inv_table = Gf2p8_11d::inv_table(&exp_table, &log_table);
+        assert!(
+            basis
+                .gen_norm_subspace_poly_deriv_lut(&sub_poly_luts, &inv_table)
+                .iter()
+                .enumerate()
+                .all(|(i, d)| if i == 0 {
+                    *d == Gf2p8_11d::one()
+                } else {
+                    *d != Gf2p8_11d::one()
+                })
         );
     }
 }
