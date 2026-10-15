@@ -564,6 +564,33 @@ fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, mat: __m512i) {
 }
 
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
+fn scale_add<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, mat: __m512i) {
+    let src = src.as_ptr();
+    let dst = dst.as_mut_ptr();
+    let mut i = 0;
+    while i + 64 <= len {
+        unsafe {
+            let v = _mm512_loadu_si512(src.add(i) as *const __m512i);
+            let mut w = _mm512_loadu_si512(dst.add(i) as *const __m512i);
+            let r = _mm512_gf2p8affine_epi64_epi8(v, mat, 0);
+            w = _mm512_xor_si512(w, r);
+            _mm512_storeu_si512(dst.add(i) as *mut __m512i, w);
+        }
+        i += 64;
+    }
+    if i < len {
+        let k = (1u64 << (len - i)) - 1;
+        unsafe {
+            let v = _mm512_maskz_loadu_epi8(k, src.add(i) as *const i8);
+            let mut w = _mm512_maskz_loadu_epi8(k, dst.add(i) as *const i8);
+            let r = _mm512_gf2p8affine_epi64_epi8(v, mat, 0);
+            w = _mm512_xor_si512(w, r);
+            _mm512_mask_storeu_epi8(dst.add(i) as *mut i8, k, w);
+        }
+    }
+}
+
+#[target_feature(enable = "avx512f,avx512bw,gfni")]
 fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, mat: __m512i) {
     let dst = dst.as_mut_ptr();
     let mut i = 0;
@@ -1090,6 +1117,11 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for GfniKernel<Gf2p8_11d, CantorBasisL
         unsafe { scale(src, dst, dst.len(), mat) }
     }
 
+    fn scale_add(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
+        let mat = unsafe { _mm512_set1_epi64(scalar.gfni_mul_matrix_lut() as i64) };
+        unsafe { scale_add(src, dst, dst.len(), mat) }
+    }
+
     fn scale_in_place(dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
         let mat = unsafe { _mm512_set1_epi64(scalar.gfni_mul_matrix_lut() as i64) };
         unsafe { scale_in_place(dst, dst.len(), mat) }
@@ -1140,17 +1172,18 @@ mod tests {
     /// shard_len covers: pure tail (63), exact ZMM (64), ZMM + tail (65), two ZMMs (128).
     #[test]
     fn fft_gfni_matches_lut() {
-        let basis = CantorBasisLut11d;
         for shard_len in [1, 63, 64, 65, 128] {
             for k in 1u8..=8 {
                 let n = 1 << k;
                 let max_log_offset = k.min(7);
                 for log_offset in 0..=max_log_offset {
-                    let beta = basis.get_subspace_point_lut(1 << log_offset);
+                    let beta = CantorBasisLut11d::get_subspace_point_lut(1 << log_offset);
                     let mut lut = make_shards(n, shard_len);
                     let mut gfni = lut.clone();
 
-                    lut_kernel::fft_sharded_recursive(&basis, &mut lut, shard_len, k, beta);
+                    lut_kernel::fft_sharded_recursive::<_, CantorBasisLut11d>(
+                        &mut lut, shard_len, k, beta,
+                    );
                     unsafe {
                         fft_sharded(&mut gfni, shard_len, k, beta);
                     }
@@ -1164,17 +1197,18 @@ mod tests {
     /// GFNI IFFT produces the same coefficients as the LUT butterfly.
     #[test]
     fn ifft_matches_lut() {
-        let basis = CantorBasisLut11d;
         for shard_len in [1, 63, 64, 65, 128] {
             for k in 1u8..=8 {
                 let n = 1 << k;
                 let max_log_offset = k.min(7);
                 for log_offset in 0..=max_log_offset {
-                    let beta = basis.get_subspace_point_lut(1 << log_offset);
+                    let beta = CantorBasisLut11d::get_subspace_point_lut(1 << log_offset);
                     let mut lut = make_shards(n, shard_len);
                     let mut gfni = lut.clone();
 
-                    lut_kernel::ifft_sharded_recursive(&basis, &mut lut, shard_len, k, beta);
+                    lut_kernel::ifft_sharded_recursive::<_, CantorBasisLut11d>(
+                        &mut lut, shard_len, k, beta,
+                    );
                     unsafe {
                         ifft_sharded(&mut gfni, shard_len, k, beta);
                     }
@@ -1188,11 +1222,10 @@ mod tests {
     /// IFFT;FFT ~= Id.
     #[test]
     fn ifft_then_fft_is_identity() {
-        let basis = CantorBasisLut11d;
         for shard_len in [1, 63, 64, 65] {
             for k in 1u8..8 {
                 let n = 1 << k;
-                let beta = basis.get_subspace_point_lut(n as u8);
+                let beta = CantorBasisLut11d::get_subspace_point_lut(n as u8);
                 let original = make_shards(n, shard_len);
                 let mut data = original.clone();
 
