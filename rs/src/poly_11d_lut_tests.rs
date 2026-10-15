@@ -1,0 +1,545 @@
+use super::*;
+use crate::codec::Codec;
+use crate::gf2p8lut::SubspaceBasisLut;
+use crate::kernel::lut_kernel::LutKernel;
+use crate::poly_arith::{CantorBasisPolyArith, CantorBasisPolySliceArith, PolySliceArith, poly};
+use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8};
+
+type Rs<const N: usize, const T: usize> = Codec<Gf2p8_11d, B, LutKernel<Gf2p8_11d, B>, N, T>;
+
+fn generate_lch_codeword<const N: usize, const T: usize>(rs: &Rs<N, T>) -> Vec<Gf2p8_11d> {
+    let k = N - T;
+    let mut message = vec![Gf2p8_11d::zero(); k];
+    let mut parity = vec![Gf2p8_11d::zero(); T];
+
+    for i in 0..k {
+        message[i] = Gf2p8_11d::from((T + i) as u8);
+    }
+
+    rs.encode_systematic_scalar(&message, &mut parity);
+
+    let mut codeword = vec![Gf2p8_11d::zero(); N];
+    codeword[..T].copy_from_slice(&parity);
+    codeword[T..].copy_from_slice(&message);
+    codeword
+}
+
+fn generate_sharded_lch_codeword<const N: usize, const T: usize>(
+    rs: &Rs<N, T>,
+    shard_len: usize,
+) -> Vec<Gf2p8_11d> {
+    let k = N - T;
+    let mut message = vec![Gf2p8_11d::zero(); shard_len * k];
+    let mut parity = vec![Gf2p8_11d::zero(); shard_len * T];
+    let mut workspace = vec![Gf2p8_11d::zero(); shard_len * T];
+
+    for i in 0..k {
+        for j in 0..shard_len {
+            message[i * shard_len + j] = Gf2p8_11d::from((T + i + j) as u8);
+        }
+    }
+
+    rs.encode_systematic_sharded(&message, &mut parity, &mut workspace, shard_len);
+
+    let mut codeword = vec![Gf2p8_11d::zero(); shard_len * N];
+    codeword[..T * shard_len].clone_from_slice(&parity);
+    codeword[T * shard_len..].clone_from_slice(&message);
+    codeword
+}
+
+#[test]
+fn scalar_fft_ifft_id() {
+    let basis = B {};
+    let mut data = [0u8.into(); 256];
+
+    for i in 0..128 {
+        data[i] = Gf2p8_11d::from(i as u8);
+    }
+    let original = data;
+
+    // k=8 for 256 points, beta=0 for the standard subspace V_8
+    basis.fft_scalar(&mut data, 8, 0u8.into());
+
+    assert_ne!(data, original, "FFT should have transformed the data");
+
+    basis.ifft_scalar(&mut data, 8, 0u8.into());
+
+    for i in 0..256 {
+        assert_eq!(
+            data[i], original[i],
+            "IFFT failed to recover coefficient at index {}",
+            i
+        );
+    }
+}
+
+#[test]
+fn decode_no_errors() {
+    decode_no_errors_t::<4, 2>();
+    decode_no_errors_t::<8, 4>();
+    decode_no_errors_t::<16, 8>();
+    decode_no_errors_t::<32, 16>();
+    decode_no_errors_t::<64, 32>();
+    decode_no_errors_t::<128, 64>();
+    decode_no_errors_t::<256, 128>();
+}
+
+fn decode_no_errors_t<const N: usize, const T: usize>() {
+    let rs = Rs::<N, T>::new();
+    let original = generate_lch_codeword(&rs);
+    let mut received = original.clone();
+    assert!(
+        rs.decode_systematic_scalar(&mut received),
+        "decode failed for N={N}, T={T}"
+    );
+    assert_eq!(received, original, "mismatch for N={N}, T={T}");
+}
+
+#[test]
+fn decode_max_corrupt_parity() {
+    decode_max_corrupt_parity_t::<4, 2>();
+    decode_max_corrupt_parity_t::<8, 4>();
+    decode_max_corrupt_parity_t::<16, 8>();
+    decode_max_corrupt_parity_t::<32, 16>();
+    decode_max_corrupt_parity_t::<64, 32>();
+    decode_max_corrupt_parity_t::<128, 64>();
+    decode_max_corrupt_parity_t::<256, 128>();
+}
+
+fn decode_max_corrupt_parity_t<const N: usize, const T: usize>() {
+    let rs = Rs::<N, T>::new();
+    let original = generate_lch_codeword(&rs);
+    let mut received = original.clone();
+
+    // Corrupt parity
+    for (i, r) in received.iter_mut().take(T / 2).enumerate() {
+        *r = (*r).mul((i as u8 + 2).into())
+    }
+
+    assert!(
+        rs.decode_systematic_scalar(&mut received),
+        "Failed to decode corrupt parity at N={N}, T={T}"
+    );
+    assert_eq!(received, original);
+}
+
+#[test]
+fn decode_max_corrupt_data() {
+    decode_max_corrupt_data_t::<4, 2>();
+    decode_max_corrupt_data_t::<8, 4>();
+    decode_max_corrupt_data_t::<16, 8>();
+    decode_max_corrupt_data_t::<32, 16>();
+    decode_max_corrupt_data_t::<64, 32>();
+    decode_max_corrupt_data_t::<128, 64>();
+    decode_max_corrupt_data_t::<256, 128>();
+}
+
+fn decode_max_corrupt_data_t<const N: usize, const T: usize>() {
+    let rs = Rs::<N, T>::new();
+    let original = generate_lch_codeword(&rs);
+    let mut received = original.clone();
+
+    // Corrupt data
+    for (i, r) in received.iter_mut().skip(T).take(T / 2).enumerate() {
+        *r = (*r).mul((i as u8 + 2).into())
+    }
+
+    assert!(
+        rs.decode_systematic_scalar(&mut received),
+        "Failed to decode corrupt data at N={N}, T={T}"
+    );
+    assert_eq!(received, original);
+}
+
+#[test]
+fn recompute_max_corrupt_data() {
+    recompute_max_corrupt_data_t::<4, 2>();
+    recompute_max_corrupt_data_t::<8, 4>();
+    recompute_max_corrupt_data_t::<16, 8>();
+    recompute_max_corrupt_data_t::<32, 16>();
+    recompute_max_corrupt_data_t::<64, 32>();
+    recompute_max_corrupt_data_t::<128, 64>();
+    recompute_max_corrupt_data_t::<256, 128>();
+}
+
+fn recompute_max_corrupt_data_t<const N: usize, const T: usize>() {
+    let rs = Rs::<N, T>::new();
+    let original = generate_lch_codeword(&rs);
+    let mut received = original.clone();
+
+    // Corrupt data
+    for (i, r) in received.iter_mut().skip(T).enumerate() {
+        *r = (*r).mul((i as u8 + 2).into())
+    }
+
+    rs.recompute_data_from_parity(&mut received);
+    assert_eq!(received, original);
+}
+
+#[test]
+fn poly_mul_lnh_by_zero() {
+    let basis = B {};
+    let zero = [0u8.into(); FIELD_SIZE];
+
+    let mut a = [0u8.into(); FIELD_SIZE];
+    a[0] = 0x53.into();
+    a[1] = 0xca.into();
+    a[3] = 1.into();
+
+    assert_eq!(basis.poly_mul_lnh(&a, &zero), zero);
+    assert_eq!(basis.poly_mul_lnh(&zero, &a), zero);
+}
+
+#[test]
+fn poly_mul_lnh_by_one() {
+    let basis = B {};
+    let mut one = [0u8.into(); FIELD_SIZE];
+    one[0] = 1.into();
+
+    let mut a = [0u8.into(); FIELD_SIZE];
+    a[0] = 0xab.into();
+    a[2] = 0x3f.into();
+    a[7] = 0x11.into();
+
+    assert_eq!(basis.poly_mul_lnh(&a, &one), a);
+    assert_eq!(basis.poly_mul_lnh(&one, &a), a);
+}
+
+#[test]
+fn poly_mul_lnh_const_by_const() {
+    let basis = B {};
+    let mut a = [0u8.into(); FIELD_SIZE];
+    let a0 = 0x53.into();
+    a[0] = a0;
+
+    let mut b = [0u8.into(); FIELD_SIZE];
+    let b0 = 0xca.into();
+    b[0] = b0;
+
+    let result = basis.poly_mul_lnh(&a, &b);
+    assert_eq!(result[0], a0.mul_lut(b0));
+    assert_eq!(result[1..], [0u8.into(); FIELD_SIZE - 1]);
+}
+
+#[test]
+fn poly_mul_lnh_commutes() {
+    let basis = B {};
+    let mut a = [0u8.into(); FIELD_SIZE];
+    a[0] = 1.into();
+    a[1] = 0xff.into();
+
+    let mut b = [0u8.into(); FIELD_SIZE];
+    b[0] = 0x57.into();
+    b[2] = 0x83.into();
+    b[5] = 0x2a.into();
+
+    assert_eq!(basis.poly_mul_lnh(&a, &b), basis.poly_mul_lnh(&b, &a));
+}
+
+#[test]
+fn poly_mul_lnh_associative() {
+    let basis = B {};
+
+    let mut a = [0.into(); FIELD_SIZE];
+    a[0] = 3.into();
+    a[1] = 9.into();
+
+    let mut b = [0.into(); FIELD_SIZE];
+    b[0] = 0xe5.into();
+    b[3] = 0x7c.into();
+
+    let mut c = [0.into(); FIELD_SIZE];
+    c[0] = 0xaa.into();
+    c[1] = 0x55.into();
+
+    let ab_c = basis.poly_mul_lnh(&basis.poly_mul_lnh(&a, &b), &c);
+    let a_bc = basis.poly_mul_lnh(&a, &basis.poly_mul_lnh(&b, &c));
+    assert_eq!(ab_c, a_bc);
+}
+
+#[test]
+fn poly_mul_lnh_distributive_over_addition() {
+    let basis = B {};
+
+    let mut a = [0.into(); FIELD_SIZE];
+    a[0] = 0x11.into();
+    a[2] = 0x22.into();
+
+    let mut b = [0.into(); FIELD_SIZE];
+    b[1] = 0x33.into();
+    b[3] = 0x44.into();
+
+    let mut c = [0.into(); FIELD_SIZE];
+    c[0] = 0x55.into();
+    c[2] = 0x66.into();
+
+    let b_plus_c = poly::add(&b, &c);
+
+    let lhs = basis.poly_mul_lnh(&a, &b_plus_c);
+    let rhs = poly::add(&basis.poly_mul_lnh(&a, &b), &basis.poly_mul_lnh(&a, &c));
+
+    assert_eq!(lhs, rhs);
+}
+
+#[test]
+fn poly_mul_lnh_sum_of_degrees() {
+    const DEGREE_A: usize = 3;
+    const DEGREE_B: usize = 5;
+
+    let basis = B {};
+
+    let mut a = [0.into(); FIELD_SIZE];
+    a[DEGREE_A] = 1.into();
+
+    let mut b = [0.into(); FIELD_SIZE];
+    b[DEGREE_B] = 1.into();
+
+    let result = basis.poly_mul_lnh(&a, &b);
+
+    assert_eq!(result.degree().unwrap(), DEGREE_A + DEGREE_B);
+}
+
+#[test]
+fn poly_div_lnh_by_constant_scales_coefficients() {
+    let basis = B {};
+    let c: Gf2p8_11d = 0x53.into();
+    let c_inv = c.inv_lut();
+
+    let mut a = [0.into(); FIELD_SIZE];
+    a[0] = 0xef.into();
+    a[3] = 0xcd.into();
+    a[7] = 0xab.into();
+
+    let mut b = [0.into(); FIELD_SIZE];
+    b[0] = c;
+
+    let (q, r) = basis.poly_div_lnh(&a, &b).unwrap();
+
+    assert_eq!(r, [0.into(); FIELD_SIZE]);
+
+    for i in 0..FIELD_SIZE {
+        assert_eq!(q[i], a[i].mul_lut(c_inv));
+    }
+}
+
+#[test]
+fn field_non_degeneracy() {
+    for k in 1..=7 {
+        let v_k = B::get_subspace_point_lut(1 << k);
+        let v_k_minus_1 = B::get_subspace_point_lut(1 << (k - 1));
+        let s_k_minus_1_v_k = B::eval_subspace_poly_lut(k - 1, v_k);
+        let s_k_minus_1_v_k_minus_1 = B::eval_subspace_poly_lut(k - 1, v_k_minus_1);
+        assert_ne!(s_k_minus_1_v_k_minus_1, s_k_minus_1_v_k);
+    }
+}
+
+#[test]
+fn encode_sharded_writes_parity() {
+    encode_sharded_writes_parity_t::<4, 2>();
+    encode_sharded_writes_parity_t::<8, 4>();
+    encode_sharded_writes_parity_t::<16, 8>();
+    encode_sharded_writes_parity_t::<32, 16>();
+    encode_sharded_writes_parity_t::<64, 32>();
+    encode_sharded_writes_parity_t::<128, 64>();
+    encode_sharded_writes_parity_t::<256, 128>();
+}
+
+fn encode_sharded_writes_parity_t<const N: usize, const T: usize>() {
+    const SHARD_LEN: usize = 32;
+    let rs = Rs::<N, T>::new();
+    let codeword = generate_sharded_lch_codeword(&rs, SHARD_LEN);
+    // Verify that the parity shards have been written into.
+    assert_ne!(
+        codeword[..T * SHARD_LEN],
+        vec![Gf2p8_11d::zero(); T * SHARD_LEN],
+    );
+}
+
+#[test]
+fn encode_sharded_generalizes_scalar() {
+    encode_sharded_generalizes_scalar_t::<4, 2>();
+    encode_sharded_generalizes_scalar_t::<8, 4>();
+    encode_sharded_generalizes_scalar_t::<16, 8>();
+    encode_sharded_generalizes_scalar_t::<32, 16>();
+    encode_sharded_generalizes_scalar_t::<64, 32>();
+    encode_sharded_generalizes_scalar_t::<128, 64>();
+    encode_sharded_generalizes_scalar_t::<256, 128>();
+}
+
+fn encode_sharded_generalizes_scalar_t<const N: usize, const T: usize>() {
+    let rs = Rs::<N, T>::new();
+    let scalar = generate_lch_codeword(&rs);
+    let sharded = generate_sharded_lch_codeword(&rs, 1);
+    assert_eq!(scalar, sharded);
+}
+
+#[test]
+fn recompute_max_corrupt_data_sharded() {
+    recompute_max_corrupt_data_sharded_t::<4, 2>();
+    recompute_max_corrupt_data_sharded_t::<8, 4>();
+    recompute_max_corrupt_data_sharded_t::<16, 8>();
+    recompute_max_corrupt_data_sharded_t::<32, 16>();
+    recompute_max_corrupt_data_sharded_t::<64, 32>();
+    recompute_max_corrupt_data_sharded_t::<128, 64>();
+    recompute_max_corrupt_data_sharded_t::<256, 128>();
+}
+
+fn recompute_max_corrupt_data_sharded_t<const N: usize, const T: usize>() {
+    const SHARD_LEN: usize = 16;
+    let rs = Rs::<N, T>::new();
+    let original = generate_sharded_lch_codeword(&rs, SHARD_LEN);
+    let mut received = original.clone();
+
+    // Corrupt data
+    received[T * SHARD_LEN..].fill(Gf2p8_11d::zero());
+
+    let mut workspace = vec![Gf2p8_11d::zero(); T * SHARD_LEN];
+    rs.recompute_data_from_parity_sharded(&mut received, &mut workspace, SHARD_LEN);
+    assert_eq!(received, original);
+}
+
+#[test]
+fn recover_erasures_sharded() {
+    recover_erasures_sharded_t::<2, 1>();
+    recover_erasures_sharded_t::<4, 1>();
+    recover_erasures_sharded_t::<4, 2>();
+    recover_erasures_sharded_t::<8, 1>();
+    recover_erasures_sharded_t::<8, 2>();
+    recover_erasures_sharded_t::<8, 4>();
+    recover_erasures_sharded_t::<16, 1>();
+    recover_erasures_sharded_t::<16, 2>();
+    recover_erasures_sharded_t::<16, 4>();
+    recover_erasures_sharded_t::<16, 8>();
+    recover_erasures_sharded_t::<32, 1>();
+    recover_erasures_sharded_t::<32, 2>();
+    recover_erasures_sharded_t::<32, 4>();
+    recover_erasures_sharded_t::<32, 8>();
+    recover_erasures_sharded_t::<32, 16>();
+    recover_erasures_sharded_t::<64, 1>();
+    recover_erasures_sharded_t::<64, 2>();
+    recover_erasures_sharded_t::<64, 4>();
+    recover_erasures_sharded_t::<64, 8>();
+    recover_erasures_sharded_t::<64, 16>();
+    recover_erasures_sharded_t::<64, 32>();
+    recover_erasures_sharded_t::<128, 1>();
+    recover_erasures_sharded_t::<128, 2>();
+    recover_erasures_sharded_t::<128, 4>();
+    recover_erasures_sharded_t::<128, 8>();
+    recover_erasures_sharded_t::<128, 16>();
+    recover_erasures_sharded_t::<128, 32>();
+    recover_erasures_sharded_t::<128, 64>();
+    recover_erasures_sharded_t::<256, 1>();
+    recover_erasures_sharded_t::<256, 2>();
+    recover_erasures_sharded_t::<256, 4>();
+    recover_erasures_sharded_t::<256, 8>();
+    recover_erasures_sharded_t::<256, 16>();
+    recover_erasures_sharded_t::<256, 32>();
+    recover_erasures_sharded_t::<256, 64>();
+    recover_erasures_sharded_t::<256, 128>();
+}
+
+fn recover_erasures_sharded_t<const N: usize, const T: usize>() {
+    const SHARD_LEN: usize = 1;
+
+    let rs = Rs::<N, T>::new();
+    let zero_shard = vec![Gf2p8_11d::zero(); SHARD_LEN];
+
+    let original = generate_sharded_lch_codeword(&rs, SHARD_LEN);
+    let mut received = original.clone();
+    let mut erasure_positions = Vec::new();
+
+    for (i, shard) in received
+        .chunks_mut(SHARD_LEN)
+        .enumerate()
+        .skip(1)
+        .take(T * 2 - 1)
+        .step_by(2)
+    {
+        shard.clone_from_slice(&zero_shard);
+        erasure_positions.push(i as u8);
+    }
+
+    let mut workspace = vec![Gf2p8_11d::zero(); N * SHARD_LEN];
+
+    assert!(rs.recover_erasures_sharded(
+        &mut received,
+        &mut workspace,
+        SHARD_LEN,
+        &erasure_positions
+    ));
+    assert_eq!(received, original, "N={N}, T={T}");
+}
+
+#[test]
+fn recover_erasures_sharded_clobber() {
+    recover_erasures_sharded_clobber_t::<2, 1>();
+    recover_erasures_sharded_clobber_t::<4, 1>();
+    recover_erasures_sharded_clobber_t::<4, 2>();
+    recover_erasures_sharded_clobber_t::<8, 1>();
+    recover_erasures_sharded_clobber_t::<8, 2>();
+    recover_erasures_sharded_clobber_t::<8, 4>();
+    recover_erasures_sharded_clobber_t::<16, 1>();
+    recover_erasures_sharded_clobber_t::<16, 2>();
+    recover_erasures_sharded_clobber_t::<16, 4>();
+    recover_erasures_sharded_clobber_t::<16, 8>();
+    recover_erasures_sharded_clobber_t::<32, 1>();
+    recover_erasures_sharded_clobber_t::<32, 2>();
+    recover_erasures_sharded_clobber_t::<32, 4>();
+    recover_erasures_sharded_clobber_t::<32, 8>();
+    recover_erasures_sharded_clobber_t::<32, 16>();
+    recover_erasures_sharded_clobber_t::<64, 1>();
+    recover_erasures_sharded_clobber_t::<64, 2>();
+    recover_erasures_sharded_clobber_t::<64, 4>();
+    recover_erasures_sharded_clobber_t::<64, 8>();
+    recover_erasures_sharded_clobber_t::<64, 16>();
+    recover_erasures_sharded_clobber_t::<64, 32>();
+    recover_erasures_sharded_clobber_t::<128, 1>();
+    recover_erasures_sharded_clobber_t::<128, 2>();
+    recover_erasures_sharded_clobber_t::<128, 4>();
+    recover_erasures_sharded_clobber_t::<128, 8>();
+    recover_erasures_sharded_clobber_t::<128, 16>();
+    recover_erasures_sharded_clobber_t::<128, 32>();
+    recover_erasures_sharded_clobber_t::<128, 64>();
+    recover_erasures_sharded_clobber_t::<256, 1>();
+    recover_erasures_sharded_clobber_t::<256, 2>();
+    recover_erasures_sharded_clobber_t::<256, 4>();
+    recover_erasures_sharded_clobber_t::<256, 8>();
+    recover_erasures_sharded_clobber_t::<256, 16>();
+    recover_erasures_sharded_clobber_t::<256, 32>();
+    recover_erasures_sharded_clobber_t::<256, 64>();
+    recover_erasures_sharded_clobber_t::<256, 128>();
+}
+
+fn recover_erasures_sharded_clobber_t<const N: usize, const T: usize>() {
+    const SHARD_LEN: usize = 1;
+
+    let rs = Rs::<N, T>::new();
+    let zero_shard = vec![Gf2p8_11d::zero(); SHARD_LEN];
+
+    let original = generate_sharded_lch_codeword(&rs, SHARD_LEN);
+    let mut received = original.clone();
+    let mut erasure_positions = Vec::new();
+
+    for (i, shard) in received
+        .chunks_mut(SHARD_LEN)
+        .enumerate()
+        .skip(1)
+        .take(T * 2 - 1)
+        .step_by(2)
+    {
+        shard.clone_from_slice(&zero_shard);
+        erasure_positions.push(i as u8);
+    }
+
+    assert!(rs.recover_erasures_sharded_clobber(&mut received, SHARD_LEN, &erasure_positions));
+
+    for i in 0..N {
+        if erasure_positions.contains(&u8::try_from(i).unwrap()) {
+            assert_eq!(
+                received[i * SHARD_LEN],
+                original[i * SHARD_LEN],
+                "N={N}, T={T}, i={i}",
+            );
+        }
+    }
+}

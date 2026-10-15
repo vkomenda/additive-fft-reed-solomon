@@ -1,8 +1,10 @@
 use super::{Kernel, shard_groups};
 use crate::{
     gf2p8lut::{Gf2p8Lut, SubspaceBasisLut},
-    poly_11d_lut::CantorBasisLut11d,
-    poly_11d_lut::generated::{GFNI_MUL_BY_LOG, GFNI_MUL_TABLE, cantor, standard},
+    poly_11d_lut::{
+        CantorBasisLut11d, StandardBasisLut11d,
+        generated::{GFNI_MUL_BY_LOG, GFNI_MUL_TABLE, cantor, standard},
+    },
 };
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, Z255};
 use core::arch::x86_64::*;
@@ -15,7 +17,7 @@ pub mod unrolled_11d_cantor {
     ));
 }
 
-pub mod unrolled_11d_stadard {
+pub mod unrolled_11d_standard {
     include!(concat!(
         env!("OUT_DIR"),
         "/unrolled_gfni_kernel_11d_standard.rs"
@@ -613,7 +615,12 @@ fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, mat: __m512i) {
 }
 
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
-fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+fn fft_sharded_radix2_last_cantor(
+    shards: &mut [Gf2p8_11d],
+    shard_len: usize,
+    k: u8,
+    beta: Gf2p8_11d,
+) {
     type K = GfniKernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
@@ -683,7 +690,7 @@ fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, be
 }
 
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
-fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+fn fft_sharded_cantor(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
     type K = GfniKernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
@@ -754,7 +761,7 @@ fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11
 }
 
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
-fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+fn ifft_sharded_cantor(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
     type K = GfniKernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
@@ -875,6 +882,223 @@ fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_1
         //     ),
         //     _ => K::ifft_sharded_dit4(&CantorBasisLut11d, shards, shard_len, k, beta),
         // }
+    }
+}
+
+#[target_feature(enable = "avx512f,avx512bw,gfni")]
+fn fft_sharded_radix2_last_standard(
+    shards: &mut [Gf2p8_11d],
+    shard_len: usize,
+    k: u8,
+    beta: Gf2p8_11d,
+) {
+    type K = GfniKernel<Gf2p8_11d, StandardBasisLut11d>;
+
+    if beta == Gf2p8_11d::zero() {
+        match k {
+            1 => K::fft_sharded_dit4_radix2_last_with(
+                shards,
+                shard_len,
+                k,
+                &standard::FFT_DIT4_GFNI_K1_O0,
+                &standard::FFT_DIT4_GFNI_K1_O0_TAIL,
+            ),
+            2 => K::fft_sharded_dit4_radix2_last_with(
+                shards,
+                shard_len,
+                k,
+                &standard::FFT_DIT4_GFNI_K2_O0,
+                &standard::FFT_DIT4_GFNI_K2_O0_TAIL,
+            ),
+            3 => K::fft_sharded_dit4_radix2_last_with(
+                shards,
+                shard_len,
+                k,
+                &standard::FFT_DIT4_GFNI_K3_O0,
+                &standard::FFT_DIT4_GFNI_K3_O0_TAIL,
+            ),
+            4 => K::fft_sharded_dit4_radix2_last_with(
+                shards,
+                shard_len,
+                k,
+                &standard::FFT_DIT4_GFNI_K4_O0,
+                &standard::FFT_DIT4_GFNI_K4_O0_TAIL,
+            ),
+            5 => K::fft_sharded_dit4_radix2_last_with(
+                shards,
+                shard_len,
+                k,
+                &standard::FFT_DIT4_GFNI_K5_O0,
+                &standard::FFT_DIT4_GFNI_K5_O0_TAIL,
+            ),
+            6 => K::fft_sharded_dit4_radix2_last_with(
+                shards,
+                shard_len,
+                k,
+                &standard::FFT_DIT4_GFNI_K6_O0,
+                &standard::FFT_DIT4_GFNI_K6_O0_TAIL,
+            ),
+            7 => K::fft_sharded_dit4_radix2_last_with(
+                shards,
+                shard_len,
+                k,
+                &standard::FFT_DIT4_GFNI_K7_O0,
+                &standard::FFT_DIT4_GFNI_K7_O0_TAIL,
+            ),
+            8 => K::fft_sharded_dit4_radix2_last_with(
+                shards,
+                shard_len,
+                k,
+                &standard::FFT_DIT4_GFNI_K8_O0,
+                &standard::FFT_DIT4_GFNI_K8_O0_TAIL,
+            ),
+            _ => unreachable!("k={k} must be in 1..=8"),
+        }
+    } else {
+        let t = standard::SUBSPACE_INDEX[beta.into_usize()] as usize;
+        K::fft_sharded_dit4_indexed(shards, shard_len, k, t);
+    }
+}
+
+#[target_feature(enable = "avx512f,avx512bw,gfni")]
+fn fft_sharded_standard(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+    type K = GfniKernel<Gf2p8_11d, StandardBasisLut11d>;
+
+    if beta == Gf2p8_11d::zero() {
+        match k {
+            0 => {}
+            1 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K1_O0,
+                standard::IFFT_DIT4_GFNI_K1_O0_TAIL.as_ref(),
+            ),
+            2 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K2_O0,
+                standard::IFFT_DIT4_GFNI_K2_O0_TAIL.as_ref(),
+            ),
+            3 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K3_O0,
+                standard::IFFT_DIT4_GFNI_K3_O0_TAIL.as_ref(),
+            ),
+            4 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K4_O0,
+                standard::IFFT_DIT4_GFNI_K4_O0_TAIL.as_ref(),
+            ),
+            5 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K5_O0,
+                standard::IFFT_DIT4_GFNI_K5_O0_TAIL.as_ref(),
+            ),
+            6 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K6_O0,
+                standard::IFFT_DIT4_GFNI_K6_O0_TAIL.as_ref(),
+            ),
+            7 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K7_O0,
+                standard::IFFT_DIT4_GFNI_K7_O0_TAIL.as_ref(),
+            ),
+            8 => K::fft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K8_O0,
+                standard::IFFT_DIT4_GFNI_K8_O0_TAIL.as_ref(),
+            ),
+            _ => unreachable!("k={k} must be in 0..=8"),
+        }
+    } else {
+        let t = standard::SUBSPACE_INDEX[beta.into_usize()] as usize;
+        K::fft_sharded_dit4_indexed(shards, shard_len, k, t);
+    }
+}
+
+#[target_feature(enable = "avx512f,avx512bw,gfni")]
+fn ifft_sharded_standard(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+    type K = GfniKernel<Gf2p8_11d, StandardBasisLut11d>;
+
+    if beta == Gf2p8_11d::zero() {
+        match k {
+            0 => {}
+            1 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K1_O0,
+                standard::IFFT_DIT4_GFNI_K1_O0_TAIL.as_ref(),
+            ),
+            2 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K2_O0,
+                standard::IFFT_DIT4_GFNI_K2_O0_TAIL.as_ref(),
+            ),
+            3 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K3_O0,
+                standard::IFFT_DIT4_GFNI_K3_O0_TAIL.as_ref(),
+            ),
+            4 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K4_O0,
+                standard::IFFT_DIT4_GFNI_K4_O0_TAIL.as_ref(),
+            ),
+            5 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K5_O0,
+                standard::IFFT_DIT4_GFNI_K5_O0_TAIL.as_ref(),
+            ),
+            6 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K6_O0,
+                standard::IFFT_DIT4_GFNI_K6_O0_TAIL.as_ref(),
+            ),
+            7 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K7_O0,
+                standard::IFFT_DIT4_GFNI_K7_O0_TAIL.as_ref(),
+            ),
+            8 => K::ifft_sharded_dit4_with(
+                shards,
+                shard_len,
+                k,
+                &standard::IFFT_DIT4_GFNI_K8_O0,
+                standard::IFFT_DIT4_GFNI_K8_O0_TAIL.as_ref(),
+            ),
+            _ => unreachable!("k={k} must be in 0..=8"),
+        }
+    } else {
+        let t = standard::SUBSPACE_INDEX[beta.into_usize()] as usize;
+        K::ifft_sharded_dit4_indexed(shards, shard_len, k, t);
     }
 }
 
@@ -1096,19 +1320,276 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for GfniKernel<Gf2p8_11d, CantorBasisL
 
     fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
         unsafe {
-            fft_sharded_radix2_last(shards, shard_len, k, beta);
+            fft_sharded_radix2_last_cantor(shards, shard_len, k, beta);
         }
     }
 
     fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
         unsafe {
-            fft_sharded(shards, shard_len, k, beta);
+            fft_sharded_cantor(shards, shard_len, k, beta);
         }
     }
 
     fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
         unsafe {
-            ifft_sharded(shards, shard_len, k, beta);
+            ifft_sharded_cantor(shards, shard_len, k, beta);
+        }
+    }
+
+    fn scale(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
+        let mat = unsafe { _mm512_set1_epi64(scalar.gfni_mul_matrix_lut() as i64) };
+        unsafe { scale(src, dst, dst.len(), mat) }
+    }
+
+    fn scale_add(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
+        let mat = unsafe { _mm512_set1_epi64(scalar.gfni_mul_matrix_lut() as i64) };
+        unsafe { scale_add(src, dst, dst.len(), mat) }
+    }
+
+    fn scale_in_place(dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
+        let mat = unsafe { _mm512_set1_epi64(scalar.gfni_mul_matrix_lut() as i64) };
+        unsafe { scale_in_place(dst, dst.len(), mat) }
+    }
+
+    fn scale_by_log(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], log_m: Z255) {
+        let m = unsafe { _mm512_set1_epi64(GFNI_MUL_BY_LOG[log_m.0 as usize] as i64) };
+        unsafe { scale(src, dst, dst.len(), m) };
+    }
+
+    fn scale_in_place_by_log(dst: &mut [Gf2p8_11d], log_m: Z255) {
+        let m = unsafe { _mm512_set1_epi64(GFNI_MUL_BY_LOG[log_m.0 as usize] as i64) };
+        unsafe { scale_in_place(dst, dst.len(), m) };
+    }
+}
+
+impl Kernel<Gf2p8_11d, StandardBasisLut11d> for GfniKernel<Gf2p8_11d, StandardBasisLut11d> {
+    const ALIGN: usize = 64;
+
+    type MulTable = u64;
+
+    const NODE_MUL: &'static [Self::MulTable; 510] = &standard::NODE_MUL_GFNI;
+
+    fn mul_table(twiddle: Gf2p8_11d) -> Self::MulTable {
+        twiddle.gfni_mul_matrix_lut()
+    }
+
+    fn is_zero_mul(m: &Self::MulTable) -> bool {
+        *m == 0
+    }
+
+    fn butterfly_fwd_dit2(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m: Self::MulTable,
+    ) {
+        unsafe {
+            butterfly_fwd_dit2(shards, shard_len, base, d, m);
+        }
+    }
+
+    fn butterfly_fwd_dit2_zero(shards: &mut [Gf2p8_11d], shard_len: usize, base: usize, d: usize) {
+        unsafe {
+            butterfly_fwd_dit2_zero(shards, shard_len, base, d);
+        }
+    }
+
+    fn butterfly_fwd_dit4(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m01: Self::MulTable,
+        m23: Self::MulTable,
+        m02: Self::MulTable,
+    ) {
+        unsafe {
+            butterfly_fwd_dit4(shards, shard_len, base, d, m01, m23, m02);
+        }
+    }
+
+    fn butterfly_fwd_dit4_zero(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m23: Self::MulTable,
+    ) {
+        unsafe {
+            butterfly_fwd_dit4_zero(shards, shard_len, base, d, m23);
+        }
+    }
+
+    fn butterfly_inv_dit2(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m: Self::MulTable,
+    ) {
+        unsafe {
+            butterfly_inv_dit2(shards, shard_len, base, d, m);
+        }
+    }
+
+    fn butterfly_inv_dit4(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m01: Self::MulTable,
+        m23: Self::MulTable,
+        m02: Self::MulTable,
+    ) {
+        unsafe {
+            butterfly_inv_dit4(shards, shard_len, base, d, m01, m23, m02);
+        }
+    }
+
+    fn butterfly_inv_dit4_zero(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        base: usize,
+        d: usize,
+        m23: Self::MulTable,
+    ) {
+        unsafe {
+            butterfly_inv_dit4_zero(shards, shard_len, base, d, m23);
+        }
+    }
+
+    fn fft_sharded_zero_padded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, log_support: u8) {
+        unsafe {
+            match (k, log_support) {
+                (1, 0) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k1_s1(shards, shard_len)
+                }
+                (2, 0) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k2_s1(shards, shard_len)
+                }
+                (2, 1) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k2_s2(shards, shard_len)
+                }
+                (3, 0) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k3_s1(shards, shard_len)
+                }
+                (3, 1) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k3_s2(shards, shard_len)
+                }
+                (3, 2) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k3_s4(shards, shard_len)
+                }
+                (4, 0) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k4_s1(shards, shard_len)
+                }
+                (4, 1) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k4_s2(shards, shard_len)
+                }
+                (4, 2) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k4_s4(shards, shard_len)
+                }
+                (4, 3) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k4_s8(shards, shard_len)
+                }
+                (5, 0) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k5_s1(shards, shard_len)
+                }
+                (5, 1) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k5_s2(shards, shard_len)
+                }
+                (5, 2) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k5_s4(shards, shard_len)
+                }
+                (5, 3) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k5_s8(shards, shard_len)
+                }
+                (5, 4) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k5_s16(shards, shard_len)
+                }
+                (6, 0) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k6_s1(shards, shard_len)
+                }
+                (6, 1) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k6_s2(shards, shard_len)
+                }
+                (6, 2) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k6_s4(shards, shard_len)
+                }
+                (6, 3) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k6_s8(shards, shard_len)
+                }
+                (6, 4) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k6_s16(shards, shard_len)
+                }
+                (6, 5) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k6_s32(shards, shard_len)
+                }
+                (7, 0) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k7_s1(shards, shard_len)
+                }
+                (7, 1) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k7_s2(shards, shard_len)
+                }
+                (7, 2) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k7_s4(shards, shard_len)
+                }
+                (7, 3) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k7_s8(shards, shard_len)
+                }
+                (7, 4) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k7_s16(shards, shard_len)
+                }
+                (7, 5) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k7_s32(shards, shard_len)
+                }
+                (7, 6) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k7_s64(shards, shard_len)
+                }
+                (8, 0) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k8_s1(shards, shard_len)
+                }
+                (8, 1) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k8_s2(shards, shard_len)
+                }
+                (8, 2) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k8_s4(shards, shard_len)
+                }
+                (8, 3) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k8_s8(shards, shard_len)
+                }
+                (8, 4) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k8_s16(shards, shard_len)
+                }
+                (8, 5) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k8_s32(shards, shard_len)
+                }
+                (8, 6) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k8_s64(shards, shard_len)
+                }
+                (8, 7) => {
+                    unrolled_11d_standard::fft_sharded_zero_padded_gfni_k8_s128(shards, shard_len)
+                }
+                _ => unreachable!("k={k} must be in 1..=8 and log_support must be < k"),
+            }
+        }
+    }
+
+    fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+        unsafe {
+            fft_sharded_radix2_last_standard(shards, shard_len, k, beta);
+        }
+    }
+
+    fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+        unsafe {
+            fft_sharded_standard(shards, shard_len, k, beta);
+        }
+    }
+
+    fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+        unsafe {
+            ifft_sharded_standard(shards, shard_len, k, beta);
         }
     }
 
@@ -1140,102 +1621,18 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for GfniKernel<Gf2p8_11d, CantorBasisL
 
 #[cfg(test)]
 #[cfg(native_gfni)]
-mod tests {
-    use super::*;
-    use crate::{kernel::lut_kernel, poly_11d_lut::CantorBasisLut11d};
-    use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
+mod test_cantor {
+    use crate::poly_11d_lut::CantorBasisLut11d;
 
-    #[test]
-    fn debug_gfni_cfg() {
-        let target_arch_x86_64 = cfg!(target_arch = "x86_64");
-        let avx512f = is_x86_feature_detected!("avx512f");
-        let avx512bw = is_x86_feature_detected!("avx512bw");
-        let gfni = is_x86_feature_detected!("gfni");
+    type B = CantorBasisLut11d;
+    include!("gfni_kernel_tests.rs");
+}
 
-        assert!(target_arch_x86_64);
-        assert!(avx512f);
-        assert!(avx512bw);
-        assert!(gfni);
-    }
+#[cfg(test)]
+#[cfg(native_gfni)]
+mod test_standard {
+    use crate::poly_11d_lut::StandardBasisLut11d;
 
-    fn make_shards(n: usize, shard_len: usize) -> Vec<Gf2p8_11d> {
-        (0..n)
-            .flat_map(|i| {
-                (0..shard_len)
-                    .map(|j| Gf2p8_11d::from((i * 37 + j * 13 + 1) as u8))
-                    .collect::<Vec<_>>()
-            })
-            .collect()
-    }
-
-    /// GFNI FFT produces the same evaluations as the LUT butterfly.
-    /// shard_len covers: pure tail (63), exact ZMM (64), ZMM + tail (65), two ZMMs (128).
-    #[test]
-    fn fft_gfni_matches_lut() {
-        for shard_len in [1, 63, 64, 65, 128] {
-            for k in 1u8..=8 {
-                let n = 1 << k;
-                let max_log_offset = k.min(7);
-                for log_offset in 0..=max_log_offset {
-                    let beta = CantorBasisLut11d::get_subspace_point_lut(1 << log_offset);
-                    let mut lut = make_shards(n, shard_len);
-                    let mut gfni = lut.clone();
-
-                    lut_kernel::fft_sharded_recursive::<_, CantorBasisLut11d>(
-                        &mut lut, shard_len, k, beta,
-                    );
-                    unsafe {
-                        fft_sharded(&mut gfni, shard_len, k, beta);
-                    }
-
-                    assert_eq!(lut, gfni, "k={k} shard_len={shard_len}");
-                }
-            }
-        }
-    }
-
-    /// GFNI IFFT produces the same coefficients as the LUT butterfly.
-    #[test]
-    fn ifft_matches_lut() {
-        for shard_len in [1, 63, 64, 65, 128] {
-            for k in 1u8..=8 {
-                let n = 1 << k;
-                let max_log_offset = k.min(7);
-                for log_offset in 0..=max_log_offset {
-                    let beta = CantorBasisLut11d::get_subspace_point_lut(1 << log_offset);
-                    let mut lut = make_shards(n, shard_len);
-                    let mut gfni = lut.clone();
-
-                    lut_kernel::ifft_sharded_recursive::<_, CantorBasisLut11d>(
-                        &mut lut, shard_len, k, beta,
-                    );
-                    unsafe {
-                        ifft_sharded(&mut gfni, shard_len, k, beta);
-                    }
-
-                    assert_eq!(lut, gfni, "k={k} shard_len={shard_len}");
-                }
-            }
-        }
-    }
-
-    /// IFFT;FFT ~= Id.
-    #[test]
-    fn ifft_then_fft_is_identity() {
-        for shard_len in [1, 63, 64, 65] {
-            for k in 1u8..8 {
-                let n = 1 << k;
-                let beta = CantorBasisLut11d::get_subspace_point_lut(n as u8);
-                let original = make_shards(n, shard_len);
-                let mut data = original.clone();
-
-                unsafe {
-                    ifft_sharded(&mut data, shard_len, k, beta);
-                    fft_sharded(&mut data, shard_len, k, beta);
-                }
-
-                assert_eq!(data, original, "k={k} shard_len={shard_len}");
-            }
-        }
-    }
+    type B = StandardBasisLut11d;
+    include!("gfni_kernel_tests.rs");
 }

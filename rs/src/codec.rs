@@ -689,14 +689,14 @@ where
 mod test {
     use super::*;
     use crate::{
-        RsLut,
+        RsLutCantor,
         poly_11d_lut::{CantorBasisLut11d, generated::EXP_TABLE},
     };
     use additive_fft_reed_solomon_gf2p8::Gf2p8;
 
     #[test]
     fn single_erasure_log_eval() {
-        let rs: RsLut<256, 128> = Default::default();
+        let rs: RsLutCantor<256, 128> = Default::default();
         let ssp = |k: u8| CantorBasisLut11d::get_subspace_point_lut(k);
 
         for p in 0..=255 {
