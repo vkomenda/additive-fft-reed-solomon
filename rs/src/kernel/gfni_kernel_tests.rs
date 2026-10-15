@@ -2,19 +2,6 @@ use super::*;
 use crate::kernel::lut_kernel;
 use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
 
-#[test]
-fn debug_gfni_cfg() {
-    let target_arch_x86_64 = cfg!(target_arch = "x86_64");
-    let avx512f = is_x86_feature_detected!("avx512f");
-    let avx512bw = is_x86_feature_detected!("avx512bw");
-    let gfni = is_x86_feature_detected!("gfni");
-
-    assert!(target_arch_x86_64);
-    assert!(avx512f);
-    assert!(avx512bw);
-    assert!(gfni);
-}
-
 fn make_shards(n: usize, shard_len: usize) -> Vec<Gf2p8_11d> {
     (0..n)
         .flat_map(|i| {

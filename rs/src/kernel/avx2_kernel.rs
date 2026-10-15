@@ -1420,7 +1420,7 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for Avx2Kernel<Gf2p8_11d, StandardBa
 
     type MulTable = MulTable;
 
-    const NODE_MUL: &'static [Self::MulTable; 510] = &cantor::NODE_MUL_NIBBLE;
+    const NODE_MUL: &'static [Self::MulTable; 510] = &standard::NODE_MUL_NIBBLE;
 
     fn mul_table(t: Gf2p8_11d) -> Self::MulTable {
         &NIBBLE_MUL_TABLE[t.into_usize()]

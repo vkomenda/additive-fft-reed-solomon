@@ -576,7 +576,7 @@ fn write_dit4_schedules<G: Gf2p8>(
 /// kernel/mod.rs.
 fn write_node_mul_lut<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
-    sub_poly_luts: &[[G; FIELD_SIZE]; 9],
+    sub_poly_luts: &[[G; FIELD_SIZE]; 8],
     subspace_points: &[G; FIELD_SIZE],
 ) -> io::Result<()> {
     writeln!(f, "pub static NODE_MUL_LUT: [&'static [u8; 256]; 510] = [")?;
@@ -606,7 +606,7 @@ fn write_node_mul_lut<G: Gf2p8 + fmt::Debug>(
 
 fn write_node_mul_nibble<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
-    sub_poly_luts: &[[G; FIELD_SIZE]; 9],
+    sub_poly_luts: &[[G; FIELD_SIZE]; 8],
     subspace_points: &[G; FIELD_SIZE],
 ) -> io::Result<()> {
     writeln!(
@@ -639,7 +639,7 @@ fn write_node_mul_nibble<G: Gf2p8 + fmt::Debug>(
 
 fn write_node_mul_gfni<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
-    sub_poly_luts: &[[G; FIELD_SIZE]; 9],
+    sub_poly_luts: &[[G; FIELD_SIZE]; 8],
     subspace_points: &[G; FIELD_SIZE],
 ) -> io::Result<()> {
     writeln!(f, "pub static NODE_MUL_GFNI: [u64; 510] = [")?;
@@ -701,11 +701,11 @@ fn write_basis_gens(
     write!(f, "\npub static SUBSPACE_INDEX: [u8; {}] = [", num_points)?;
     write_bytes(&mut f, subspace_index.into_iter(), false);
 
-    let sub_poly_luts = basis.gen_all_subspace_poly_luts();
+    let sub_poly_luts = basis.gen_all_norm_subspace_poly_luts(inv_table);
 
     writeln!(
         f,
-        "\npub static SUBSPACE_POLY_VALUES: [[u8; {}]; 9] = [",
+        "\npub static SUBSPACE_POLY_VALUES: [[u8; {}]; 8] = [",
         FIELD_SIZE,
     )?;
     for lut in sub_poly_luts {

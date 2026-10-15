@@ -99,6 +99,7 @@ impl SubspaceBasisLut<Gf2p8_11d> for StandardBasisLut11d {
 mod tests {
     use super::*;
     use crate::poly_11d_lut::generated::{cantor, standard};
+    use crate::poly_arith::{CantorBasisPolyArith, PolySliceArith};
     use additive_fft_reed_solomon_gf2p8::{CantorBasis11d, FIELD_SIZE, SubspaceBasis};
 
     #[test]
@@ -124,6 +125,24 @@ mod tests {
                 assert_eq!(actual, u8::from(expected));
             }
         }
+    }
+
+    #[test]
+    fn poly_mul_lnh_sum_of_degrees() {
+        const DEGREE_A: usize = 3;
+        const DEGREE_B: usize = 5;
+
+        let basis = CantorBasisLut11d;
+
+        let mut a = [0.into(); FIELD_SIZE];
+        a[DEGREE_A] = 1.into();
+
+        let mut b = [0.into(); FIELD_SIZE];
+        b[DEGREE_B] = 1.into();
+
+        let result = basis.poly_mul_lnh(&a, &b);
+
+        assert_eq!(result.degree().unwrap(), DEGREE_A + DEGREE_B);
     }
 
     #[test]

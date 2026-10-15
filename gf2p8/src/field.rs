@@ -386,6 +386,16 @@ pub trait SubspaceBasis<G: Gf2p8>:
         luts
     }
 
+    /// Generates normalised subspace polynomials norm(s_l)(x) = s_l(x) / s_l(v_l), for l in 0..8.
+    fn gen_all_norm_subspace_poly_luts(&self, inv: &[u8; FIELD_SIZE]) -> [[G; FIELD_SIZE]; 8] {
+        let s = self.gen_all_subspace_poly_luts();
+        let basis = self.as_ref();
+        std::array::from_fn(|l| {
+            let fac = inv[s[l][basis[l].into_usize()].into_usize()];
+            std::array::from_fn(|x| s[l][x].mul(fac.into()))
+        })
+    }
+
     /// Generates 1/p_i values, for 0 <= i < 256.
     fn gen_normalization_factors(
         &self,
@@ -440,7 +450,7 @@ pub trait SubspaceBasis<G: Gf2p8>:
     /// satisfying norm(s_i)(v_i) = 1, for i in 0..=7.
     fn gen_norm_subspace_poly_deriv_lut(
         &self,
-        sub_poly: &[[G; FIELD_SIZE]; 9],
+        sub_poly: &[[G; FIELD_SIZE]; 8],
         inv: &[u8; FIELD_SIZE],
     ) -> [G; 8] {
         let derivs = self.gen_subspace_poly_deriv_lut();

@@ -2,7 +2,7 @@ use super::*;
 use crate::codec::Codec;
 use crate::gf2p8lut::SubspaceBasisLut;
 use crate::kernel::lut_kernel::LutKernel;
-use crate::poly_arith::{CantorBasisPolyArith, CantorBasisPolySliceArith, PolySliceArith, poly};
+use crate::poly_arith::{CantorBasisPolyArith, CantorBasisPolySliceArith, poly};
 use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8};
 
 type Rs<const N: usize, const T: usize> = Codec<Gf2p8_11d, B, LutKernel<Gf2p8_11d, B>, N, T>;
@@ -279,24 +279,6 @@ fn poly_mul_lnh_distributive_over_addition() {
     let rhs = poly::add(&basis.poly_mul_lnh(&a, &b), &basis.poly_mul_lnh(&a, &c));
 
     assert_eq!(lhs, rhs);
-}
-
-#[test]
-fn poly_mul_lnh_sum_of_degrees() {
-    const DEGREE_A: usize = 3;
-    const DEGREE_B: usize = 5;
-
-    let basis = B {};
-
-    let mut a = [0.into(); FIELD_SIZE];
-    a[DEGREE_A] = 1.into();
-
-    let mut b = [0.into(); FIELD_SIZE];
-    b[DEGREE_B] = 1.into();
-
-    let result = basis.poly_mul_lnh(&a, &b);
-
-    assert_eq!(result.degree().unwrap(), DEGREE_A + DEGREE_B);
 }
 
 #[test]

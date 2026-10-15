@@ -492,3 +492,27 @@ pub(crate) fn shard_groups<G, const R: usize>(
 fn node_mul_index(l: u8, x: usize) -> usize {
     (512 - (512 >> l)) + (x >> l)
 }
+
+#[cfg(test)]
+mod test_cantor {
+    use super::lut_kernel;
+    use crate::poly_11d_lut::CantorBasisLut11d;
+    use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
+
+    type B = CantorBasisLut11d;
+    type K = lut_kernel::LutKernel<Gf2p8_11d, CantorBasisLut11d>;
+
+    include!("tests.rs");
+}
+
+#[cfg(test)]
+mod test_standard {
+    use super::lut_kernel;
+    use crate::poly_11d_lut::StandardBasisLut11d;
+    use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
+
+    type B = StandardBasisLut11d;
+    type K = lut_kernel::LutKernel<Gf2p8_11d, StandardBasisLut11d>;
+
+    include!("tests.rs");
+}

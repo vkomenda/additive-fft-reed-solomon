@@ -87,7 +87,7 @@ fn ifft_rec_avx2_matches_lut() {
 #[test]
 fn ifft_then_fft_avx2_is_identity() {
     for shard_len in [1, 15, 16, 17] {
-        for k in 1u8..=4 {
+        for k in 1u8..8 {
             let n = 1 << k;
             let beta = B::get_subspace_point_lut(n as u8);
             let original = make_shards(n, shard_len);

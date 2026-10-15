@@ -376,14 +376,12 @@ where
         }
         let t_log = T.trailing_zeros() as u8;
 
-        // Step 1: syndrome
         let syndrome = self.compute_syndrome_scalar(received);
         if syndrome.iter().take(T).all(|&c| c == G::zero()) {
             return true;
         }
 
-        // Step 2: key equation
-        let (v1, lambda) = match self.solve_key_equation_hgcd(&syndrome, t_log) {
+        let (v1, mut lambda) = match self.solve_key_equation_hgcd(&syndrome, t_log) {
             Some(pair) => pair,
             None => {
                 // TODO: error type enum
@@ -399,7 +397,6 @@ where
             }
         };
 
-        // Step 3: root-finding - one T-point FFT per chunk
         let mut error_indices: Vec<usize> = Vec::with_capacity(deg_lambda);
 
         'root: for chunk in 0..(N / T) {
@@ -421,8 +418,7 @@ where
             return false; // too few roots, uncorrectable
         }
 
-        // Step 4: error values - same per-chunk FFT structure as step 3
-        let lambdap = poly::deriv_lnh(&lambda);
+        K::formal_derivative(&mut lambda, 1, N.trailing_zeros() as u8);
 
         for chunk in 0..(N / T) {
             let chunk_errors: Vec<(usize, usize)> = error_indices
@@ -438,7 +434,7 @@ where
             let beta = B::get_subspace_point_lut((chunk * T) as u8);
 
             let mut q_evals = v1;
-            let mut lp_evals = lambdap;
+            let mut lp_evals = lambda;
             self.basis.fft_scalar(&mut q_evals[..T], t_log, beta);
             self.basis.fft_scalar(&mut lp_evals[..T], t_log, beta);
 
