@@ -278,10 +278,9 @@ mod tests {
         let basis = CantorBasis11d::new();
         let (exp_table, log_table) = Gf2p8_11d::exp_log_tables();
         let inv_table = Gf2p8_11d::inv_table(&exp_table, &log_table);
-        let sub_poly_luts = basis.gen_all_norm_subspace_poly_luts(&inv_table);
         assert!(
             basis
-                .gen_norm_subspace_poly_deriv_lut(&sub_poly_luts, &inv_table)
+                .gen_norm_subspace_poly_deriv_lut(&inv_table)
                 .iter()
                 .all(|d| *d == Gf2p8_11d::one())
         );
@@ -292,10 +291,9 @@ mod tests {
         let basis = StandardBasis11d::new();
         let (exp_table, log_table) = Gf2p8_11d::exp_log_tables();
         let inv_table = Gf2p8_11d::inv_table(&exp_table, &log_table);
-        let sub_poly_luts = basis.gen_all_norm_subspace_poly_luts(&inv_table);
         assert!(
             basis
-                .gen_norm_subspace_poly_deriv_lut(&sub_poly_luts, &inv_table)
+                .gen_norm_subspace_poly_deriv_lut(&inv_table)
                 .iter()
                 .enumerate()
                 .all(|(i, d)| if i == 0 {

@@ -30,7 +30,6 @@ where
         }
     }
 
-    #[allow(unused)]
     pub(crate) fn solve_key_equation_eea(&self, syndrome: &[G; N]) -> Option<([G; N], [G; N])> {
         let mut st = [G::zero(); N];
         st[T] = G::one();
@@ -194,8 +193,8 @@ where
         (z_r0, z_r1, m_r)
     }
 
-    /// This is functionally equivalent to `solve_key_equation_eea` and is what the LNH paper
-    /// have.
+    /// This is functionally equivalent to `solve_key_equation_eea` when `B::UNIT_CARRY`. Used in
+    /// the LNH paper.
     pub(crate) fn solve_key_equation_hgcd(
         &self,
         syndrome: &[G; N],
@@ -382,7 +381,13 @@ where
             return true;
         }
 
-        let (v1, mut lambda) = match self.solve_key_equation_hgcd(&syndrome, t_log) {
+        let solution = if B::UNIT_CARRY {
+            self.solve_key_equation_hgcd(&syndrome, t_log)
+        } else {
+            self.solve_key_equation_eea(&syndrome)
+        };
+
+        let (v1, mut lambda) = match solution {
             Some(pair) => pair,
             None => {
                 // TODO: error type enum
@@ -420,6 +425,11 @@ where
         }
 
         K::formal_derivative(&mut lambda, 1, N.trailing_zeros() as u8);
+        let c_t = if !B::UNIT_DERIVS {
+            B::subspace_poly_deriv_lut()[t_log as usize]
+        } else {
+            G::one()
+        };
 
         for chunk in 0..(N / T) {
             let chunk_errors: Vec<(usize, usize)> = error_indices
@@ -444,7 +454,12 @@ where
                 if lp == G::zero() {
                     continue;
                 }
-                let error_val = q_evals[offset].mul_lut(lp.inv_lut());
+                let error_val1 = q_evals[offset].mul_lut(lp.inv_lut());
+                let error_val = if !B::UNIT_DERIVS {
+                    c_t.mul_lut(error_val1)
+                } else {
+                    error_val1
+                };
                 received[global] = received[global].add(error_val);
             }
         }
@@ -488,18 +503,6 @@ where
         }
 
         (lambda, denoms)
-    }
-
-    #[allow(unused)]
-    pub(crate) fn forney_sharded(
-        q: &[&[G]],
-        erasure_positions: &[u8],
-        denoms: &[G],
-        out: &mut [&mut [G]], // one shard per erased position, in order
-    ) {
-        for (k, (&pos, &d)) in erasure_positions.iter().zip(denoms).enumerate() {
-            K::scale(q[pos as usize], out[k], d.inv_lut());
-        }
     }
 
     /// Recovers the shards in `received` with indices in `erasure_positions` using all the other
@@ -588,11 +591,22 @@ where
         K::fft_sharded_zero_padded(workspace, shard_len, n_log, log_support);
 
         // (Forney) Eq 78: u(ω_i) = q(ω_i) / λ'(ω_i)
+        let c_t = if !B::UNIT_DERIVS {
+            B::subspace_poly_deriv_lut()[t_log as usize]
+        } else {
+            G::one()
+        };
         for (&pos, d) in erasure_positions.iter().zip(denoms) {
+            let d_inv = d.inv_lut();
+            let factor = if !B::UNIT_DERIVS {
+                c_t.mul_lut(d_inv)
+            } else {
+                d_inv
+            };
             K::scale(
                 &workspace[pos as usize * shard_len..(pos as usize + 1) * shard_len],
                 &mut received[pos as usize * shard_len..(pos as usize + 1) * shard_len],
-                d.inv_lut(),
+                factor,
             );
         }
 

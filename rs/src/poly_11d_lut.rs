@@ -43,6 +43,8 @@ pub struct CantorBasisLut11d;
 impl SubspaceBasisLut<Gf2p8_11d> for CantorBasisLut11d {
     const UNIT_DERIVS: bool = true;
 
+    const UNIT_CARRY: bool = true;
+
     fn get_basis_point_lut(i: u8) -> Gf2p8_11d {
         generated::cantor::BASIS[i as usize].into()
     }
@@ -69,6 +71,8 @@ pub struct StandardBasisLut11d;
 
 impl SubspaceBasisLut<Gf2p8_11d> for StandardBasisLut11d {
     const UNIT_DERIVS: bool = false;
+
+    const UNIT_CARRY: bool = false;
 
     fn get_basis_point_lut(i: u8) -> Gf2p8_11d {
         generated::standard::BASIS[i as usize].into()

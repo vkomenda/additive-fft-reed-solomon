@@ -527,7 +527,7 @@ fn write_dit4_schedules<G: Gf2p8>(
 
             writeln!(
                 f,
-                "pub static {prefix}: [[{}; 3]; {}] = [",
+                "\npub static {prefix}: [[{}; 3]; {}] = [",
                 target.ty,
                 body.len()
             )?;
@@ -565,7 +565,6 @@ fn write_dit4_schedules<G: Gf2p8>(
                 }
                 writeln!(f, "];")?;
             }
-            writeln!(f)?;
         }
     }
     Ok(())
@@ -714,12 +713,9 @@ fn write_basis_gens(
     }
     writeln!(f, "];")?;
 
-    let deriv_const: [Gf2p8_11d; 8] =
-        basis.gen_norm_subspace_poly_deriv_lut(&sub_poly_luts, inv_table);
+    let deriv_const: [Gf2p8_11d; 8] = basis.gen_norm_subspace_poly_deriv_lut(inv_table);
     write!(f, "\npub static SUBSPACE_POLY_DERIVS: [u8; 8] = [")?;
     write_points(&mut f, deriv_const.into_iter(), false);
-
-    let sub_poly_luts8: &[[Gf2p8_11d; 256]; 8] = sub_poly_luts[..8].try_into().unwrap();
 
     let cases: Vec<_> = (1..=8u8)
         .map(|k| (k, 0))
@@ -728,21 +724,21 @@ fn write_basis_gens(
     write_dit4_schedules(
         &mut f,
         &lut_target(),
-        sub_poly_luts8,
+        &sub_poly_luts,
         &subspace_points,
         &cases,
     )?;
     write_dit4_schedules(
         &mut f,
         &nibble_target(),
-        sub_poly_luts8,
+        &sub_poly_luts,
         &subspace_points,
         &cases,
     )?;
     write_dit4_schedules(
         &mut f,
         &gfni_target(),
-        sub_poly_luts8,
+        &sub_poly_luts,
         &subspace_points,
         &cases,
     )?;
@@ -753,25 +749,25 @@ fn write_basis_gens(
 
     let dest_kernel_lut = Path::new(&out_dir).join(format!("unrolled_lut_kernel_11d_{suffix}.rs"));
     let mut fkl = BufWriter::new(File::create(&dest_kernel_lut)?);
-    LUT.write_unrolled_kernel(&mut fkl, basis.as_ref(), sub_poly_luts8, &subspace_points)
+    LUT.write_unrolled_kernel(&mut fkl, basis.as_ref(), &sub_poly_luts, &subspace_points)
         .expect("LUT kernel");
 
     let dest_kernel_avx2 =
         Path::new(&out_dir).join(format!("unrolled_avx2_kernel_11d_{suffix}.rs"));
     let mut fkg = BufWriter::new(File::create(&dest_kernel_avx2)?);
-    AVX2.write_unrolled_kernel(&mut fkg, basis.as_ref(), sub_poly_luts8, &subspace_points)
+    AVX2.write_unrolled_kernel(&mut fkg, basis.as_ref(), &sub_poly_luts, &subspace_points)
         .expect("AVX2 kernel");
 
     let dest_kernel_neon =
         Path::new(&out_dir).join(format!("unrolled_neon_kernel_11d_{suffix}.rs"));
     let mut fkg = BufWriter::new(File::create(&dest_kernel_neon)?);
-    NEON.write_unrolled_kernel(&mut fkg, basis.as_ref(), sub_poly_luts8, &subspace_points)
+    NEON.write_unrolled_kernel(&mut fkg, basis.as_ref(), &sub_poly_luts, &subspace_points)
         .expect("NEON kernel");
 
     let dest_kernel_gfni =
         Path::new(&out_dir).join(format!("unrolled_gfni_kernel_11d_{suffix}.rs"));
     let mut fkg = BufWriter::new(File::create(&dest_kernel_gfni)?);
-    GFNI.write_unrolled_kernel(&mut fkg, basis.as_ref(), sub_poly_luts8, &subspace_points)
+    GFNI.write_unrolled_kernel(&mut fkg, basis.as_ref(), &sub_poly_luts, &subspace_points)
         .expect("GFNI kernel");
 
     Ok(())

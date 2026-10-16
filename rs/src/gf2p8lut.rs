@@ -42,6 +42,9 @@ pub trait SubspaceBasisLut<G: Gf2p8Lut> {
     /// derivative to an XOR walk. `true` for all Cantor bases.
     const UNIT_DERIVS: bool;
 
+    /// norm(s)_j^2 = norm(s)_j + norm(s)_{j+1} for the normalised subspace polynomials.
+    const UNIT_CARRY: bool;
+
     fn get_basis_point_lut(i: u8) -> G;
 
     /// Evaluates the erasure locator polynomial E(x) at point alpha_i.
@@ -91,34 +94,3 @@ pub trait SubspaceBasisLut<G: Gf2p8Lut> {
 
     fn subspace_poly_deriv_lut() -> &'static [G; 8];
 }
-
-// /// The Lin-Chung-Han basis
-// pub trait LchBasisLut<G: Gf2p8Lut>: SubspaceBasisLut<G> {
-//     /// Evaluate the i-th LCH basis polynomial at point x.  The default implementation assumes a
-//     /// Cantor basis in the evaluation domain, which doesn't require scaling terms by a
-//     /// normalization factor.
-//     fn eval_lch_basis_poly(&self, i: u8, x: G) -> G {
-//         let mut result: G = G::one();
-
-//         for j in 0u8..8 {
-//             if (i >> j) & 1 == 1 {
-//                 let s_j_x = self.eval_subspace_poly_lut(j, x);
-//                 result = result.mul(s_j_x);
-//             }
-//         }
-
-//         result
-//     }
-
-//     /// $\overline{D}_h (x)$
-//     fn eval_transform_domain_poly(&self, coeffs: &[G], x: G) -> G {
-//         let mut result: G = G::zero();
-
-//         for (i, d) in coeffs.iter().enumerate() {
-//             let term = d.mul(self.eval_lch_basis_poly(i as u8, x));
-//             result = result.add(term);
-//         }
-
-//         result
-//     }
-// }
