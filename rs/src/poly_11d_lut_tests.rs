@@ -1,11 +1,8 @@
 use super::*;
-use crate::codec::Codec;
 use crate::gf2p8lut::SubspaceBasisLut;
 use crate::kernel::lut_kernel::LutKernel;
 use crate::poly_arith::{SubspaceBasisPolyArith, SubspaceBasisPolySliceArith, poly};
 use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8};
-
-type Rs<const N: usize, const T: usize> = Codec<Gf2p8_11d, B, LutKernel<Gf2p8_11d, B>, N, T>;
 
 fn generate_lch_codeword<const N: usize, const T: usize>(rs: &Rs<N, T>) -> Vec<Gf2p8_11d> {
     let k = N - T;

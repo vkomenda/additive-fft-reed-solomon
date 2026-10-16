@@ -11,22 +11,53 @@ use crate::{
 use std::marker::PhantomData;
 use std::mem;
 
-#[derive(Copy, Clone, Default)]
-pub struct Codec<G, B, K, const N: usize, const T: usize> {
-    basis: B,
-    _kernel: PhantomData<(G, K)>,
+/// Placement of the message and parity blocks among the N evaluation points.
+pub trait Layout {
+    /// Point index where message chunk `c` begins.
+    fn message_offset(c: usize, t: usize) -> usize;
+    /// Point index where the parity block begins, for k = N - T message shards.
+    fn parity_offset(k: usize) -> usize;
 }
 
-impl<G, B, K, const N: usize, const T: usize> Codec<G, B, K, N, T>
+/// Parity at points 0..T.
+pub struct ParityFirst;
+impl Layout for ParityFirst {
+    fn message_offset(c: usize, t: usize) -> usize {
+        (c + 1) * t
+    }
+    fn parity_offset(_: usize) -> usize {
+        0
+    }
+}
+
+/// Message at points 0..k.
+pub struct ParityLast;
+impl Layout for ParityLast {
+    fn message_offset(c: usize, t: usize) -> usize {
+        c * t
+    }
+    fn parity_offset(k: usize) -> usize {
+        k
+    }
+}
+
+#[derive(Copy, Clone, Default)]
+pub struct Codec<G, B, K, L, const N: usize, const T: usize> {
+    basis: B,
+    _phant: PhantomData<(G, K, L)>,
+}
+
+impl<G, B, K, L, const N: usize, const T: usize> Codec<G, B, K, L, N, T>
 where
     G: Gf2p8Lut,
     B: SubspaceBasisLut<G> + Default,
     K: Kernel<G, B>,
+    L: Layout,
 {
     pub fn new() -> Self {
         Self {
             basis: B::default(),
-            _kernel: PhantomData,
+            _phant: PhantomData,
         }
     }
 
@@ -275,20 +306,25 @@ where
 
         debug_assert!(k / T >= 1);
 
+        let chunk_shift = |c: usize| B::get_subspace_point_lut(L::message_offset(c, T) as u8);
+
         // The first chunk seeds the accumulator, so parity needs no zeroing.
         parity.copy_from_slice(&message[..parity_len]);
-        K::ifft_sharded(parity, shard_len, t_log, B::get_subspace_point_lut(T as u8));
+        K::ifft_sharded(parity, shard_len, t_log, chunk_shift(0));
 
-        for i in 1..k / T {
-            workspace.copy_from_slice(&message[i * parity_len..(i + 1) * parity_len]);
-            let omega = B::get_subspace_point_lut(((i + 1) * T) as u8);
-            K::ifft_sharded(workspace, shard_len, t_log, omega);
-            for (p, w) in parity.iter_mut().zip(workspace.iter()) {
-                *p = p.add(*w);
-            }
+        for c in 1..k / T {
+            workspace.copy_from_slice(&message[c * parity_len..(c + 1) * parity_len]);
+            K::ifft_sharded(workspace, shard_len, t_log, chunk_shift(c));
+            parity.poly_add_in_place(workspace);
         }
 
-        K::fft_sharded(parity, shard_len, t_log, G::zero());
+        let parity_offset = L::parity_offset(k) as u8;
+        let beta = if parity_offset == 0 {
+            G::zero()
+        } else {
+            B::get_subspace_point_lut(parity_offset)
+        };
+        K::fft_sharded(parity, shard_len, t_log, beta);
     }
 
     /// Syndrome calculation (scalar).
@@ -707,7 +743,7 @@ mod test {
 
     #[test]
     fn single_erasure_log_eval() {
-        let rs: RsLutCantor<256, 128> = Default::default();
+        let rs: RsLutCantor<256, 128> = Codec::new();
         let ssp = |k: u8| CantorBasisLut11d::get_subspace_point_lut(k);
 
         for p in 0..=255 {
