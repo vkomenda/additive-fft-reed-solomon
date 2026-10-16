@@ -276,9 +276,9 @@ mod tests {
     #[test]
     fn norm_subspace_poly_deriv_luts() {
         let basis = CantorBasis11d::new();
-        let sub_poly_luts = basis.gen_all_subspace_poly_luts();
         let (exp_table, log_table) = Gf2p8_11d::exp_log_tables();
         let inv_table = Gf2p8_11d::inv_table(&exp_table, &log_table);
+        let sub_poly_luts = basis.gen_all_norm_subspace_poly_luts(&inv_table);
         assert!(
             basis
                 .gen_norm_subspace_poly_deriv_lut(&sub_poly_luts, &inv_table)
@@ -290,9 +290,9 @@ mod tests {
     #[test]
     fn norm_subspace_poly_deriv_luts_standard() {
         let basis = StandardBasis11d::new();
-        let sub_poly_luts = basis.gen_all_subspace_poly_luts();
         let (exp_table, log_table) = Gf2p8_11d::exp_log_tables();
         let inv_table = Gf2p8_11d::inv_table(&exp_table, &log_table);
+        let sub_poly_luts = basis.gen_all_norm_subspace_poly_luts(&inv_table);
         assert!(
             basis
                 .gen_norm_subspace_poly_deriv_lut(&sub_poly_luts, &inv_table)

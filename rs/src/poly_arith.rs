@@ -19,21 +19,6 @@ pub trait PolySliceArith<G: Gf2p8>: AsRef<[G]> {
             .copied()
             .unwrap_or(G::zero())
     }
-
-    // /// Polynomial multiplication in the monomial basis.
-    // fn poly_mul_mon(&self, b: &[G]) -> [G; N] {
-    //     let mut res = [G::zero(); N];
-
-    //     for (i, &ai) in self.iter().enumerate() {
-    //         if ai == G::zero() {
-    //             continue;
-    //         }
-    //         for (j, &bj) in b.iter().enumerate() {
-    //             res[i + j] = res[i + j].add(ai.mul(bj));
-    //         }
-    //     }
-    //     res
-    // }
 }
 
 impl<G: Gf2p8Lut, T: AsRef<[G]>> PolySliceArith<G> for T {}
@@ -118,7 +103,7 @@ pub mod poly {
 }
 
 /// Basis-dependent polynomial arithmetic.
-pub trait CantorBasisPolySliceArith<G: Gf2p8Lut>: SubspaceBasisLut<G> {
+pub trait SubspaceBasisPolySliceArith<G: Gf2p8Lut>: SubspaceBasisLut<G> {
     /// Algorithm 1 in LNH paper.
     ///
     /// The input coefficients `coeff` represent a polynomial in the basis X. That is,
@@ -190,9 +175,11 @@ pub trait CantorBasisPolySliceArith<G: Gf2p8Lut>: SubspaceBasisLut<G> {
     }
 }
 
-impl<G: Gf2p8Lut, T: SubspaceBasisLut<G>> CantorBasisPolySliceArith<G> for T {}
+impl<G: Gf2p8Lut, T: SubspaceBasisLut<G>> SubspaceBasisPolySliceArith<G> for T {}
 
-pub trait CantorBasisPolyArith<G: Gf2p8Lut, const N: usize>: CantorBasisPolySliceArith<G> {
+pub trait SubspaceBasisPolyArith<G: Gf2p8Lut, const N: usize>:
+    SubspaceBasisPolySliceArith<G>
+{
     /// Polynomial multiplication in the basis X.
     ///
     /// As defined in Appendix A of the LNH paper.
@@ -237,29 +224,33 @@ pub trait CantorBasisPolyArith<G: Gf2p8Lut, const N: usize>: CantorBasisPolySlic
         let mut r = *a;
         let mut q = [G::zero(); N];
 
-        let b_lc_inv = b[b_deg].inv_lut();
-
         // Standard synthetic division, but with basis-aware multiplication
         while let Some(r_deg) = r.degree() {
             if r_deg < b_deg {
                 break;
             }
-
             let deg_diff = r_deg - b_deg;
 
-            // Calculate leading coefficient of the quotient
-            let factor = r[r_deg].mul(b_lc_inv);
+            // norm(X)_{deg_diff} · b, with unit coefficient.
+            let mut unit = [G::zero(); N];
+            unit[deg_diff] = G::one();
+            let product = self.poly_mul_lnh(&unit, b);
+
+            // The leading coefficient is b_lc only in the Cantor basis. In general, carries scale
+            // it by p_{r_deg} / (p_{deg_diff} p_{b_deg}) where p_t is the normalisation constant
+            // for the normalised basis polynomial norm(X)_t:
+            // p_t = \prod_{i\in bits(t)} s_i(v_i).
+            debug_assert_eq!(product.degree(), Some(r_deg));
+            let factor = r[r_deg].mul_lut(product[r_deg].inv_lut());
+
             q[deg_diff] = q[deg_diff].add(factor);
-
-            // Compute what to subtract: factor * X_{deg_diff} * b(x)
-            let mut term_to_sub = [G::zero(); N];
-            term_to_sub[deg_diff] = factor;
-
-            // Basis-aware multiplication
-            let product = self.poly_mul_lnh(&term_to_sub, b);
-
-            // Update the remainder
-            r.poly_add_in_place(&product);
+            for (ri, &pi) in r.iter_mut().zip(product.iter()) {
+                *ri = ri.add(factor.mul_lut(pi));
+            }
+            debug_assert!(
+                r.degree().is_none_or(|d| d < r_deg),
+                "remainder degree must drop"
+            );
         }
 
         Some((q, r))
@@ -320,4 +311,4 @@ pub trait CantorBasisPolyArith<G: Gf2p8Lut, const N: usize>: CantorBasisPolySlic
     }
 }
 
-impl<G: Gf2p8Lut, T: SubspaceBasisLut<G>, const N: usize> CantorBasisPolyArith<G, N> for T {}
+impl<G: Gf2p8Lut, T: SubspaceBasisLut<G>, const N: usize> SubspaceBasisPolyArith<G, N> for T {}

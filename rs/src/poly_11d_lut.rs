@@ -99,7 +99,7 @@ impl SubspaceBasisLut<Gf2p8_11d> for StandardBasisLut11d {
 mod tests {
     use super::*;
     use crate::poly_11d_lut::generated::{cantor, standard};
-    use crate::poly_arith::{CantorBasisPolyArith, PolySliceArith};
+    use crate::poly_arith::{PolySliceArith, SubspaceBasisPolyArith};
     use additive_fft_reed_solomon_gf2p8::{CantorBasis11d, FIELD_SIZE, SubspaceBasis};
 
     #[test]

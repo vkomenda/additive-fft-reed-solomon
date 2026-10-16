@@ -4,7 +4,8 @@ use crate::{
     gf2p8lut::{Gf2p8Lut, SubspaceBasisLut},
     kernel::Kernel,
     poly_arith::{
-        CantorBasisPolyArith, CantorBasisPolySliceArith, PolyMutSliceArith, PolySliceArith, poly,
+        PolyMutSliceArith, PolySliceArith, SubspaceBasisPolyArith, SubspaceBasisPolySliceArith,
+        poly,
     },
 };
 use std::marker::PhantomData;
