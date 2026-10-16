@@ -1,4 +1,8 @@
-use additive_fft_reed_solomon::{codec::Codec, gf2p8lut::CantorBasisLut, kernel::Kernel};
+use additive_fft_reed_solomon::{
+    codec::{Codec, ShardLayout},
+    gf2p8lut::SubspaceBasisLut,
+    kernel::Kernel,
+};
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d};
 use rand::Rng;
 use std::alloc::{Layout, alloc};
@@ -37,15 +41,16 @@ pub fn create_buffer(
 }
 
 #[allow(dead_code)]
-pub fn generate_random_codeword<B, K, const N: usize, const T: usize>(
-    rs: &Codec<Gf2p8_11d, B, K, N, T>,
+pub fn generate_random_codeword<B, K, L, const N: usize, const T: usize>(
+    rs: &Codec<Gf2p8_11d, B, K, L, N, T>,
     shard_len: usize,
     rng: &mut impl Rng,
     is_aligned: bool,
 ) -> (Vec<Gf2p8_11d>, usize)
 where
-    B: CantorBasisLut<Gf2p8_11d> + Default,
-    K: Kernel<Gf2p8_11d>,
+    B: SubspaceBasisLut<Gf2p8_11d> + Default,
+    K: Kernel<Gf2p8_11d, B>,
+    L: ShardLayout,
 {
     let k = N - T;
     let message_len = k * shard_len;

@@ -183,45 +183,19 @@ mod tests {
 }
 
 #[cfg(test)]
-mod test_cantor_par_fst {
-    use crate::{CantorBasisLut11d, Codec, ParityFirst};
+mod test_cantor {
+    use crate::CantorBasisLut11d;
 
     type B = CantorBasisLut11d;
-    type Rs<const N: usize, const T: usize> =
-        Codec<Gf2p8_11d, B, LutKernel<Gf2p8_11d, B>, ParityFirst, N, T>;
 
     include!("poly_11d_lut_tests.rs");
 }
 
 #[cfg(test)]
-mod test_std_par_fst {
-    use crate::{Codec, ParityFirst, StandardBasisLut11d};
+mod test_standard {
+    use crate::StandardBasisLut11d;
 
     type B = StandardBasisLut11d;
-    type Rs<const N: usize, const T: usize> =
-        Codec<Gf2p8_11d, B, LutKernel<Gf2p8_11d, B>, ParityFirst, N, T>;
-
-    include!("poly_11d_lut_tests.rs");
-}
-
-#[cfg(test)]
-mod test_cantor_par_lst {
-    use crate::{CantorBasisLut11d, Codec, ParityLast};
-
-    type B = CantorBasisLut11d;
-    type Rs<const N: usize, const T: usize> =
-        Codec<Gf2p8_11d, B, LutKernel<Gf2p8_11d, B>, ParityLast, N, T>;
-
-    include!("poly_11d_lut_tests.rs");
-}
-
-#[cfg(test)]
-mod test_std_par_lst {
-    use crate::{Codec, ParityLast, StandardBasisLut11d};
-
-    type B = StandardBasisLut11d;
-    type Rs<const N: usize, const T: usize> =
-        Codec<Gf2p8_11d, B, LutKernel<Gf2p8_11d, B>, ParityLast, N, T>;
 
     include!("poly_11d_lut_tests.rs");
 }

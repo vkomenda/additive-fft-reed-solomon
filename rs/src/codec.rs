@@ -12,7 +12,7 @@ use std::marker::PhantomData;
 use std::mem;
 
 /// Placement of the message and parity blocks among the N evaluation points.
-pub trait Layout {
+pub trait ShardLayout {
     /// Point index where message chunk `c` begins.
     fn message_offset(c: usize, t: usize) -> usize;
     /// Point index where the parity block begins, for k = N - T message shards.
@@ -21,7 +21,7 @@ pub trait Layout {
 
 /// Parity at points 0..T.
 pub struct ParityFirst;
-impl Layout for ParityFirst {
+impl ShardLayout for ParityFirst {
     fn message_offset(c: usize, t: usize) -> usize {
         (c + 1) * t
     }
@@ -32,7 +32,7 @@ impl Layout for ParityFirst {
 
 /// Message at points 0..k.
 pub struct ParityLast;
-impl Layout for ParityLast {
+impl ShardLayout for ParityLast {
     fn message_offset(c: usize, t: usize) -> usize {
         c * t
     }
@@ -52,7 +52,7 @@ where
     G: Gf2p8Lut,
     B: SubspaceBasisLut<G> + Default,
     K: Kernel<G, B>,
-    L: Layout,
+    L: ShardLayout,
 {
     pub fn new() -> Self {
         Self {
@@ -757,4 +757,48 @@ mod test {
             }
         }
     }
+}
+
+#[cfg(test)]
+mod test_cantor_par_fst {
+    use crate::{CantorBasisLut11d, Codec, LutKernel, ParityFirst};
+
+    type B = CantorBasisLut11d;
+    type Rs<const N: usize, const T: usize> =
+        Codec<Gf2p8_11d, B, LutKernel<Gf2p8_11d, B>, ParityFirst, N, T>;
+
+    include!("codec_tests.rs");
+}
+
+#[cfg(test)]
+mod test_std_par_fst {
+    use crate::{Codec, LutKernel, ParityFirst, StandardBasisLut11d};
+
+    type B = StandardBasisLut11d;
+    type Rs<const N: usize, const T: usize> =
+        Codec<Gf2p8_11d, B, LutKernel<Gf2p8_11d, B>, ParityFirst, N, T>;
+
+    include!("codec_tests.rs");
+}
+
+#[cfg(test)]
+mod test_cantor_par_lst {
+    use crate::{CantorBasisLut11d, Codec, LutKernel, ParityLast};
+
+    type B = CantorBasisLut11d;
+    type Rs<const N: usize, const T: usize> =
+        Codec<Gf2p8_11d, B, LutKernel<Gf2p8_11d, B>, ParityLast, N, T>;
+
+    include!("codec_tests.rs");
+}
+
+#[cfg(test)]
+mod test_std_par_lst {
+    use crate::{Codec, LutKernel, ParityLast, StandardBasisLut11d};
+
+    type B = StandardBasisLut11d;
+    type Rs<const N: usize, const T: usize> =
+        Codec<Gf2p8_11d, B, LutKernel<Gf2p8_11d, B>, ParityLast, N, T>;
+
+    include!("codec_tests.rs");
 }
