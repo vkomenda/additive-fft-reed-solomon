@@ -21,10 +21,10 @@ pub use poly_11d_lut::{CantorBasisLut11d, StandardBasisLut11d};
 #[derive(Copy, Clone, Debug)]
 pub struct AlignedArray<G, const L: usize>([G; L]);
 
-type CodecCantor<K, const N: usize, const T: usize> =
+pub type CodecCantor<K, const N: usize, const T: usize> =
     Codec<Gf2p8_11d, CantorBasisLut11d, K, ParityFirst, N, T>;
 
-type CodecStandard<K, const N: usize, const T: usize> =
+pub type CodecStandard<K, const N: usize, const T: usize> =
     Codec<Gf2p8_11d, StandardBasisLut11d, K, ParityLast, N, T>;
 
 /// Reed-Solomon codec interface type with precomputed lookup tables.

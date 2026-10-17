@@ -14,12 +14,12 @@ The library provides SIMD acceleration on the following targets:
 
 - Aarch64
 
+The general interface is the `Codec` struct which allows to select the accelerated kernel, parity shard layout and the set of _evaluation points_ which define the encoding and decoding algorithm and hence the contents of the parity shards. Two sets of evaluation points are provisioned, called `CantorBasis` and `StandardBasis`. The former leads to an optimal construction highlighted in [LNH][lnh]. The latter provides wire compatibility with `reed-solomon-erasure`. Helper interfaces to those two are `RsCantor<N, T>` and `RsStandard<N, T>` which resolve to the best available kernel based on the compilation environment.
+
 
 ## On additive RS
 
 Additive RS codes is one of the two classes of RS codes, with the other class being the multiplicative RS codes.
-
-❗⚡ **Additive RS codes are not wire-compatible with multiplicative RS codes.** ⚡❗
 
 Multiplicative RS codes are the most common due to posessing a textbook implementation. Libraries such as [reed-solomon-erasure][rse], [ISA-L][isa-l], [Backblaze][backblaze] and [Klaus Post's reedsolomon][klauspost] all implement multiplicative RS codes. In addition, all four are erasure-only - broken shard positions must be known in advance. The multiplicative RS implementations evaluate the message polynomial at elements of the multiplicative group of GF(2^8), a cyclic group of order 255. This limits the code length to 255 and makes encoding an O(k·n) product of a precomputed Cauchy generator matrix and the message vector. Decoding is O(k^3), which comes from Gaussian elimination of the k×k submatrix of the encoding matrix corresponding to the correct rows. Some implementations amortise this by precomputing or caching inverses for common erasure patterns, but the one-time cost is still O(k^3).
 
@@ -43,6 +43,8 @@ The results are better on GFNI and about the same on AVX2 in absolute terms comp
 
 ### Best fit
 
+- Wire compatibility with `reed-solomon-erasure` crate.
+
 - Large n, large shards, e.g. n ≥ 128, hundreds of kilobytes or megabytes.
 
 - Medium redundancy ratio, k = n/2. The additive FFT cost is expressed in terms of n regardless of how it splits into k and T. Cauchy decoding, on the other hand, is faster when k is low and the redundancy ratio is high.
@@ -57,8 +59,6 @@ The results are better on GFNI and about the same on AVX2 in absolute terms comp
 
 
 ### Not a good fit
-
-- Wire compatibility required. The crate is not Cauchy implementation compatible.
 
 - Correction of quietly corrupted shards. Sharded error correction is not implemented yet.
 

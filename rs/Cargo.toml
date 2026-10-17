@@ -19,7 +19,6 @@ additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8", version = "0.2" }
 [dev-dependencies]
 criterion = "0.8"
 rand = "0.10"
-reed-solomon-erasure = "6"
 
 [profile.bench]
 inherits = "release"
