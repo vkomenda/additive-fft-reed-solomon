@@ -81,7 +81,7 @@ def collect():
     return charts
 
 
-def plot(title, series, x_label, path):
+def plot(title, subtitle, series, x_label, path):
     fig, ax = plt.subplots(figsize=(8, 5), facecolor="white")
     ax2 = ax.twinx()
     lines = []
@@ -102,7 +102,8 @@ def plot(title, series, x_label, path):
     ax2.set_ylabel("Throughput, GiB/s")
 
     ax.legend(lines, [l.get_label() for l in lines], loc="best", fontsize="small")
-    ax.set_title(title)
+    ax.set_title(subtitle, fontsize=9.5, color="0.35")  # second line, below the title
+    fig.suptitle(title, fontsize=13, y=0.975)
     fig.tight_layout()
     fig.savefig(path, metadata={"Date": None})
     plt.close(fig)
@@ -117,10 +118,10 @@ def main():
         old.unlink()
     for (group, suffix, shard, x_label, note), series in sorted(charts.items()):
         size = f"{shard >> 10} KiB" if shard >= 1024 else f"{shard} B"
-        parts = (GROUP_TITLES.get(group, group), *suffix, note, f"shard length {size}")
-        title = ", ".join(filter(None, parts))
+        title = GROUP_TITLES.get(group, group)
+        subtitle = ", ".join(filter(None, (*suffix, note, f"shard length {size}")))
         path = OUT / f"{'_'.join((group, *suffix, str(shard)))}.svg"
-        plot(title, series, x_label, path)
+        plot(title, subtitle, series, x_label, path)
         print(f"![{title}]({path.relative_to(ROOT).as_posix()})")
 
 if __name__ == "__main__":
