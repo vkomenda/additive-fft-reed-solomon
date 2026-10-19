@@ -32,7 +32,7 @@ macro_rules! bench_params {
      $l:ty,
      [$(($n:expr, $t:expr)),* $(,)?]) => {
         $({
-            let rs = Codec::<_, _, $kernel, $l, $n, $t>::default();
+            let rs = Codec::<_, _, $kernel, $l, $n, $t>::new();
             $group.throughput(Throughput::Bytes((($n - $t) * $shard_len) as u64));
             $group.bench_with_input(
                 BenchmarkId::new(format!("{}_N{}_T{}_aligned", $kernel_name, $n, $t), $shard_len),
