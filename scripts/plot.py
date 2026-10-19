@@ -18,12 +18,16 @@ ROOT = Path(__file__).resolve().parent.parent
 CRITERION = ROOT / "target" / "criterion"
 OUT = ROOT / "docs" / "charts"
 
-# N{n}_T{t}_{feature}_aligned         -> x is n, one line pair per feature
-SHARDED_RE = re.compile(r"N(\d+)_T(\d+)_([^_]+)_aligned")
-# {feature}_{method}_k{k}_aligned     -> x is k, one chart per method
-TRANSFORM_RE = re.compile(r"([^_]+)_(.+)_k(\d+)_aligned")
+FEATURES = ["gfni", "avx2", "neon"]    # plotted features, in legend and colour order
+SPECIES = ["cantor", "standard"]       # one chart per species
+ALIGNMENTS = ["aligned", "unaligned"]  # one chart per alignment
 
-FEATURES = ["gfni", "avx2", "neon"]  # plotted features, in legend and colour order
+_F, _S, _A = (f"({'|'.join(x)})" for x in (FEATURES, SPECIES, ALIGNMENTS))
+# {feature}_{species}_N{n}_T{t}_{alignment}         x is n
+SHARDED_RE = re.compile(rf"{_F}_{_S}_N(\d+)_T(\d+)_{_A}")
+# {feature}_{species}_{method}_k{k}_{alignment}     x is k, one chart per method
+TRANSFORM_RE = re.compile(rf"{_F}_{_S}_(.+)_k(\d+)_{_A}")
+
 GROUP_TITLES = {
     "encode_systematic_sharded": "systematic encoding of T parity shards from T data shards",
     "recover_erasures_sharded_clobber": "recovery of random T erased shards (Leopard-style)",
@@ -44,15 +48,15 @@ def parse(group, function_id):
         m = TRANSFORM_RE.fullmatch(function_id)
         if not m:
             return None
-        feature, method, k = m[1], m[2], int(m[3])
-        return method, k, "k", feature, method
+        feature, species, method, k, alignment = m[1], m[2], m[3], int(m[4]), m[5]
+        return (method, species, alignment), k, "k", feature, ""
     m = SHARDED_RE.fullmatch(function_id)
     if not m:
         return None
-    n, t, feature = int(m[1]), int(m[2]), m[3]
+    feature, species, n, t, alignment = m[1], m[2], int(m[3]), int(m[4]), m[5]
     if n != 2 * t:
         return None
-    return "", n, "n", feature, "T=n/2"
+    return (species, alignment), n, "n", feature, "T=n/2"
 
 
 def collect():
@@ -113,12 +117,11 @@ def main():
         old.unlink()
     for (group, suffix, shard, x_label, note), series in sorted(charts.items()):
         size = f"{shard >> 10} KiB" if shard >= 1024 else f"{shard} B"
-        title = f"{GROUP_TITLES.get(group, group)}, {note}, shard length {size}"
-        name = "_".join(filter(None, (group, suffix, str(shard))))
-        path = OUT / f"{name}.svg"
+        parts = (GROUP_TITLES.get(group, group), *suffix, note, f"shard length {size}")
+        title = ", ".join(filter(None, parts))
+        path = OUT / f"{'_'.join((group, *suffix, str(shard)))}.svg"
         plot(title, series, x_label, path)
         print(f"![{title}]({path.relative_to(ROOT).as_posix()})")
-
 
 if __name__ == "__main__":
     main()
