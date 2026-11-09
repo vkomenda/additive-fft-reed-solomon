@@ -5,6 +5,8 @@ pub mod gfni_kernel;
 pub mod lut_kernel;
 #[cfg(native_neon)]
 pub mod neon_kernel;
+#[cfg(any(native_ssse3, feature = "compile_ssse3"))]
+pub mod ssse3_kernel;
 
 use crate::gf2p8lut::{Gf2p8Lut, SubspaceBasisLut};
 use crate::poly_arith::PolyMutSliceArith;

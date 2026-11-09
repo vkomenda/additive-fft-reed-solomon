@@ -480,68 +480,6 @@ fn butterfly_inv_dit4_zero<G: Gf2p8>(
     }
 }
 
-#[cfg(test)]
-#[target_feature(enable = "avx512f,avx512bw,gfni")]
-fn fft_sharded_recursive<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(
-    shards: &mut [G],
-    shard_len: usize,
-    k: u8,
-    beta: G,
-) {
-    if k == 0 {
-        return;
-    }
-    let half = 1usize << (k - 1);
-    let twiddle = B::eval_subspace_poly_lut(k - 1, beta);
-    let mat = _mm512_set1_epi64(twiddle.gfni_mul_matrix_lut() as i64);
-
-    for i in 0..half {
-        let (left, right) = shards.split_at_mut((i + half) * shard_len);
-        butterfly_fwd(
-            &mut left[i * shard_len..],
-            &mut right[..shard_len],
-            shard_len,
-            mat,
-        );
-    }
-
-    let next_beta = beta.add(B::get_basis_point_lut(k - 1));
-    let h = half * shard_len;
-    fft_sharded_recursive::<_, B>(&mut shards[..h], shard_len, k - 1, beta);
-    fft_sharded_recursive::<_, B>(&mut shards[h..], shard_len, k - 1, next_beta);
-}
-
-#[cfg(test)]
-#[target_feature(enable = "avx512f,avx512bw,gfni")]
-fn ifft_sharded_recursive<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(
-    shards: &mut [G],
-    shard_len: usize,
-    k: u8,
-    beta: G,
-) {
-    if k == 0 {
-        return;
-    }
-    let half = 1usize << (k - 1);
-
-    let next_beta = beta.add(B::get_basis_point_lut(k - 1));
-    ifft_sharded_recursive::<_, B>(&mut shards[..half * shard_len], shard_len, k - 1, beta);
-    ifft_sharded_recursive::<_, B>(&mut shards[half * shard_len..], shard_len, k - 1, next_beta);
-
-    let twiddle = B::eval_subspace_poly_lut(k - 1, beta);
-    let mat = _mm512_set1_epi64(twiddle.gfni_mul_matrix_lut() as i64);
-
-    for i in 0..half {
-        let (left, right) = shards.split_at_mut((i + half) * shard_len);
-        butterfly_inv(
-            &mut left[i * shard_len..],
-            &mut right[..shard_len],
-            shard_len,
-            mat,
-        )
-    }
-}
-
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
 fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, mat: __m512i) {
     let src = src.as_ptr();

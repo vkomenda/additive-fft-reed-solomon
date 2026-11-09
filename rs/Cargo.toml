@@ -43,5 +43,6 @@ harness = false
 
 [features]
 default = []
+compile_ssse3 = []
 compile_avx2 = []
 compile_gfni = []

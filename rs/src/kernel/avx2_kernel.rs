@@ -1680,6 +1680,42 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for Avx2Kernel<Gf2p8_11d, StandardBa
 
 #[cfg(test)]
 #[cfg(native_avx2)]
+mod test {
+    use super::*;
+    use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
+
+    #[test]
+    fn debug_cfg() {
+        let target = cfg!(target_arch = "x86_64");
+        let feature = is_x86_feature_detected!("avx2");
+
+        assert!(target);
+        assert!(feature);
+    }
+
+    #[test]
+    fn mul_vec_matches_mul_lut() {
+        for p in 0..=255u8 {
+            let m = &NIBBLE_MUL_TABLE[p as usize];
+            for x in 0..=255u8 {
+                let expected = Gf2p8_11d(x).mul_lut(Gf2p8_11d(p));
+
+                let actual = unsafe {
+                    let v = _mm256_set1_epi8(x as i8); // copy x cross all 32 lanes
+                    let r = mul_vec(v, m);
+                    let byte0 = _mm256_extract_epi8::<0>(r) as u8;
+                    let byte16 = _mm256_extract_epi8::<16>(r) as u8;
+                    assert_eq!(byte0, byte16, "mul table not broadcast");
+                    Gf2p8_11d(byte0)
+                };
+                assert_eq!(expected, actual, "p={p:02x} x={x:02x}");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+#[cfg(native_avx2)]
 mod test_cantor {
     use crate::poly_11d_lut::CantorBasisLut11d;
 

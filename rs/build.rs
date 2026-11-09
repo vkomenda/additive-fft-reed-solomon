@@ -379,6 +379,17 @@ fn write_nibble_mul(f: &mut impl Write, arr: &[NibbleMulTable; FIELD_SIZE], name
     writeln!(f, "];").unwrap();
 }
 
+const SSSE3: UnrollTarget<Gf2p8_11d> = UnrollTarget {
+    name: "ssse3",
+    cfg: "#[cfg(any(native_ssse3, feature = \"compile_ssse3\"))]\n",
+    attr: "#[target_feature(enable = \"ssse3\")]\n",
+    get_mul_table: |t| format!("&NIBBLE_MUL_TABLE[{t}]"),
+    mul_table_import: "NIBBLE_MUL_TABLE",
+    g: "Gf2p8_11d",
+    extra_imports: "",
+    _phant: PhantomData,
+};
+
 const AVX2: UnrollTarget<Gf2p8_11d> = UnrollTarget {
     name: "avx2",
     cfg: "#[cfg(any(native_avx2, feature = \"compile_avx2\"))]\n",
@@ -752,22 +763,29 @@ fn write_basis_gens(
     LUT.write_unrolled_kernel(&mut fkl, basis.as_ref(), &sub_poly_luts, &subspace_points)
         .expect("LUT kernel");
 
+    let dest_kernel_ssse3 =
+        Path::new(&out_dir).join(format!("unrolled_ssse3_kernel_11d_{suffix}.rs"));
+    let mut fk = BufWriter::new(File::create(&dest_kernel_ssse3)?);
+    SSSE3
+        .write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
+        .expect("SSSE3 kernel");
+
     let dest_kernel_avx2 =
         Path::new(&out_dir).join(format!("unrolled_avx2_kernel_11d_{suffix}.rs"));
-    let mut fkg = BufWriter::new(File::create(&dest_kernel_avx2)?);
-    AVX2.write_unrolled_kernel(&mut fkg, basis.as_ref(), &sub_poly_luts, &subspace_points)
+    let mut fk = BufWriter::new(File::create(&dest_kernel_avx2)?);
+    AVX2.write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
         .expect("AVX2 kernel");
 
     let dest_kernel_neon =
         Path::new(&out_dir).join(format!("unrolled_neon_kernel_11d_{suffix}.rs"));
-    let mut fkg = BufWriter::new(File::create(&dest_kernel_neon)?);
-    NEON.write_unrolled_kernel(&mut fkg, basis.as_ref(), &sub_poly_luts, &subspace_points)
+    let mut fk = BufWriter::new(File::create(&dest_kernel_neon)?);
+    NEON.write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
         .expect("NEON kernel");
 
     let dest_kernel_gfni =
         Path::new(&out_dir).join(format!("unrolled_gfni_kernel_11d_{suffix}.rs"));
-    let mut fkg = BufWriter::new(File::create(&dest_kernel_gfni)?);
-    GFNI.write_unrolled_kernel(&mut fkg, basis.as_ref(), &sub_poly_luts, &subspace_points)
+    let mut fk = BufWriter::new(File::create(&dest_kernel_gfni)?);
+    GFNI.write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
         .expect("GFNI kernel");
 
     Ok(())
@@ -856,11 +874,15 @@ fn main() {
         if is_x86_feature_detected!("avx2") {
             println!("cargo:rustc-cfg=native_avx2");
         }
+        if is_x86_feature_detected!("ssse3") {
+            println!("cargo:rustc-cfg=native_ssse3");
+        }
     }
 
     // Emit the lint checker tweaks on all platforms.
-    println!("cargo:rustc-check-cfg=cfg(native_gfni)");
+    println!("cargo:rustc-check-cfg=cfg(native_ssse3)");
     println!("cargo:rustc-check-cfg=cfg(native_avx2)");
+    println!("cargo:rustc-check-cfg=cfg(native_gfni)");
     println!("cargo:rustc-check-cfg=cfg(native_neon)");
 
     println!("cargo:rerun-if-changed=src/lib.rs");
