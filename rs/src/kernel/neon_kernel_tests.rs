@@ -38,7 +38,7 @@ fn make_shards(n: usize, shard_len: usize) -> Vec<Gf2p8_11d> {
 /// NEON FFT produces the same evaluations as the LUT butterfly.
 /// shard_len covers: pure tail (15), aligned (16), aligned + tail (17), two aligned (32).
 #[test]
-fn fft_neon_matches_lut_rec() {
+fn fft_neon_matches_rec() {
     for shard_len in [1, 15, 16, 17, 32] {
         for k in 1u8..=4 {
             let n = 1 << k;
@@ -57,7 +57,7 @@ fn fft_neon_matches_lut_rec() {
 
 /// NEON IFFT produces the same coefficients as the LUT butterfly.
 #[test]
-fn ifft_neon_matches_lut_rec() {
+fn ifft_neon_matches_rec() {
     for shard_len in [1, 15, 16, 17, 32] {
         for k in 1u8..=4 {
             let n = 1 << k;

@@ -1,6 +1,6 @@
 [package]
 name = "additive-fft-reed-solomon"
-version = "0.3.0"
+version = "0.3.1"
 license = "MIT"
 description = "Fast Reed-Solomon encode and decode algorithms based on additive FFT (Lin, Al Naffouri, Han)"
 repository = "https://github.com/vkomenda/additive-fft-reed-solomon"
@@ -43,6 +43,7 @@ harness = false
 
 [features]
 default = []
+compile_sse2 = []
 compile_ssse3 = []
 compile_avx2 = []
 compile_gfni = []

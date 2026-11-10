@@ -6,6 +6,10 @@ pub use additive_fft_reed_solomon::Avx2Kernel;
 pub use additive_fft_reed_solomon::GfniKernel;
 #[cfg(native_neon)]
 pub use additive_fft_reed_solomon::NeonKernel;
+#[cfg(native_sse2)]
+pub use additive_fft_reed_solomon::Sse2Kernel;
+#[cfg(native_ssse3)]
+pub use additive_fft_reed_solomon::Ssse3Kernel;
 use additive_fft_reed_solomon::{
     CodecStandard, Gf2p8, Gf2p8_11d, LutKernel, StandardBasisLut11d, kernel::Kernel,
 };
@@ -291,10 +295,14 @@ fn rse_compat_t<K: Kernel<Gf2p8_11d, StandardBasisLut11d>>() {
 #[test]
 fn rse_compat() {
     rse_compat_t::<LutKernel<_, StandardBasisLut11d>>();
-    #[cfg(native_avx2)]
-    rse_compat_t::<Avx2Kernel<_, StandardBasisLut11d>>();
     #[cfg(native_gfni)]
     rse_compat_t::<GfniKernel<_, StandardBasisLut11d>>();
+    #[cfg(native_avx2)]
+    rse_compat_t::<Avx2Kernel<_, StandardBasisLut11d>>();
+    #[cfg(native_ssse3)]
+    rse_compat_t::<Ssse3Kernel<_, StandardBasisLut11d>>();
+    #[cfg(native_sse2)]
+    rse_compat_t::<Sse2Kernel<_, StandardBasisLut11d>>();
     #[cfg(native_neon)]
     rse_compat_t::<NeonKernel<_, StandardBasisLut11d>>();
 }

@@ -15,7 +15,7 @@ fn make_shards(n: usize, shard_len: usize) -> Vec<Gf2p8_11d> {
 /// GFNI FFT produces the same evaluations as the LUT butterfly.
 /// shard_len covers: pure tail (63), exact ZMM (64), ZMM + tail (65), two ZMMs (128).
 #[test]
-fn fft_gfni_matches_lut() {
+fn fft_matches_lut() {
     for shard_len in [1, 63, 64, 65, 128] {
         for k in 1u8..=8 {
             let n = 1 << k;

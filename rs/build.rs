@@ -10,6 +10,46 @@ use std::io::{self, BufWriter, Write};
 use std::marker::PhantomData;
 use std::path::Path;
 
+// Tables up to this size are written as readable hex literals; larger ones go to a binary file
+// included with include_bytes!, keeping the generated source small enough for editors and
+// rust-analyzer.
+const INLINE_MAX: usize = 256;
+
+// Emits `pub static {name}: {ty}` initialised from `bytes`.
+//
+// `ty` must have exactly `bytes.len()` bytes laid out bytewise: arrays of u8, or
+// repr(C)/repr(transparent) types built from them. Multi-byte element types must be serialised in
+// the target's byte order.
+fn emit_table(
+    f: &mut impl Write,
+    out_dir: &Path,
+    name: &str,
+    ty: &str,
+    bytes: &[u8],
+) -> io::Result<()> {
+    let n = bytes.len();
+    if n <= INLINE_MAX {
+        writeln!(f, "pub static {name}: {ty} = unsafe {{")?;
+        writeln!(f, "    core::mem::transmute::<[u8; {n}], {ty}>([")?;
+        for line in bytes.chunks(16) {
+            let row: Vec<String> = line.iter().map(|b| format!("{b:#04x}")).collect();
+            writeln!(f, "        {},", row.join(", "))?;
+        }
+        writeln!(f, "    ])")?;
+        writeln!(f, "}};")?;
+    } else {
+        let file = format!("{}.bin", name.to_lowercase());
+        std::fs::write(out_dir.join(&file), bytes)?;
+        writeln!(
+            f,
+            "pub static {name}: {ty} = unsafe {{ \
+             core::mem::transmute::<[u8; {n}], {ty}>(\
+             *include_bytes!(concat!(env!(\"OUT_DIR\"), \"/{file}\"))) }};"
+        )?;
+    }
+    writeln!(f)
+}
+
 fn write_copy_half(f: &mut impl Write, offset: usize, half: usize) -> io::Result<()> {
     let end = offset + half * 2;
     write!(
@@ -55,7 +95,7 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
             "butterfly_fwd(lo, hi, shard_len, m);"
         };
 
-        writeln!(f, "    {{")?;
+//        writeln!(f, "    {{")?;
         if twiddle != G::zero() {
             writeln!(
                 f,
@@ -68,8 +108,8 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
             writeln!(
                 f,
                 "        let (lo, hi) = shards[{offset} * shard_len..].split_at_mut(shard_len);
-        {fwd_op_half1}
-    }}"
+        {fwd_op_half1}"
+//    }}"
             )?;
         } else {
             writeln!(
@@ -80,8 +120,8 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
             let a = &mut left[i * shard_len..(i + 1) * shard_len];
             let b = &mut right[..shard_len];
             {fwd_op}
-        }}
-    }}"
+        }}"
+//    }}"
             )?;
         }
         Ok(())
@@ -108,7 +148,7 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
             "butterfly_inv(lo, hi, shard_len, m);"
         };
 
-        writeln!(f, "    {{")?;
+//        writeln!(f, "    {{")?;
         if twiddle != G::zero() {
             writeln!(
                 f,
@@ -121,8 +161,8 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
             writeln!(
                 f,
                 "        let (lo, hi) = shards[{offset} * shard_len..].split_at_mut(shard_len);
-        {inv_op_half1}
-    }}"
+        {inv_op_half1}"
+//    }}"
             )?;
         } else {
             writeln!(
@@ -133,8 +173,8 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
             let a = &mut left[i * shard_len..(i + 1) * shard_len];
             let b = &mut right[..shard_len];
             {inv_op}
-        }}
-    }}"
+        }}"
+//    }}"
             )?;
         }
         Ok(())
@@ -207,9 +247,8 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
         write!(f, "{}", self.attr)?;
         writeln!(
             f,
-            "pub fn {}fft_sharded_{}_k{k}{}(shards: &mut [{}], shard_len: usize) {{",
+            "pub fn {}fft_sharded_k{k}{}(shards: &mut [{}], shard_len: usize) {{",
             if is_ifft { "i" } else { "" },
-            self.name,
             if beta != G::zero() {
                 format!("_o{:02x}", beta.into())
             } else {
@@ -270,8 +309,8 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
         write!(f, "{}", self.attr)?;
         writeln!(
             f,
-            "pub fn fft_sharded_zero_padded_{}_k{k}_s{support}(shards: &mut [{}], shard_len: usize) {{",
-            self.name, self.g
+            "pub fn fft_sharded_zero_padded_k{k}_s{support}(shards: &mut [{}], shard_len: usize) {{",
+            self.g
         )?;
         writeln!(f, "    debug_assert_eq!(shards.len(), {n} * shard_len);")?;
         self.write_fft_zero_padded(f, basis, lut, k - 1, G::zero(), 0, log_support)?;
@@ -378,6 +417,17 @@ fn write_nibble_mul(f: &mut impl Write, arr: &[NibbleMulTable; FIELD_SIZE], name
     }
     writeln!(f, "];").unwrap();
 }
+
+const SSE2: UnrollTarget<Gf2p8_11d> = UnrollTarget {
+    name: "sse2",
+    cfg: "#[cfg(any(native_sse2, feature = \"compile_sse2\"))]\n",
+    attr: "#[target_feature(enable = \"sse2\")]\n",
+    get_mul_table: |t| format!("Gf2p8_11d({t:#04x})"),
+    mul_table_import: "",
+    g: "Gf2p8_11d",
+    extra_imports: "",
+    _phant: PhantomData,
+};
 
 const SSSE3: UnrollTarget<Gf2p8_11d> = UnrollTarget {
     name: "ssse3",
@@ -504,6 +554,14 @@ fn lut_target<G: Gf2p8>() -> ScheduleTarget<G> {
     }
 }
 
+fn peasant_target<G: Gf2p8>() -> ScheduleTarget<G> {
+    ScheduleTarget {
+        name: "PEASANT",
+        ty: "u8",
+        literal: |t| format!("{:#04x}", t.into()),
+    }
+}
+
 fn gfni_target<G: Gf2p8>() -> ScheduleTarget<G> {
     ScheduleTarget {
         name: "GFNI",
@@ -614,6 +672,33 @@ fn write_node_mul_lut<G: Gf2p8 + fmt::Debug>(
     writeln!(f, "];")
 }
 
+fn write_node_mul_peasant(
+    f: &mut impl Write,
+    norm_sub_poly_luts: &[[Gf2p8_11d; FIELD_SIZE]; 8],
+    subspace_points: &[Gf2p8_11d; FIELD_SIZE],
+) -> io::Result<()> {
+    writeln!(f, "pub static NODE_MUL_PEASANT: [u8; 510] = [")?;
+    for l in 0..8u8 {
+        writeln!(f, "    // level {l}")?;
+        let level: Vec<u8> = (0..(256usize >> l))
+            .map(|j| {
+                let w = subspace_points[j << l];
+                let t = if l == 0 {
+                    w
+                } else {
+                    norm_sub_poly_luts[l as usize][w.into_usize()]
+                };
+                u8::from(t)
+            })
+            .collect();
+        for line in level.chunks(16) {
+            let row: Vec<String> = line.iter().map(|b| format!("{b:#04x}")).collect();
+            writeln!(f, "    {},", row.join(", "))?;
+        }
+    }
+    writeln!(f, "];")
+}
+
 fn write_node_mul_nibble<G: Gf2p8 + fmt::Debug>(
     f: &mut impl Write,
     sub_poly_luts: &[[G; FIELD_SIZE]; 8],
@@ -678,13 +763,13 @@ fn write_node_mul_gfni<G: Gf2p8 + fmt::Debug>(
 }
 
 fn write_basis_gens(
-    out_dir: &OsString,
+    out_dir: &Path,
     suffix: &'static str,
     basis: impl SubspaceBasis<Gf2p8_11d>,
     log_table: &[u8; FIELD_SIZE],
     inv_table: &[u8; FIELD_SIZE],
 ) -> io::Result<()> {
-    let dest_poly = Path::new(&out_dir).join(format!("poly_11d_{suffix}.rs"));
+    let dest_poly = out_dir.join(format!("poly_11d_{suffix}.rs"));
     let mut f = BufWriter::new(File::create(&dest_poly)?);
 
     writeln!(f, "use super::{{MUL_TABLE, NIBBLE_MUL_TABLE}};")?;
@@ -741,6 +826,13 @@ fn write_basis_gens(
     )?;
     write_dit4_schedules(
         &mut f,
+        &peasant_target(),
+        &sub_poly_luts,
+        &subspace_points,
+        &cases,
+    )?;
+    write_dit4_schedules(
+        &mut f,
         &nibble_target(),
         &sub_poly_luts,
         &subspace_points,
@@ -755,6 +847,7 @@ fn write_basis_gens(
     )?;
 
     write_node_mul_lut(&mut f, &sub_poly_luts, &subspace_points)?;
+    write_node_mul_peasant(&mut f, &sub_poly_luts, &subspace_points)?;
     write_node_mul_nibble(&mut f, &sub_poly_luts, &subspace_points)?;
     write_node_mul_gfni(&mut f, &sub_poly_luts, &subspace_points)?;
 
@@ -763,37 +856,44 @@ fn write_basis_gens(
     LUT.write_unrolled_kernel(&mut fkl, basis.as_ref(), &sub_poly_luts, &subspace_points)
         .expect("LUT kernel");
 
-    let dest_kernel_ssse3 =
-        Path::new(&out_dir).join(format!("unrolled_ssse3_kernel_11d_{suffix}.rs"));
-    let mut fk = BufWriter::new(File::create(&dest_kernel_ssse3)?);
-    SSSE3
-        .write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
-        .expect("SSSE3 kernel");
-
-    let dest_kernel_avx2 =
-        Path::new(&out_dir).join(format!("unrolled_avx2_kernel_11d_{suffix}.rs"));
-    let mut fk = BufWriter::new(File::create(&dest_kernel_avx2)?);
-    AVX2.write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
-        .expect("AVX2 kernel");
-
-    let dest_kernel_neon =
-        Path::new(&out_dir).join(format!("unrolled_neon_kernel_11d_{suffix}.rs"));
-    let mut fk = BufWriter::new(File::create(&dest_kernel_neon)?);
-    NEON.write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
-        .expect("NEON kernel");
-
-    let dest_kernel_gfni =
-        Path::new(&out_dir).join(format!("unrolled_gfni_kernel_11d_{suffix}.rs"));
-    let mut fk = BufWriter::new(File::create(&dest_kernel_gfni)?);
-    GFNI.write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
-        .expect("GFNI kernel");
+//    let dest_kernel_sse2 =
+//        Path::new(&out_dir).join(format!("unrolled_sse2_kernel_11d_{suffix}.rs"));
+//    let mut fk = BufWriter::new(File::create(&dest_kernel_sse2)?);
+//    SSE2.write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
+//        .expect("SSE2 kernel");
+//
+//    let dest_kernel_ssse3 =
+//        Path::new(&out_dir).join(format!("unrolled_ssse3_kernel_11d_{suffix}.rs"));
+//    let mut fk = BufWriter::new(File::create(&dest_kernel_ssse3)?);
+//    SSSE3
+//        .write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
+//        .expect("SSSE3 kernel");
+//
+//    let dest_kernel_avx2 =
+//        Path::new(&out_dir).join(format!("unrolled_avx2_kernel_11d_{suffix}.rs"));
+//    let mut fk = BufWriter::new(File::create(&dest_kernel_avx2)?);
+//    AVX2.write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
+//        .expect("AVX2 kernel");
+//
+//    let dest_kernel_neon =
+//        Path::new(&out_dir).join(format!("unrolled_neon_kernel_11d_{suffix}.rs"));
+//    let mut fk = BufWriter::new(File::create(&dest_kernel_neon)?);
+//    NEON.write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
+//        .expect("NEON kernel");
+//
+//    let dest_kernel_gfni =
+//        Path::new(&out_dir).join(format!("unrolled_gfni_kernel_11d_{suffix}.rs"));
+//    let mut fk = BufWriter::new(File::create(&dest_kernel_gfni)?);
+//    GFNI.write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
+//        .expect("GFNI kernel");
 
     Ok(())
 }
 
 fn main() {
-    let out_dir = env::var_os("OUT_DIR").unwrap();
-    let dest_path = Path::new(&out_dir).join("tables_11d.rs");
+    let out_dir_var = env::var_os("OUT_DIR").unwrap();
+    let out_dir = Path::new(&out_dir_var);
+    let dest_path = out_dir.join("tables_11d.rs");
     let mut f = BufWriter::new(File::create(&dest_path).unwrap());
 
     let (exp_table, log_table) = Gf2p8_11d::exp_log_tables();
@@ -805,18 +905,20 @@ fn main() {
     write!(f, "\npub static INV_TABLE: [u8; {}] = [", FIELD_SIZE).unwrap();
     write_points(&mut f, inv_table.into_iter(), false);
 
-    let mul_table_iter =
-        (0..FIELD_SIZE).map(|x| Gf2p8_11d(x as u8).make_mul_table(&exp_table, &log_table));
-    writeln!(
-        f,
-        "\npub static MUL_TABLE: [[u8; {FIELD_SIZE}]; {FIELD_SIZE}] = ["
-    )
-    .unwrap();
-    for t in mul_table_iter {
-        write!(f, "    [").unwrap();
-        write_bytes(&mut f, t.into_iter(), true);
-    }
-    writeln!(f, "];").unwrap();
+    let mul_table: [[u8; FIELD_SIZE]; FIELD_SIZE] =
+        std::array::from_fn(|x| Gf2p8_11d(x as u8).make_mul_table(&exp_table, &log_table));
+    emit_table(&mut f, &out_dir, "MUL_TABLE", "[[u8; 256]; 256]", mul_table.as_flattened()).unwrap();
+
+//    writeln!(
+//        f,
+//        "\npub static MUL_TABLE: [[u8; {FIELD_SIZE}]; {FIELD_SIZE}] = ["
+//    )
+//    .unwrap();
+//    for t in mul_table_iter {
+//        write!(f, "    [").unwrap();
+//        write_bytes(&mut f, t.into_iter(), true);
+//    }
+//    writeln!(f, "];").unwrap();
 
     let gfni_mul_iter = Gf2p8_11d::iter_gfni_mul_matrices();
     let gfni_mul_mats: [u64; FIELD_SIZE] = gfni_mul_iter.collect::<Vec<_>>().try_into().unwrap();
@@ -877,9 +979,13 @@ fn main() {
         if is_x86_feature_detected!("ssse3") {
             println!("cargo:rustc-cfg=native_ssse3");
         }
+        if is_x86_feature_detected!("sse2") {
+            println!("cargo:rustc-cfg=native_sse2");
+        }
     }
 
     // Emit the lint checker tweaks on all platforms.
+    println!("cargo:rustc-check-cfg=cfg(native_sse2)");
     println!("cargo:rustc-check-cfg=cfg(native_ssse3)");
     println!("cargo:rustc-check-cfg=cfg(native_avx2)");
     println!("cargo:rustc-check-cfg=cfg(native_gfni)");

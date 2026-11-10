@@ -13,6 +13,8 @@ pub use kernel::gfni_kernel::GfniKernel;
 pub use kernel::lut_kernel::LutKernel;
 #[cfg(native_neon)]
 pub use kernel::neon_kernel::NeonKernel;
+#[cfg(any(native_sse2, feature = "compile_ssse3"))]
+pub use kernel::sse2_kernel::Sse2Kernel;
 #[cfg(any(native_ssse3, feature = "compile_ssse3"))]
 pub use kernel::ssse3_kernel::Ssse3Kernel;
 pub use poly_11d_lut::{CantorBasisLut11d, StandardBasisLut11d};
@@ -70,6 +72,14 @@ pub type RsSsse3Cantor<const N: usize, const T: usize> =
 pub type RsSsse3Standard<const N: usize, const T: usize> =
     CodecStandard<Ssse3Kernel<Gf2p8_11d, StandardBasisLut11d>, N, T>;
 
+#[cfg(any(native_sse2, feature = "compile_sse2"))]
+pub type RsSse2Cantor<const N: usize, const T: usize> =
+    CodecCantor<Ssse3Kernel<Gf2p8_11d, CantorBasisLut11d>, N, T>;
+
+#[cfg(any(native_sse2, feature = "compile_sse2"))]
+pub type RsSse2Standard<const N: usize, const T: usize> =
+    CodecStandard<Ssse3Kernel<Gf2p8_11d, StandardBasisLut11d>, N, T>;
+
 #[cfg(native_neon)]
 pub type RsNeonCantor<const N: usize, const T: usize> =
     CodecCantor<NeonKernel<Gf2p8_11d, CantorBasisLut11d>, N, T>;
@@ -94,6 +104,9 @@ cfg_if::cfg_if! {
     } else if #[cfg(native_ssse3)] {
         pub type RsCantor<const N: usize, const T: usize> = RsSsse3Cantor<N, T>;
         pub type RsStandard<const N: usize, const T: usize> = RsSsse3Standard<N, T>;
+    } else if #[cfg(native_sse2)] {
+        pub type RsCantor<const N: usize, const T: usize> = RsSse2Cantor<N, T>;
+        pub type RsStandard<const N: usize, const T: usize> = RsSse2Standard<N, T>;
     } else if #[cfg(native_neon)] {
         pub type RsCantor<const N: usize, const T: usize> = RsNeonCantor<N, T>;
         pub type RsStandard<const N: usize, const T: usize> = RsNeonStandard<N, T>;

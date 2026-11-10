@@ -5,6 +5,8 @@ pub mod gfni_kernel;
 pub mod lut_kernel;
 #[cfg(native_neon)]
 pub mod neon_kernel;
+#[cfg(any(native_sse2, feature = "compile_sse2"))]
+pub mod sse2_kernel;
 #[cfg(any(native_ssse3, feature = "compile_ssse3"))]
 pub mod ssse3_kernel;
 
@@ -20,20 +22,20 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
     const ALIGN: usize;
 
     /// Multiplication by a fixed element of G. Plain, non-SIMD data type.
-    type MulTable: 'static + Copy;
+    type Multiplier: 'static + Copy;
 
-    const NODE_MUL: &'static [Self::MulTable; 510];
+    const NODE_MUL: &'static [Self::Multiplier; 510];
 
-    fn mul_table(twiddle: G) -> Self::MulTable;
+    fn mul_table(twiddle: G) -> Self::Multiplier;
 
-    fn is_zero_mul(m: &Self::MulTable) -> bool;
+    fn is_zero_mul(m: &Self::Multiplier) -> bool;
 
     fn butterfly_fwd_dit2(
         shards: &mut [G],
         shard_len: usize,
         base: usize,
         d: usize,
-        m: Self::MulTable,
+        m: Self::Multiplier,
     );
 
     fn butterfly_fwd_dit2_zero(shards: &mut [G], shard_len: usize, base: usize, d: usize);
@@ -47,9 +49,9 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         shard_len: usize,
         base: usize,
         d: usize,
-        m01: Self::MulTable,
-        m23: Self::MulTable,
-        m02: Self::MulTable,
+        m01: Self::Multiplier,
+        m23: Self::Multiplier,
+        m02: Self::Multiplier,
     );
 
     /// An optimization of `butterfly_fwd_dit4` for the common special case `m01 == m02 == 0` that
@@ -59,7 +61,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         shard_len: usize,
         base: usize,
         d: usize,
-        m23: Self::MulTable,
+        m23: Self::Multiplier,
     );
 
     fn butterfly_inv_dit2(
@@ -67,7 +69,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         shard_len: usize,
         base: usize,
         d: usize,
-        m: Self::MulTable,
+        m: Self::Multiplier,
     );
 
     fn butterfly_inv_dit4(
@@ -75,9 +77,9 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         shard_len: usize,
         base: usize,
         d: usize,
-        m01: Self::MulTable,
-        m23: Self::MulTable,
-        m02: Self::MulTable,
+        m01: Self::Multiplier,
+        m23: Self::Multiplier,
+        m02: Self::Multiplier,
     );
 
     fn butterfly_inv_dit4_zero(
@@ -85,11 +87,28 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         shard_len: usize,
         base: usize,
         d: usize,
-        m23: Self::MulTable,
+        m23: Self::Multiplier,
     );
 
-    /// Unrolled forward transform where shards [1 << log_support..] are treated as zeros.
-    fn fft_sharded_zero_padded(shards: &mut [G], shard_len: usize, k: u8, log_support: u8);
+    /// Forward transform of 2^k shards whose input is nonzero only in the
+    /// first 2^log_support. Shards past the support are overwritten and need
+    /// not be initialised.
+    fn fft_sharded_zero_padded(shards: &mut [G], shard_len: usize, k: u8, log_support: u8) {
+        debug_assert!(log_support < k);
+        let block = (1usize << log_support) * shard_len;
+
+        // Every pruned level is a copy; together they replicate the first
+        // block into all the others.
+        let (first, rest) = shards.split_at_mut(block);
+        for dst in rest.chunks_exact_mut(block) {
+            dst.copy_from_slice(first);
+        }
+
+        // Each block is then an ordinary transform shifted by its offset.
+        for (b, chunk) in shards.chunks_exact_mut(block).enumerate() {
+            Self::fft_sharded_dit4_indexed(chunk, shard_len, log_support, b << log_support);
+        }
+    }
 
     fn fft_sharded_radix2_last(shards: &mut [G], shard_len: usize, k: u8, beta: G);
 
@@ -171,13 +190,14 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
-    #[inline(always)]
+    /// FFT with the radix-2 last traversal order. It performs differently to `fft_shared_dit4_with`
+    /// and is kept here for further study.
     fn fft_sharded_dit4_radix2_last_with(
         shards: &mut [G],
         shard_len: usize,
         k: u8,
-        body_mul: &[[Self::MulTable; 3]],
-        tail_mul: &[Self::MulTable],
+        body_mul: &[[Self::Multiplier; 3]],
+        tail_mul: &[Self::Multiplier],
     ) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
@@ -207,15 +227,16 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
     }
 
     /// FFT that mirrors the `ifft_sharded_dit4_with` radix-2 first traversal order and thus reuses
-    /// IFFT body and tail MulTable schedules. FFT with this traversal order also runs faster than
-    /// radix-2 last FFT, which is the main reason for making this function the common FFT driver.
-    #[inline(always)]
+    /// IFFT body and tail Multiplier schedules. FFT with this traversal order also runs faster than
+    /// radix-2 last FFT on some benchmarks, which is the main reason for making this function the
+    /// common FFT driver. However the performance comparison is not definitive and it needs further
+    /// study.
     fn fft_sharded_dit4_with(
         shards: &mut [G],
         shard_len: usize,
         k: u8,
-        body_mul: &[[Self::MulTable; 3]], // IFFT schedule
-        tail_mul: Option<&Self::MulTable>,
+        body_mul: &[[Self::Multiplier; 3]], // IFFT schedule
+        tail_mul: Option<&Self::Multiplier>,
     ) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
@@ -301,14 +322,13 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
-    /// Common IFFT driver for MulTable schedules that match the radix-2 first traversal order.
-    #[inline(always)]
+    /// Common IFFT driver for Multiplier schedules that match the radix-2 first traversal order.
     fn ifft_sharded_dit4_with(
         shards: &mut [G],
         shard_len: usize,
         k: u8,
-        body_mul: &[[Self::MulTable; 3]],
-        tail_mul: Option<&Self::MulTable>,
+        body_mul: &[[Self::Multiplier; 3]],
+        tail_mul: Option<&Self::Multiplier>,
     ) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;

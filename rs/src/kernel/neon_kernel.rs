@@ -22,7 +22,7 @@ pub mod unrolled_11d_standard {
     ));
 }
 
-type MulTable = &'static NibbleMulTable;
+type Multiplier = &'static NibbleMulTable;
 
 #[inline]
 fn mul_vec(v: uint8x16_t, m: &NibbleMulTable) -> uint8x16_t {
@@ -44,7 +44,7 @@ fn mul_vec_inner(v: uint8x16_t, m_lo: uint8x16_t, m_hi: uint8x16_t) -> uint8x16_
 }
 
 #[inline]
-fn load_mul_table(m: MulTable) -> (uint8x16_t, uint8x16_t) {
+fn load_mul_table(m: Multiplier) -> (uint8x16_t, uint8x16_t) {
     unsafe { (vld1q_u8(m.0.as_ptr()), vld1q_u8(m.1.as_ptr())) }
 }
 
@@ -112,7 +112,7 @@ fn butterfly_fwd_dit2<G: Gf2p8>(
     shard_len: usize,
     base: usize,
     d: usize,
-    m: MulTable,
+    m: Multiplier,
 ) {
     let (m_lo, m_hi) = load_mul_table(m);
 
@@ -177,7 +177,7 @@ fn butterfly_inv_dit2<G: Gf2p8>(
     shard_len: usize,
     base: usize,
     d: usize,
-    m: MulTable,
+    m: Multiplier,
 ) {
     let (m_lo, m_hi) = load_mul_table(m);
 
@@ -216,9 +216,9 @@ fn butterfly_fwd_dit4<G: Gf2p8>(
     shard_len: usize,
     base: usize,
     d: usize,
-    m01: MulTable,
-    m23: MulTable,
-    m02: MulTable,
+    m01: Multiplier,
+    m23: Multiplier,
+    m02: Multiplier,
 ) {
     let (m02_lo, m02_hi) = load_mul_table(m02);
     let (m01_lo, m01_hi) = load_mul_table(m01);
@@ -282,7 +282,7 @@ fn butterfly_fwd_dit4_zero<G: Gf2p8>(
     shard_len: usize,
     base: usize,
     d: usize,
-    m23: MulTable,
+    m23: Multiplier,
 ) {
     let (m23_lo, m23_hi) = load_mul_table(m23);
 
@@ -336,9 +336,9 @@ fn butterfly_inv_dit4<G: Gf2p8>(
     shard_len: usize,
     base: usize,
     d: usize,
-    m01: MulTable,
-    m23: MulTable,
-    m02: MulTable,
+    m01: Multiplier,
+    m23: Multiplier,
+    m02: Multiplier,
 ) {
     let (m02_lo, m02_hi) = load_mul_table(m02);
     let (m01_lo, m01_hi) = load_mul_table(m01);
@@ -402,7 +402,7 @@ fn butterfly_inv_dit4_zero<G: Gf2p8>(
     shard_len: usize,
     base: usize,
     d: usize,
-    m23: MulTable,
+    m23: Multiplier,
 ) {
     let (m23_lo, m23_hi) = load_mul_table(m23);
 
@@ -451,7 +451,7 @@ fn butterfly_inv_dit4_zero<G: Gf2p8>(
     }
 }
 
-fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: MulTable) {
+fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: Multiplier) {
     let mut i = 0;
     let (m_lo, m_hi) = load_mul_table(m);
 
@@ -475,7 +475,7 @@ fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: MulTable) {
     }
 }
 
-fn scale_add<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: MulTable) {
+fn scale_add<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: Multiplier) {
     let mut i = 0;
     let (m_lo, m_hi) = load_mul_table(m);
 
@@ -501,7 +501,7 @@ fn scale_add<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: MulTable) {
     }
 }
 
-fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: MulTable) {
+fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: Multiplier) {
     let mut i = 0;
     let (m_lo, m_hi) = load_mul_table(m);
 
@@ -1068,15 +1068,15 @@ pub struct NeonKernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(PhantomData<(G, B)>);
 impl Kernel<Gf2p8_11d, CantorBasisLut11d> for NeonKernel<Gf2p8_11d, CantorBasisLut11d> {
     const ALIGN: usize = 16;
 
-    type MulTable = MulTable;
+    type Multiplier = Multiplier;
 
-    const NODE_MUL: &'static [Self::MulTable; 510] = &cantor::NODE_MUL_NIBBLE;
+    const NODE_MUL: &'static [Self::Multiplier; 510] = &cantor::NODE_MUL_NIBBLE;
 
-    fn mul_table(t: Gf2p8_11d) -> Self::MulTable {
+    fn mul_table(t: Gf2p8_11d) -> Self::Multiplier {
         &NIBBLE_MUL_TABLE[t.into_usize()]
     }
 
-    fn is_zero_mul(m: &Self::MulTable) -> bool {
+    fn is_zero_mul(m: &Self::Multiplier) -> bool {
         m.0[1] == 0
     }
 
@@ -1085,7 +1085,7 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for NeonKernel<Gf2p8_11d, CantorBasisL
         shard_len: usize,
         base: usize,
         d: usize,
-        m: Self::MulTable,
+        m: Self::Multiplier,
     ) {
         butterfly_fwd_dit2(shards, shard_len, base, d, m);
     }
@@ -1099,9 +1099,9 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for NeonKernel<Gf2p8_11d, CantorBasisL
         shard_len: usize,
         base: usize,
         d: usize,
-        m01: Self::MulTable,
-        m23: Self::MulTable,
-        m02: Self::MulTable,
+        m01: Self::Multiplier,
+        m23: Self::Multiplier,
+        m02: Self::Multiplier,
     ) {
         butterfly_fwd_dit4(shards, shard_len, base, d, m01, m23, m02);
     }
@@ -1111,7 +1111,7 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for NeonKernel<Gf2p8_11d, CantorBasisL
         shard_len: usize,
         base: usize,
         d: usize,
-        m23: Self::MulTable,
+        m23: Self::Multiplier,
     ) {
         butterfly_fwd_dit4_zero(shards, shard_len, base, d, m23);
     }
@@ -1121,7 +1121,7 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for NeonKernel<Gf2p8_11d, CantorBasisL
         shard_len: usize,
         base: usize,
         d: usize,
-        m: Self::MulTable,
+        m: Self::Multiplier,
     ) {
         butterfly_inv_dit2(shards, shard_len, base, d, m);
     }
@@ -1131,9 +1131,9 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for NeonKernel<Gf2p8_11d, CantorBasisL
         shard_len: usize,
         base: usize,
         d: usize,
-        m01: Self::MulTable,
-        m23: Self::MulTable,
-        m02: Self::MulTable,
+        m01: Self::Multiplier,
+        m23: Self::Multiplier,
+        m02: Self::Multiplier,
     ) {
         butterfly_inv_dit4(shards, shard_len, base, d, m01, m23, m02);
     }
@@ -1143,7 +1143,7 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for NeonKernel<Gf2p8_11d, CantorBasisL
         shard_len: usize,
         base: usize,
         d: usize,
-        m23: Self::MulTable,
+        m23: Self::Multiplier,
     ) {
         butterfly_inv_dit4_zero(shards, shard_len, base, d, m23);
     }
@@ -1231,15 +1231,15 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for NeonKernel<Gf2p8_11d, CantorBasisL
 impl Kernel<Gf2p8_11d, StandardBasisLut11d> for NeonKernel<Gf2p8_11d, StandardBasisLut11d> {
     const ALIGN: usize = 16;
 
-    type MulTable = MulTable;
+    type Multiplier = Multiplier;
 
-    const NODE_MUL: &'static [Self::MulTable; 510] = &standard::NODE_MUL_NIBBLE;
+    const NODE_MUL: &'static [Self::Multiplier; 510] = &standard::NODE_MUL_NIBBLE;
 
-    fn mul_table(t: Gf2p8_11d) -> Self::MulTable {
+    fn mul_table(t: Gf2p8_11d) -> Self::Multiplier {
         &NIBBLE_MUL_TABLE[t.into_usize()]
     }
 
-    fn is_zero_mul(m: &Self::MulTable) -> bool {
+    fn is_zero_mul(m: &Self::Multiplier) -> bool {
         m.0[1] == 0
     }
 
@@ -1248,7 +1248,7 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for NeonKernel<Gf2p8_11d, StandardBa
         shard_len: usize,
         base: usize,
         d: usize,
-        m: Self::MulTable,
+        m: Self::Multiplier,
     ) {
         butterfly_fwd_dit2(shards, shard_len, base, d, m);
     }
@@ -1262,9 +1262,9 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for NeonKernel<Gf2p8_11d, StandardBa
         shard_len: usize,
         base: usize,
         d: usize,
-        m01: Self::MulTable,
-        m23: Self::MulTable,
-        m02: Self::MulTable,
+        m01: Self::Multiplier,
+        m23: Self::Multiplier,
+        m02: Self::Multiplier,
     ) {
         butterfly_fwd_dit4(shards, shard_len, base, d, m01, m23, m02);
     }
@@ -1274,7 +1274,7 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for NeonKernel<Gf2p8_11d, StandardBa
         shard_len: usize,
         base: usize,
         d: usize,
-        m23: Self::MulTable,
+        m23: Self::Multiplier,
     ) {
         butterfly_fwd_dit4_zero(shards, shard_len, base, d, m23);
     }
@@ -1284,7 +1284,7 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for NeonKernel<Gf2p8_11d, StandardBa
         shard_len: usize,
         base: usize,
         d: usize,
-        m: Self::MulTable,
+        m: Self::Multiplier,
     ) {
         butterfly_inv_dit2(shards, shard_len, base, d, m);
     }
@@ -1294,9 +1294,9 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for NeonKernel<Gf2p8_11d, StandardBa
         shard_len: usize,
         base: usize,
         d: usize,
-        m01: Self::MulTable,
-        m23: Self::MulTable,
-        m02: Self::MulTable,
+        m01: Self::Multiplier,
+        m23: Self::Multiplier,
+        m02: Self::Multiplier,
     ) {
         butterfly_inv_dit4(shards, shard_len, base, d, m01, m23, m02);
     }
@@ -1306,7 +1306,7 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for NeonKernel<Gf2p8_11d, StandardBa
         shard_len: usize,
         base: usize,
         d: usize,
-        m23: Self::MulTable,
+        m23: Self::Multiplier,
     ) {
         butterfly_inv_dit4_zero(shards, shard_len, base, d, m23);
     }

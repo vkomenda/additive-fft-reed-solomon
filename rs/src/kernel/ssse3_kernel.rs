@@ -8,31 +8,7 @@ use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, NibbleMulTable, Z255};
 use core::arch::x86_64::*;
 use std::marker::PhantomData;
 
-pub mod unrolled_11d_cantor {
-    include!(concat!(
-        env!("OUT_DIR"),
-        "/unrolled_ssse3_kernel_11d_cantor.rs"
-    ));
-}
-
-pub mod unrolled_11d_standard {
-    include!(concat!(
-        env!("OUT_DIR"),
-        "/unrolled_ssse3_kernel_11d_standard.rs"
-    ));
-}
-
-type MulTable = &'static NibbleMulTable;
-
-#[inline]
-#[target_feature(enable = "ssse3")]
-fn mul_vec(v: __m128i, m: &NibbleMulTable) -> __m128i {
-    unsafe {
-        let m_lo = _mm_loadu_si128(m.0.as_ptr() as *const __m128i);
-        let m_hi = _mm_loadu_si128(m.1.as_ptr() as *const __m128i);
-        mul_vec_inner(v, m_lo, m_hi)
-    }
-}
+type Multiplier = &'static NibbleMulTable;
 
 #[inline]
 #[target_feature(enable = "ssse3")]
@@ -45,69 +21,12 @@ fn mul_vec_inner(v: __m128i, m_lo: __m128i, m_hi: __m128i) -> __m128i {
 
 #[inline]
 #[target_feature(enable = "ssse3")]
-fn load_mul_table(m: MulTable) -> (__m128i, __m128i) {
+fn load_mul_table(m: Multiplier) -> (__m128i, __m128i) {
     unsafe {
         (
             _mm_loadu_si128(m.0.as_ptr() as *const __m128i),
             _mm_loadu_si128(m.1.as_ptr() as *const __m128i),
         )
-    }
-}
-
-#[inline]
-#[target_feature(enable = "ssse3")]
-fn butterfly_fwd<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: MulTable) {
-    let mut i = 0;
-    let pa = a.as_mut_ptr() as *mut u8;
-    let pb = b.as_mut_ptr() as *mut u8;
-    while i + 16 <= len {
-        unsafe {
-            let va = _mm_loadu_si128(pa.add(i) as *const __m128i);
-            let vb = _mm_loadu_si128(pb.add(i) as *const __m128i);
-            let t = mul_vec(vb, m); // T·b
-            let va = _mm_xor_si128(va, t); // a + T·b = g0
-            let vb = _mm_xor_si128(vb, va); // b + g0 = g1
-            _mm_storeu_si128(pa.add(i) as *mut __m128i, va);
-            _mm_storeu_si128(pb.add(i) as *mut __m128i, vb);
-        }
-        i += 16;
-    }
-
-    for j in i..len {
-        let x = a[j];
-        let y = b[j];
-        let g0 = x.add(y.nibble_mul(m));
-        a[j] = g0;
-        b[j] = y.add(g0);
-    }
-}
-
-#[inline]
-#[target_feature(enable = "ssse3")]
-fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: MulTable) {
-    let mut i = 0;
-    let pa = a.as_mut_ptr() as *mut u8;
-    let pb = b.as_mut_ptr() as *mut u8;
-    while i + 16 <= len {
-        unsafe {
-            let va = _mm_loadu_si128(pa.add(i) as *const __m128i);
-            let vb = _mm_loadu_si128(pb.add(i) as *const __m128i);
-            let vb = _mm_xor_si128(vb, va); // d' = g0 + g1
-            let t = mul_vec(vb, m); // T·d'
-            let va = _mm_xor_si128(va, t); // d = g0 + T·d'
-            _mm_storeu_si128(pa.add(i) as *mut __m128i, va);
-            _mm_storeu_si128(pb.add(i) as *mut __m128i, vb);
-        }
-        i += 16;
-    }
-
-    for j in i..len {
-        let mut x = a[j];
-        let mut y = b[j];
-        y = x.add(y);
-        x = x.add(y.nibble_mul(m));
-        a[j] = x;
-        b[j] = y;
     }
 }
 
@@ -117,7 +36,7 @@ fn butterfly_fwd_dit2<G: Gf2p8>(
     shard_len: usize,
     start: usize,
     d: usize,
-    m: MulTable,
+    m: Multiplier,
 ) {
     let (m_lo, m_hi) = load_mul_table(m);
 
@@ -169,7 +88,7 @@ fn butterfly_inv_dit2<G: Gf2p8>(
     shard_len: usize,
     base: usize,
     d: usize,
-    m: MulTable,
+    m: Multiplier,
 ) {
     let (m_lo, m_hi) = load_mul_table(m);
 
@@ -201,9 +120,9 @@ fn butterfly_fwd_dit4<G: Gf2p8>(
     shard_len: usize,
     base: usize,
     d: usize,
-    m01: MulTable,
-    m23: MulTable,
-    m02: MulTable,
+    m01: Multiplier,
+    m23: Multiplier,
+    m02: Multiplier,
 ) {
     let (m02_lo, m02_hi) = load_mul_table(m02);
     let (m01_lo, m01_hi) = load_mul_table(m01);
@@ -261,7 +180,7 @@ fn butterfly_fwd_dit4_zero<G: Gf2p8>(
     shard_len: usize,
     base: usize,
     d: usize,
-    m23: MulTable,
+    m23: Multiplier,
 ) {
     let (m23_lo, m23_hi) = load_mul_table(m23);
 
@@ -310,9 +229,9 @@ fn butterfly_inv_dit4<G: Gf2p8>(
     shard_len: usize,
     base: usize,
     d: usize,
-    m01: MulTable,
-    m23: MulTable,
-    m02: MulTable,
+    m01: Multiplier,
+    m23: Multiplier,
+    m02: Multiplier,
 ) {
     let (m02_lo, m02_hi) = load_mul_table(m02);
     let (m01_lo, m01_hi) = load_mul_table(m01);
@@ -370,7 +289,7 @@ fn butterfly_inv_dit4_zero<G: Gf2p8>(
     shard_len: usize,
     base: usize,
     d: usize,
-    m23: MulTable,
+    m23: Multiplier,
 ) {
     let (m23_lo, m23_hi) = load_mul_table(m23);
 
@@ -414,7 +333,7 @@ fn butterfly_inv_dit4_zero<G: Gf2p8>(
 }
 
 #[target_feature(enable = "ssse3")]
-fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: MulTable) {
+fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: Multiplier) {
     let mut i = 0;
     let (m_lo, m_hi) = load_mul_table(m);
 
@@ -435,7 +354,7 @@ fn scale<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: MulTable) {
 }
 
 #[target_feature(enable = "ssse3")]
-fn scale_add<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: MulTable) {
+fn scale_add<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: Multiplier) {
     let mut i = 0;
     let (m_lo, m_hi) = load_mul_table(m);
 
@@ -459,7 +378,7 @@ fn scale_add<G: Gf2p8>(src: &[G], dst: &mut [G], len: usize, m: MulTable) {
 }
 
 #[target_feature(enable = "ssse3")]
-fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: MulTable) {
+fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: Multiplier) {
     let mut i = 0;
     let (m_lo, m_hi) = load_mul_table(m);
 
@@ -1027,15 +946,15 @@ pub struct Ssse3Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>>(PhantomData<(G, B)>)
 impl Kernel<Gf2p8_11d, CantorBasisLut11d> for Ssse3Kernel<Gf2p8_11d, CantorBasisLut11d> {
     const ALIGN: usize = 16;
 
-    type MulTable = MulTable;
+    type Multiplier = Multiplier;
 
-    const NODE_MUL: &'static [Self::MulTable; 510] = &cantor::NODE_MUL_NIBBLE;
+    const NODE_MUL: &'static [Self::Multiplier; 510] = &cantor::NODE_MUL_NIBBLE;
 
-    fn mul_table(t: Gf2p8_11d) -> Self::MulTable {
+    fn mul_table(t: Gf2p8_11d) -> Self::Multiplier {
         &NIBBLE_MUL_TABLE[t.into_usize()]
     }
 
-    fn is_zero_mul(m: &Self::MulTable) -> bool {
+    fn is_zero_mul(m: &Self::Multiplier) -> bool {
         m.0[1] == 0
     }
 
@@ -1044,7 +963,7 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for Ssse3Kernel<Gf2p8_11d, CantorBasis
         shard_len: usize,
         base: usize,
         d: usize,
-        m: Self::MulTable,
+        m: Self::Multiplier,
     ) {
         unsafe {
             butterfly_fwd_dit2(shards, shard_len, base, d, m);
@@ -1062,9 +981,9 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for Ssse3Kernel<Gf2p8_11d, CantorBasis
         shard_len: usize,
         base: usize,
         d: usize,
-        m01: Self::MulTable,
-        m23: Self::MulTable,
-        m02: Self::MulTable,
+        m01: Self::Multiplier,
+        m23: Self::Multiplier,
+        m02: Self::Multiplier,
     ) {
         unsafe {
             butterfly_fwd_dit4(shards, shard_len, base, d, m01, m23, m02);
@@ -1076,7 +995,7 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for Ssse3Kernel<Gf2p8_11d, CantorBasis
         shard_len: usize,
         base: usize,
         d: usize,
-        m23: Self::MulTable,
+        m23: Self::Multiplier,
     ) {
         unsafe {
             butterfly_fwd_dit4_zero(shards, shard_len, base, d, m23);
@@ -1088,7 +1007,7 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for Ssse3Kernel<Gf2p8_11d, CantorBasis
         shard_len: usize,
         base: usize,
         d: usize,
-        m: Self::MulTable,
+        m: Self::Multiplier,
     ) {
         unsafe {
             butterfly_inv_dit2(shards, shard_len, base, d, m);
@@ -1100,9 +1019,9 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for Ssse3Kernel<Gf2p8_11d, CantorBasis
         shard_len: usize,
         base: usize,
         d: usize,
-        m01: Self::MulTable,
-        m23: Self::MulTable,
-        m02: Self::MulTable,
+        m01: Self::Multiplier,
+        m23: Self::Multiplier,
+        m02: Self::Multiplier,
     ) {
         unsafe {
             butterfly_inv_dit4(shards, shard_len, base, d, m01, m23, m02);
@@ -1114,126 +1033,10 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for Ssse3Kernel<Gf2p8_11d, CantorBasis
         shard_len: usize,
         base: usize,
         d: usize,
-        m23: Self::MulTable,
+        m23: Self::Multiplier,
     ) {
         unsafe {
             butterfly_inv_dit4_zero(shards, shard_len, base, d, m23);
-        }
-    }
-
-    fn fft_sharded_zero_padded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, log_support: u8) {
-        unsafe {
-            match (k, log_support) {
-                (1, 0) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k1_s1(shards, shard_len)
-                }
-                (2, 0) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k2_s1(shards, shard_len)
-                }
-                (2, 1) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k2_s2(shards, shard_len)
-                }
-                (3, 0) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k3_s1(shards, shard_len)
-                }
-                (3, 1) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k3_s2(shards, shard_len)
-                }
-                (3, 2) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k3_s4(shards, shard_len)
-                }
-                (4, 0) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k4_s1(shards, shard_len)
-                }
-                (4, 1) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k4_s2(shards, shard_len)
-                }
-                (4, 2) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k4_s4(shards, shard_len)
-                }
-                (4, 3) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k4_s8(shards, shard_len)
-                }
-                (5, 0) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k5_s1(shards, shard_len)
-                }
-                (5, 1) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k5_s2(shards, shard_len)
-                }
-                (5, 2) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k5_s4(shards, shard_len)
-                }
-                (5, 3) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k5_s8(shards, shard_len)
-                }
-                (5, 4) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k5_s16(shards, shard_len)
-                }
-                (6, 0) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k6_s1(shards, shard_len)
-                }
-                (6, 1) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k6_s2(shards, shard_len)
-                }
-                (6, 2) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k6_s4(shards, shard_len)
-                }
-                (6, 3) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k6_s8(shards, shard_len)
-                }
-                (6, 4) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k6_s16(shards, shard_len)
-                }
-                (6, 5) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k6_s32(shards, shard_len)
-                }
-                (7, 0) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k7_s1(shards, shard_len)
-                }
-                (7, 1) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k7_s2(shards, shard_len)
-                }
-                (7, 2) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k7_s4(shards, shard_len)
-                }
-                (7, 3) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k7_s8(shards, shard_len)
-                }
-                (7, 4) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k7_s16(shards, shard_len)
-                }
-                (7, 5) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k7_s32(shards, shard_len)
-                }
-                (7, 6) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k7_s64(shards, shard_len)
-                }
-                (8, 0) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k8_s1(shards, shard_len)
-                }
-                (8, 1) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k8_s2(shards, shard_len)
-                }
-                (8, 2) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k8_s4(shards, shard_len)
-                }
-                (8, 3) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k8_s8(shards, shard_len)
-                }
-                (8, 4) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k8_s16(shards, shard_len)
-                }
-                (8, 5) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k8_s32(shards, shard_len)
-                }
-                (8, 6) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k8_s64(shards, shard_len)
-                }
-                (8, 7) => {
-                    unrolled_11d_cantor::fft_sharded_zero_padded_ssse3_k8_s128(shards, shard_len)
-                }
-                _ => unreachable!("k={k} must be in 1..=8 and log_support must be < k"),
-            }
         }
     }
 
@@ -1290,15 +1093,15 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for Ssse3Kernel<Gf2p8_11d, CantorBasis
 impl Kernel<Gf2p8_11d, StandardBasisLut11d> for Ssse3Kernel<Gf2p8_11d, StandardBasisLut11d> {
     const ALIGN: usize = 16;
 
-    type MulTable = MulTable;
+    type Multiplier = Multiplier;
 
-    const NODE_MUL: &'static [Self::MulTable; 510] = &standard::NODE_MUL_NIBBLE;
+    const NODE_MUL: &'static [Self::Multiplier; 510] = &standard::NODE_MUL_NIBBLE;
 
-    fn mul_table(t: Gf2p8_11d) -> Self::MulTable {
+    fn mul_table(t: Gf2p8_11d) -> Self::Multiplier {
         &NIBBLE_MUL_TABLE[t.into_usize()]
     }
 
-    fn is_zero_mul(m: &Self::MulTable) -> bool {
+    fn is_zero_mul(m: &Self::Multiplier) -> bool {
         m.0[1] == 0
     }
 
@@ -1307,7 +1110,7 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for Ssse3Kernel<Gf2p8_11d, StandardB
         shard_len: usize,
         base: usize,
         d: usize,
-        m: Self::MulTable,
+        m: Self::Multiplier,
     ) {
         unsafe {
             butterfly_fwd_dit2(shards, shard_len, base, d, m);
@@ -1325,9 +1128,9 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for Ssse3Kernel<Gf2p8_11d, StandardB
         shard_len: usize,
         base: usize,
         d: usize,
-        m01: Self::MulTable,
-        m23: Self::MulTable,
-        m02: Self::MulTable,
+        m01: Self::Multiplier,
+        m23: Self::Multiplier,
+        m02: Self::Multiplier,
     ) {
         unsafe {
             butterfly_fwd_dit4(shards, shard_len, base, d, m01, m23, m02);
@@ -1339,7 +1142,7 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for Ssse3Kernel<Gf2p8_11d, StandardB
         shard_len: usize,
         base: usize,
         d: usize,
-        m23: Self::MulTable,
+        m23: Self::Multiplier,
     ) {
         unsafe {
             butterfly_fwd_dit4_zero(shards, shard_len, base, d, m23);
@@ -1351,7 +1154,7 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for Ssse3Kernel<Gf2p8_11d, StandardB
         shard_len: usize,
         base: usize,
         d: usize,
-        m: Self::MulTable,
+        m: Self::Multiplier,
     ) {
         unsafe {
             butterfly_inv_dit2(shards, shard_len, base, d, m);
@@ -1363,9 +1166,9 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for Ssse3Kernel<Gf2p8_11d, StandardB
         shard_len: usize,
         base: usize,
         d: usize,
-        m01: Self::MulTable,
-        m23: Self::MulTable,
-        m02: Self::MulTable,
+        m01: Self::Multiplier,
+        m23: Self::Multiplier,
+        m02: Self::Multiplier,
     ) {
         unsafe {
             butterfly_inv_dit4(shards, shard_len, base, d, m01, m23, m02);
@@ -1377,126 +1180,10 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for Ssse3Kernel<Gf2p8_11d, StandardB
         shard_len: usize,
         base: usize,
         d: usize,
-        m23: Self::MulTable,
+        m23: Self::Multiplier,
     ) {
         unsafe {
             butterfly_inv_dit4_zero(shards, shard_len, base, d, m23);
-        }
-    }
-
-    fn fft_sharded_zero_padded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, log_support: u8) {
-        unsafe {
-            match (k, log_support) {
-                (1, 0) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k1_s1(shards, shard_len)
-                }
-                (2, 0) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k2_s1(shards, shard_len)
-                }
-                (2, 1) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k2_s2(shards, shard_len)
-                }
-                (3, 0) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k3_s1(shards, shard_len)
-                }
-                (3, 1) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k3_s2(shards, shard_len)
-                }
-                (3, 2) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k3_s4(shards, shard_len)
-                }
-                (4, 0) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k4_s1(shards, shard_len)
-                }
-                (4, 1) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k4_s2(shards, shard_len)
-                }
-                (4, 2) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k4_s4(shards, shard_len)
-                }
-                (4, 3) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k4_s8(shards, shard_len)
-                }
-                (5, 0) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k5_s1(shards, shard_len)
-                }
-                (5, 1) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k5_s2(shards, shard_len)
-                }
-                (5, 2) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k5_s4(shards, shard_len)
-                }
-                (5, 3) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k5_s8(shards, shard_len)
-                }
-                (5, 4) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k5_s16(shards, shard_len)
-                }
-                (6, 0) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k6_s1(shards, shard_len)
-                }
-                (6, 1) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k6_s2(shards, shard_len)
-                }
-                (6, 2) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k6_s4(shards, shard_len)
-                }
-                (6, 3) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k6_s8(shards, shard_len)
-                }
-                (6, 4) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k6_s16(shards, shard_len)
-                }
-                (6, 5) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k6_s32(shards, shard_len)
-                }
-                (7, 0) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k7_s1(shards, shard_len)
-                }
-                (7, 1) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k7_s2(shards, shard_len)
-                }
-                (7, 2) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k7_s4(shards, shard_len)
-                }
-                (7, 3) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k7_s8(shards, shard_len)
-                }
-                (7, 4) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k7_s16(shards, shard_len)
-                }
-                (7, 5) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k7_s32(shards, shard_len)
-                }
-                (7, 6) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k7_s64(shards, shard_len)
-                }
-                (8, 0) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k8_s1(shards, shard_len)
-                }
-                (8, 1) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k8_s2(shards, shard_len)
-                }
-                (8, 2) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k8_s4(shards, shard_len)
-                }
-                (8, 3) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k8_s8(shards, shard_len)
-                }
-                (8, 4) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k8_s16(shards, shard_len)
-                }
-                (8, 5) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k8_s32(shards, shard_len)
-                }
-                (8, 6) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k8_s64(shards, shard_len)
-                }
-                (8, 7) => {
-                    unrolled_11d_standard::fft_sharded_zero_padded_ssse3_k8_s128(shards, shard_len)
-                }
-                _ => unreachable!("k={k} must be in 1..=8 and log_support must be < k"),
-            }
         }
     }
 
@@ -1574,7 +1261,8 @@ mod test {
 
                 let actual = unsafe {
                     let v = _mm_set1_epi8(x as i8); // copy x cross all 16 lanes
-                    let r = mul_vec(v, m);
+                    let (m_lo, m_hi) = load_mul_table(m);
+                    let r = mul_vec_inner(v, m_lo, m_hi);
                     let byte0 = _mm_extract_epi8::<0>(r) as u8;
                     Gf2p8_11d(byte0)
                 };

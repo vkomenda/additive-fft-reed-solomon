@@ -52,7 +52,7 @@ fn ifft_matches_lut() {
 
 /// IFFT;FFT ~= Id.
 #[test]
-fn ifft_then_fft_avx2_is_identity() {
+fn ifft_then_fft_is_identity() {
     for shard_len in [1, 15, 16, 17, 32] {
         for k in 1u8..8 {
             let n = 1 << k;
