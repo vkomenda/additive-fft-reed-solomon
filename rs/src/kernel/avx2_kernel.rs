@@ -23,8 +23,8 @@ fn mul_vec_inner(v: __m256i, m_lo: __m256i, m_hi: __m256i) -> __m256i {
 #[target_feature(enable = "avx2")]
 fn load_mul_table(t: Multiplier) -> (__m256i, __m256i) {
     (
-        _mm256_broadcastsi128_si256(unsafe { _mm_loadu_si128(t.0.as_ptr() as *const __m128i) }),
-        _mm256_broadcastsi128_si256(unsafe { _mm_loadu_si128(t.1.as_ptr() as *const __m128i) }),
+        _mm256_broadcastsi128_si256(unsafe { _mm_loadu_si128(t[0].as_ptr() as *const __m128i) }),
+        _mm256_broadcastsi128_si256(unsafe { _mm_loadu_si128(t[1].as_ptr() as *const __m128i) }),
     )
 }
 
@@ -1015,7 +1015,7 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for Avx2Kernel<Gf2p8_11d, CantorBasisL
     }
 
     fn is_zero_mul(m: &Self::Multiplier) -> bool {
-        m.0[1] == 0
+        m[0][1] == 0
     }
 
     fn butterfly_fwd_dit2(
@@ -1162,7 +1162,7 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for Avx2Kernel<Gf2p8_11d, StandardBa
     }
 
     fn is_zero_mul(m: &Self::Multiplier) -> bool {
-        m.0[1] == 0
+        m[0][1] == 0
     }
 
     fn butterfly_fwd_dit2(

@@ -5,7 +5,7 @@ pub const EXP_TABLE_SIZE: usize = FIELD_SIZE * 2 - 2;
 
 /// Low and high nibble multiplication table for a given field element.
 /// A table is constructed for a given p from the decomposition x·p = lo(x)·p + hi(x)·p.
-pub type NibbleMulTable = ([u8; 16], [u8; 16]);
+pub type NibbleMulTable = [[u8; 16]; 2];
 
 pub trait Gf2p8: 'static + Sized + Copy + From<u8> + Into<u8> + PartialEq {
     const POLY: u16;
@@ -175,17 +175,17 @@ pub trait Gf2p8: 'static + Sized + Copy + From<u8> + Into<u8> + PartialEq {
             lo[i as usize] = Self::from(i).mul(self).into();
             hi[i as usize] = Self::from(i << 4).mul(self).into();
         }
-        (lo, hi)
+        [lo, hi]
     }
 
-    fn iter_nibble_mul_tables() -> impl Iterator<Item = ([u8; 16], [u8; 16])> {
+    fn iter_nibble_mul_tables() -> impl Iterator<Item = NibbleMulTable> {
         (0..FIELD_SIZE).map(|i| Self::from(i as u8).nibble_mul_table())
     }
 
     #[inline]
     fn nibble_mul(self, m: &NibbleMulTable) -> Self {
         let x = self.into_usize();
-        (m.1[x >> 4] ^ m.0[x & 0xf]).into()
+        (m[1][x >> 4] ^ m[0][x & 0xf]).into()
     }
 
     // TODO: vectorized ops need to move to a dedicated trait.

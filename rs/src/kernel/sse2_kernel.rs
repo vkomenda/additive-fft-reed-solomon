@@ -1,6 +1,6 @@
 use super::{Kernel, shard_groups};
 use crate::gf2p8lut::{Gf2p8Lut, SubspaceBasisLut};
-use crate::poly_11d_lut::generated::{EXP_TABLE, MUL_TABLE, cantor, standard};
+use crate::poly_11d_lut::generated::{EXP_TABLE, cantor, standard};
 use crate::poly_11d_lut::{CantorBasisLut11d, StandardBasisLut11d};
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, Z255};
 use core::arch::x86_64::*;

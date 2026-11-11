@@ -3,7 +3,6 @@ use additive_fft_reed_solomon_gf2p8::{
 };
 use additive_fft_reed_solomon_gf2p8::{NibbleMulTable, StandardBasis11d};
 use std::env;
-use std::ffi::OsString;
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
@@ -63,7 +62,6 @@ fn write_copy_half(f: &mut impl Write, offset: usize, half: usize) -> io::Result
 }
 
 struct UnrollTarget<G> {
-    name: &'static str,
     cfg: &'static str,
     attr: &'static str,
     get_mul_table: fn(usize) -> String,
@@ -95,11 +93,10 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
             "butterfly_fwd(lo, hi, shard_len, m);"
         };
 
-//        writeln!(f, "    {{")?;
         if twiddle != G::zero() {
             writeln!(
                 f,
-                "        let m = {};",
+                "    let m = {};",
                 (self.get_mul_table)(twiddle.into_usize())
             )?;
         }
@@ -107,21 +104,19 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
         if half == 1 {
             writeln!(
                 f,
-                "        let (lo, hi) = shards[{offset} * shard_len..].split_at_mut(shard_len);
-        {fwd_op_half1}"
-//    }}"
+                "    let (lo, hi) = shards[{offset} * shard_len..].split_at_mut(shard_len);
+    {fwd_op_half1}"
             )?;
         } else {
             writeln!(
                 f,
-                "        let block = &mut shards[{offset} * shard_len..{end} * shard_len];
-        for i in 0..{half} {{
-            let (left, right) = block.split_at_mut((i + {half}) * shard_len);
-            let a = &mut left[i * shard_len..(i + 1) * shard_len];
-            let b = &mut right[..shard_len];
-            {fwd_op}
-        }}"
-//    }}"
+                "    let block = &mut shards[{offset} * shard_len..{end} * shard_len];
+    for i in 0..{half} {{
+        let (left, right) = block.split_at_mut((i + {half}) * shard_len);
+        let a = &mut left[i * shard_len..(i + 1) * shard_len];
+        let b = &mut right[..shard_len];
+        {fwd_op}
+    }}"
             )?;
         }
         Ok(())
@@ -148,11 +143,10 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
             "butterfly_inv(lo, hi, shard_len, m);"
         };
 
-//        writeln!(f, "    {{")?;
         if twiddle != G::zero() {
             writeln!(
                 f,
-                "        let m = {};",
+                "    let m = {};",
                 (self.get_mul_table)(twiddle.into_usize()),
             )?;
         }
@@ -160,21 +154,19 @@ impl<G: Gf2p8 + fmt::Debug> UnrollTarget<G> {
         if half == 1 {
             writeln!(
                 f,
-                "        let (lo, hi) = shards[{offset} * shard_len..].split_at_mut(shard_len);
-        {inv_op_half1}"
-//    }}"
+                "    let (lo, hi) = shards[{offset} * shard_len..].split_at_mut(shard_len);
+    {inv_op_half1}"
             )?;
         } else {
             writeln!(
                 f,
-                "        let block = &mut shards[{offset} * shard_len..{end} * shard_len];
-        for i in 0..{half} {{
-            let (left, right) = block.split_at_mut((i + {half}) * shard_len);
-            let a = &mut left[i * shard_len..(i + 1) * shard_len];
-            let b = &mut right[..shard_len];
-            {inv_op}
-        }}"
-//    }}"
+                "    let block = &mut shards[{offset} * shard_len..{end} * shard_len];
+    for i in 0..{half} {{
+        let (left, right) = block.split_at_mut((i + {half}) * shard_len);
+        let a = &mut left[i * shard_len..(i + 1) * shard_len];
+        let b = &mut right[..shard_len];
+        {inv_op}
+    }}"
             )?;
         }
         Ok(())
@@ -378,6 +370,7 @@ where
     } else {
         writeln!(f, "\n];").unwrap();
     }
+    writeln!(f, "").unwrap();
 }
 
 fn write_bytes(f: &mut impl Write, it: impl Iterator<Item = u8>, has_subarrays: bool) {
@@ -395,31 +388,21 @@ fn write_bytes(f: &mut impl Write, it: impl Iterator<Item = u8>, has_subarrays: 
     } else {
         writeln!(f, "\n];").unwrap();
     }
+    writeln!(f, "").unwrap();
 }
 
-fn write_nibble_mul(f: &mut impl Write, arr: &[NibbleMulTable; FIELD_SIZE], name: &'static str) {
-    writeln!(
-        f,
-        "\npub static {name}: [([u8; 16], [u8; 16]); {}] = [",
-        FIELD_SIZE
-    )
-    .unwrap();
-    for t in arr {
-        write!(f, "    ([").unwrap();
-        for i in 0..16 {
-            write!(f, "0x{:02x}, ", t.0[i]).unwrap();
-        }
-        write!(f, "],\n     [").unwrap();
-        for i in 0..16 {
-            write!(f, "0x{:02x}, ", t.1[i]).unwrap();
-        }
-        writeln!(f, "]),").unwrap();
-    }
-    writeln!(f, "];").unwrap();
-}
+const LUT: UnrollTarget<Gf2p8_11d> = UnrollTarget {
+    cfg: "",
+    attr: "",
+    get_mul_table: |t| format!("&MUL_TABLE[{t}]"),
+    mul_table_import: "MUL_TABLE",
+    g: "Gf2p8_11d",
+    extra_imports: "",
+    _phant: PhantomData,
+};
 
+/* Previous unrolled targets, kept here for possible future reference.
 const SSE2: UnrollTarget<Gf2p8_11d> = UnrollTarget {
-    name: "sse2",
     cfg: "#[cfg(any(native_sse2, feature = \"compile_sse2\"))]\n",
     attr: "#[target_feature(enable = \"sse2\")]\n",
     get_mul_table: |t| format!("Gf2p8_11d({t:#04x})"),
@@ -430,7 +413,6 @@ const SSE2: UnrollTarget<Gf2p8_11d> = UnrollTarget {
 };
 
 const SSSE3: UnrollTarget<Gf2p8_11d> = UnrollTarget {
-    name: "ssse3",
     cfg: "#[cfg(any(native_ssse3, feature = \"compile_ssse3\"))]\n",
     attr: "#[target_feature(enable = \"ssse3\")]\n",
     get_mul_table: |t| format!("&NIBBLE_MUL_TABLE[{t}]"),
@@ -441,7 +423,6 @@ const SSSE3: UnrollTarget<Gf2p8_11d> = UnrollTarget {
 };
 
 const AVX2: UnrollTarget<Gf2p8_11d> = UnrollTarget {
-    name: "avx2",
     cfg: "#[cfg(any(native_avx2, feature = \"compile_avx2\"))]\n",
     attr: "#[target_feature(enable = \"avx2\")]\n",
     get_mul_table: |t| format!("&NIBBLE_MUL_TABLE[{t}]"),
@@ -452,7 +433,6 @@ const AVX2: UnrollTarget<Gf2p8_11d> = UnrollTarget {
 };
 
 const GFNI: UnrollTarget<Gf2p8_11d> = UnrollTarget {
-    name: "gfni",
     cfg: "#[cfg(any(native_gfni, feature = \"compile_gfni\"))]\n",
     attr: "#[target_feature(enable = \"avx512f,avx512bw,gfni\")]\n",
     get_mul_table: |t| format!("_mm512_set1_epi64(GFNI_MUL_TABLE[{t}] as i64)"),
@@ -462,19 +442,7 @@ const GFNI: UnrollTarget<Gf2p8_11d> = UnrollTarget {
     _phant: PhantomData,
 };
 
-const LUT: UnrollTarget<Gf2p8_11d> = UnrollTarget {
-    name: "lut",
-    cfg: "",
-    attr: "",
-    get_mul_table: |t| format!("&MUL_TABLE[{t}]"),
-    mul_table_import: "MUL_TABLE",
-    g: "Gf2p8_11d",
-    extra_imports: "",
-    _phant: PhantomData,
-};
-
 const NEON: UnrollTarget<Gf2p8_11d> = UnrollTarget {
-    name: "neon",
     cfg: "#[cfg(native_neon)]\n",
     attr: "",
     get_mul_table: |t| format!("&NIBBLE_MUL_TABLE[{t}]"),
@@ -483,6 +451,7 @@ const NEON: UnrollTarget<Gf2p8_11d> = UnrollTarget {
     extra_imports: "",
     _phant: PhantomData,
 };
+*/
 
 /// An identifier for a transform node's twiddle: a level and the global index of its first shard.
 type NodeRef = (u8, usize);
@@ -573,7 +542,7 @@ fn gfni_target<G: Gf2p8>() -> ScheduleTarget<G> {
 fn nibble_target<G: Gf2p8>() -> ScheduleTarget<G> {
     ScheduleTarget {
         name: "NIBBLE",
-        ty: "&([u8; 16], [u8; 16])",
+        ty: "&[[u8; 16]; 2]",
         literal: |t| format!("&NIBBLE_MUL_TABLE[{}]", t.into_usize()),
     }
 }
@@ -704,10 +673,7 @@ fn write_node_mul_nibble<G: Gf2p8 + fmt::Debug>(
     sub_poly_luts: &[[G; FIELD_SIZE]; 8],
     subspace_points: &[G; FIELD_SIZE],
 ) -> io::Result<()> {
-    writeln!(
-        f,
-        "pub static NODE_MUL_NIBBLE: [&([u8; 16], [u8; 16]); 510] = ["
-    )?;
+    writeln!(f, "pub static NODE_MUL_NIBBLE: [&[[u8; 16]; 2]; 510] = [")?;
     for l in 0..8u8 {
         writeln!(f, "    // level {l}")?;
         let count = 256usize >> l;
@@ -851,41 +817,11 @@ fn write_basis_gens(
     write_node_mul_nibble(&mut f, &sub_poly_luts, &subspace_points)?;
     write_node_mul_gfni(&mut f, &sub_poly_luts, &subspace_points)?;
 
+    // The only remaining unrolled target now is LUT.
     let dest_kernel_lut = Path::new(&out_dir).join(format!("unrolled_lut_kernel_11d_{suffix}.rs"));
     let mut fkl = BufWriter::new(File::create(&dest_kernel_lut)?);
     LUT.write_unrolled_kernel(&mut fkl, basis.as_ref(), &sub_poly_luts, &subspace_points)
         .expect("LUT kernel");
-
-//    let dest_kernel_sse2 =
-//        Path::new(&out_dir).join(format!("unrolled_sse2_kernel_11d_{suffix}.rs"));
-//    let mut fk = BufWriter::new(File::create(&dest_kernel_sse2)?);
-//    SSE2.write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
-//        .expect("SSE2 kernel");
-//
-//    let dest_kernel_ssse3 =
-//        Path::new(&out_dir).join(format!("unrolled_ssse3_kernel_11d_{suffix}.rs"));
-//    let mut fk = BufWriter::new(File::create(&dest_kernel_ssse3)?);
-//    SSSE3
-//        .write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
-//        .expect("SSSE3 kernel");
-//
-//    let dest_kernel_avx2 =
-//        Path::new(&out_dir).join(format!("unrolled_avx2_kernel_11d_{suffix}.rs"));
-//    let mut fk = BufWriter::new(File::create(&dest_kernel_avx2)?);
-//    AVX2.write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
-//        .expect("AVX2 kernel");
-//
-//    let dest_kernel_neon =
-//        Path::new(&out_dir).join(format!("unrolled_neon_kernel_11d_{suffix}.rs"));
-//    let mut fk = BufWriter::new(File::create(&dest_kernel_neon)?);
-//    NEON.write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
-//        .expect("NEON kernel");
-//
-//    let dest_kernel_gfni =
-//        Path::new(&out_dir).join(format!("unrolled_gfni_kernel_11d_{suffix}.rs"));
-//    let mut fk = BufWriter::new(File::create(&dest_kernel_gfni)?);
-//    GFNI.write_unrolled_kernel(&mut fk, basis.as_ref(), &sub_poly_luts, &subspace_points)
-//        .expect("GFNI kernel");
 
     Ok(())
 }
@@ -900,52 +836,62 @@ fn main() {
     let inv_table = Gf2p8_11d::inv_table(&exp_table, &log_table);
     write!(f, "pub static EXP_TABLE: [u8; {}] = [", EXP_TABLE_SIZE).unwrap();
     write_points(&mut f, exp_table.into_iter(), false);
-    write!(f, "\npub static LOG_TABLE: [u8; {}] = [", FIELD_SIZE).unwrap();
+    write!(f, "pub static LOG_TABLE: [u8; {}] = [", FIELD_SIZE).unwrap();
     write_points(&mut f, log_table.into_iter(), false);
-    write!(f, "\npub static INV_TABLE: [u8; {}] = [", FIELD_SIZE).unwrap();
+    write!(f, "pub static INV_TABLE: [u8; {}] = [", FIELD_SIZE).unwrap();
     write_points(&mut f, inv_table.into_iter(), false);
 
     let mul_table: [[u8; FIELD_SIZE]; FIELD_SIZE] =
         std::array::from_fn(|x| Gf2p8_11d(x as u8).make_mul_table(&exp_table, &log_table));
-    emit_table(&mut f, &out_dir, "MUL_TABLE", "[[u8; 256]; 256]", mul_table.as_flattened()).unwrap();
-
-//    writeln!(
-//        f,
-//        "\npub static MUL_TABLE: [[u8; {FIELD_SIZE}]; {FIELD_SIZE}] = ["
-//    )
-//    .unwrap();
-//    for t in mul_table_iter {
-//        write!(f, "    [").unwrap();
-//        write_bytes(&mut f, t.into_iter(), true);
-//    }
-//    writeln!(f, "];").unwrap();
+    emit_table(
+        &mut f,
+        &out_dir,
+        "MUL_TABLE",
+        "[[u8; 256]; 256]",
+        mul_table.as_flattened(),
+    )
+    .unwrap();
 
     let gfni_mul_iter = Gf2p8_11d::iter_gfni_mul_matrices();
     let gfni_mul_mats: [u64; FIELD_SIZE] = gfni_mul_iter.collect::<Vec<_>>().try_into().unwrap();
 
-    writeln!(f, "\npub static GFNI_MUL_TABLE: [u64; {}] = [", FIELD_SIZE).unwrap();
+    writeln!(f, "pub static GFNI_MUL_TABLE: [u64; {}] = [", FIELD_SIZE).unwrap();
     for mat in gfni_mul_mats {
         writeln!(f, "    0x{:016x},", mat).unwrap();
     }
-    writeln!(f, "];").unwrap();
+    writeln!(f, "];\n").unwrap();
 
     let gfni_mul_by_log: [u64; FIELD_SIZE] =
         std::array::from_fn(|l| gfni_mul_mats[exp_table[l] as usize]);
 
-    writeln!(f, "\npub static GFNI_MUL_BY_LOG: [u64; {}] = [", FIELD_SIZE).unwrap();
+    writeln!(f, "pub static GFNI_MUL_BY_LOG: [u64; {}] = [", FIELD_SIZE).unwrap();
     for mat in gfni_mul_by_log {
         writeln!(f, "    0x{:016x},", mat).unwrap();
     }
-    writeln!(f, "];").unwrap();
+    writeln!(f, "];\n").unwrap();
 
     let nibble_mul_iter = Gf2p8_11d::iter_nibble_mul_tables();
-    let nibble_mul_tables: [NibbleMulTable; FIELD_SIZE] =
+    let nibble_mul_table: [NibbleMulTable; FIELD_SIZE] =
         nibble_mul_iter.collect::<Vec<_>>().try_into().unwrap();
-    write_nibble_mul(&mut f, &nibble_mul_tables, &"NIBBLE_MUL_TABLE");
+    emit_table(
+        &mut f,
+        &out_dir,
+        "NIBBLE_MUL_TABLE",
+        "[[[u8; 16]; 2]; 256]",
+        nibble_mul_table.concat().as_flattened(),
+    )
+    .unwrap();
 
     let nibble_mul_by_log: [NibbleMulTable; FIELD_SIZE] =
-        std::array::from_fn(|l| nibble_mul_tables[exp_table[l] as usize]);
-    write_nibble_mul(&mut f, &nibble_mul_by_log, &"NIBBLE_MUL_BY_LOG");
+        std::array::from_fn(|l| nibble_mul_table[exp_table[l] as usize]);
+    emit_table(
+        &mut f,
+        &out_dir,
+        "NIBBLE_MUL_BY_LOG",
+        "[[[u8; 16]; 2]; 256]",
+        nibble_mul_by_log.concat().as_flattened(),
+    )
+    .unwrap();
 
     let cantor_basis = CantorBasis11d::new();
     write_basis_gens(&out_dir, "cantor", cantor_basis, &log_table, &inv_table).unwrap();

@@ -1,4 +1,4 @@
-use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8, Z255};
+use additive_fft_reed_solomon_gf2p8::{FIELD_SIZE, Gf2p8, NibbleMulTable, Z255};
 
 /// Precomputed lookup table group operations.
 pub trait Gf2p8Lut: Gf2p8 {
@@ -33,7 +33,7 @@ pub trait Gf2p8Lut: Gf2p8 {
 
     /// Low and high nibble multiplication table for NEON `tbl` and AVX2 `pshufb` lookups:
     /// `lo[i] = i * self`, `hi[i] = (i << 4) * self`.
-    fn nibble_mul_table_lut(self) -> ([u8; 16], [u8; 16]);
+    fn nibble_mul_table_lut(self) -> NibbleMulTable;
 }
 
 /// Precompted lookup table operations on the Cantor basis subspace.

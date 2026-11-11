@@ -24,8 +24,8 @@ fn mul_vec_inner(v: __m128i, m_lo: __m128i, m_hi: __m128i) -> __m128i {
 fn load_mul_table(m: Multiplier) -> (__m128i, __m128i) {
     unsafe {
         (
-            _mm_loadu_si128(m.0.as_ptr() as *const __m128i),
-            _mm_loadu_si128(m.1.as_ptr() as *const __m128i),
+            _mm_loadu_si128(m[0].as_ptr() as *const __m128i),
+            _mm_loadu_si128(m[1].as_ptr() as *const __m128i),
         )
     }
 }
@@ -955,7 +955,7 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for Ssse3Kernel<Gf2p8_11d, CantorBasis
     }
 
     fn is_zero_mul(m: &Self::Multiplier) -> bool {
-        m.0[1] == 0
+        m[0][1] == 0
     }
 
     fn butterfly_fwd_dit2(
@@ -1102,7 +1102,7 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for Ssse3Kernel<Gf2p8_11d, StandardB
     }
 
     fn is_zero_mul(m: &Self::Multiplier) -> bool {
-        m.0[1] == 0
+        m[0][1] == 0
     }
 
     fn butterfly_fwd_dit2(

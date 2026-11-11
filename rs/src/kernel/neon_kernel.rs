@@ -8,30 +8,7 @@ use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d, NibbleMulTable, Z255};
 use core::arch::aarch64::*;
 use std::marker::PhantomData;
 
-pub mod unrolled_11d_cantor {
-    include!(concat!(
-        env!("OUT_DIR"),
-        "/unrolled_neon_kernel_11d_cantor.rs"
-    ));
-}
-
-pub mod unrolled_11d_standard {
-    include!(concat!(
-        env!("OUT_DIR"),
-        "/unrolled_neon_kernel_11d_standard.rs"
-    ));
-}
-
 type Multiplier = &'static NibbleMulTable;
-
-#[inline]
-fn mul_vec(v: uint8x16_t, m: &NibbleMulTable) -> uint8x16_t {
-    unsafe {
-        let m_lo = vld1q_u8(m.0.as_ptr());
-        let m_hi = vld1q_u8(m.1.as_ptr());
-        mul_vec_inner(v, m_lo, m_hi)
-    }
-}
 
 #[inline]
 fn mul_vec_inner(v: uint8x16_t, m_lo: uint8x16_t, m_hi: uint8x16_t) -> uint8x16_t {
@@ -45,66 +22,7 @@ fn mul_vec_inner(v: uint8x16_t, m_lo: uint8x16_t, m_hi: uint8x16_t) -> uint8x16_
 
 #[inline]
 fn load_mul_table(m: Multiplier) -> (uint8x16_t, uint8x16_t) {
-    unsafe { (vld1q_u8(m.0.as_ptr()), vld1q_u8(m.1.as_ptr())) }
-}
-
-#[inline]
-fn butterfly_fwd<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: &NibbleMulTable) {
-    let mut i = 0;
-    {
-        let a = a.as_mut_ptr() as *mut u8;
-        let b = b.as_mut_ptr() as *mut u8;
-        while i + 16 <= len {
-            unsafe {
-                let va = vld1q_u8(a.add(i));
-                let vb = vld1q_u8(b.add(i));
-                let va = veorq_u8(va, mul_vec(vb, m)); // g0 = a + T·b
-                let vb = veorq_u8(vb, va); // g1 = b + g0
-                vst1q_u8(a.add(i), va);
-                vst1q_u8(b.add(i), vb);
-            }
-            i += 16;
-        }
-    }
-    // Handle the tail scalar. There are no masked load/store ops in NEON, hence apply the
-    // multiplication table elementwise.
-    while i < len {
-        let x = a[i];
-        let y = b[i];
-        let g0 = x.add(y.nibble_mul(m));
-        a[i] = g0;
-        b[i] = y.add(g0);
-        i += 1;
-    }
-}
-
-#[inline]
-fn butterfly_inv<G: Gf2p8>(a: &mut [G], b: &mut [G], len: usize, m: &NibbleMulTable) {
-    let mut i = 0;
-    {
-        let a = a.as_mut_ptr() as *mut u8;
-        let b = b.as_mut_ptr() as *mut u8;
-        while i + 16 <= len {
-            unsafe {
-                let va = vld1q_u8(a.add(i));
-                let vb = vld1q_u8(b.add(i));
-                let vb = veorq_u8(vb, va);
-                let va = veorq_u8(va, mul_vec(vb, m));
-                vst1q_u8(a.add(i), va);
-                vst1q_u8(b.add(i), vb);
-            }
-            i += 16;
-        }
-    }
-    while i < len {
-        let x = a[i];
-        let y = b[i];
-        let y = x.add(y);
-        let x = x.add(y.nibble_mul(m));
-        a[i] = x;
-        b[i] = y;
-        i += 1;
-    }
+    unsafe { (vld1q_u8(m[0].as_ptr()), vld1q_u8(m[1].as_ptr())) }
 }
 
 fn butterfly_fwd_dit2<G: Gf2p8>(
@@ -1077,7 +995,7 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for NeonKernel<Gf2p8_11d, CantorBasisL
     }
 
     fn is_zero_mul(m: &Self::Multiplier) -> bool {
-        m.0[1] == 0
+        m[0][1] == 0
     }
 
     fn butterfly_fwd_dit2(
@@ -1146,48 +1064,6 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for NeonKernel<Gf2p8_11d, CantorBasisL
         m23: Self::Multiplier,
     ) {
         butterfly_inv_dit4_zero(shards, shard_len, base, d, m23);
-    }
-
-    fn fft_sharded_zero_padded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, log_support: u8) {
-        match (k, log_support) {
-            (1, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k1_s1(shards, shard_len),
-            (2, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k2_s1(shards, shard_len),
-            (2, 1) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k2_s2(shards, shard_len),
-            (3, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k3_s1(shards, shard_len),
-            (3, 1) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k3_s2(shards, shard_len),
-            (3, 2) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k3_s4(shards, shard_len),
-            (4, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k4_s1(shards, shard_len),
-            (4, 1) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k4_s2(shards, shard_len),
-            (4, 2) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k4_s4(shards, shard_len),
-            (4, 3) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k4_s8(shards, shard_len),
-            (5, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k5_s1(shards, shard_len),
-            (5, 1) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k5_s2(shards, shard_len),
-            (5, 2) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k5_s4(shards, shard_len),
-            (5, 3) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k5_s8(shards, shard_len),
-            (5, 4) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k5_s16(shards, shard_len),
-            (6, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k6_s1(shards, shard_len),
-            (6, 1) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k6_s2(shards, shard_len),
-            (6, 2) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k6_s4(shards, shard_len),
-            (6, 3) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k6_s8(shards, shard_len),
-            (6, 4) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k6_s16(shards, shard_len),
-            (6, 5) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k6_s32(shards, shard_len),
-            (7, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k7_s1(shards, shard_len),
-            (7, 1) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k7_s2(shards, shard_len),
-            (7, 2) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k7_s4(shards, shard_len),
-            (7, 3) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k7_s8(shards, shard_len),
-            (7, 4) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k7_s16(shards, shard_len),
-            (7, 5) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k7_s32(shards, shard_len),
-            (7, 6) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k7_s64(shards, shard_len),
-            (8, 0) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k8_s1(shards, shard_len),
-            (8, 1) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k8_s2(shards, shard_len),
-            (8, 2) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k8_s4(shards, shard_len),
-            (8, 3) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k8_s8(shards, shard_len),
-            (8, 4) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k8_s16(shards, shard_len),
-            (8, 5) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k8_s32(shards, shard_len),
-            (8, 6) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k8_s64(shards, shard_len),
-            (8, 7) => unrolled_11d_cantor::fft_sharded_zero_padded_neon_k8_s128(shards, shard_len),
-            _ => unreachable!("k={k} must be in 1..=8 and log_support must be < k"),
-        }
     }
 
     fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
@@ -1240,7 +1116,7 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for NeonKernel<Gf2p8_11d, StandardBa
     }
 
     fn is_zero_mul(m: &Self::Multiplier) -> bool {
-        m.0[1] == 0
+        m[0][1] == 0
     }
 
     fn butterfly_fwd_dit2(
@@ -1311,50 +1187,6 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for NeonKernel<Gf2p8_11d, StandardBa
         butterfly_inv_dit4_zero(shards, shard_len, base, d, m23);
     }
 
-    fn fft_sharded_zero_padded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, log_support: u8) {
-        match (k, log_support) {
-            (1, 0) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k1_s1(shards, shard_len),
-            (2, 0) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k2_s1(shards, shard_len),
-            (2, 1) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k2_s2(shards, shard_len),
-            (3, 0) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k3_s1(shards, shard_len),
-            (3, 1) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k3_s2(shards, shard_len),
-            (3, 2) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k3_s4(shards, shard_len),
-            (4, 0) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k4_s1(shards, shard_len),
-            (4, 1) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k4_s2(shards, shard_len),
-            (4, 2) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k4_s4(shards, shard_len),
-            (4, 3) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k4_s8(shards, shard_len),
-            (5, 0) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k5_s1(shards, shard_len),
-            (5, 1) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k5_s2(shards, shard_len),
-            (5, 2) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k5_s4(shards, shard_len),
-            (5, 3) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k5_s8(shards, shard_len),
-            (5, 4) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k5_s16(shards, shard_len),
-            (6, 0) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k6_s1(shards, shard_len),
-            (6, 1) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k6_s2(shards, shard_len),
-            (6, 2) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k6_s4(shards, shard_len),
-            (6, 3) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k6_s8(shards, shard_len),
-            (6, 4) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k6_s16(shards, shard_len),
-            (6, 5) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k6_s32(shards, shard_len),
-            (7, 0) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k7_s1(shards, shard_len),
-            (7, 1) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k7_s2(shards, shard_len),
-            (7, 2) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k7_s4(shards, shard_len),
-            (7, 3) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k7_s8(shards, shard_len),
-            (7, 4) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k7_s16(shards, shard_len),
-            (7, 5) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k7_s32(shards, shard_len),
-            (7, 6) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k7_s64(shards, shard_len),
-            (8, 0) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k8_s1(shards, shard_len),
-            (8, 1) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k8_s2(shards, shard_len),
-            (8, 2) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k8_s4(shards, shard_len),
-            (8, 3) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k8_s8(shards, shard_len),
-            (8, 4) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k8_s16(shards, shard_len),
-            (8, 5) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k8_s32(shards, shard_len),
-            (8, 6) => unrolled_11d_standard::fft_sharded_zero_padded_neon_k8_s64(shards, shard_len),
-            (8, 7) => {
-                unrolled_11d_standard::fft_sharded_zero_padded_neon_k8_s128(shards, shard_len)
-            }
-            _ => unreachable!("k={k} must be in 1..=8 and log_support must be < k"),
-        }
-    }
-
     fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
         fft_sharded_radix2_last_standard(shards, shard_len, k, beta);
     }
@@ -1390,6 +1222,30 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for NeonKernel<Gf2p8_11d, StandardBa
     fn scale_in_place_by_log(dst: &mut [Gf2p8_11d], log_m: Z255) {
         let m = &NIBBLE_MUL_BY_LOG[log_m.0 as usize];
         scale_in_place(dst, dst.len(), m);
+    }
+}
+
+#[cfg(test)]
+#[cfg(native_neon)]
+mod test {
+    use super::*;
+    use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
+
+    #[test]
+    fn mul_vec_matches_mul_lut() {
+        for p in 0..=255u8 {
+            let m = &NIBBLE_MUL_TABLE[p as usize];
+            for x in 0..=255u8 {
+                let expected = Gf2p8_11d(x).mul_lut(Gf2p8_11d(p));
+
+                let actual = unsafe {
+                    let v = vdupq_n_u8(x); // copy x cross all 16 lanes
+                    let (m_lo, m_hi) = load_mul_table(m);
+                    Gf2p8_11d(vgetq_lane_u8::<0>(mul_vec_inner(v, m_lo, m_hi)))
+                };
+                assert_eq!(expected, actual, "p={p:02x} x={x:02x}");
+            }
+        }
     }
 }
 
