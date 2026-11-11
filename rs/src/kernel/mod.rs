@@ -110,10 +110,10 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
-    fn fft_sharded_radix2_last(shards: &mut [G], shard_len: usize, k: u8, beta: G);
+    fn fft_sharded(shards: &mut [G], shard_len: usize, k: u8, beta: G);
 
     /// Forward transform.
-    fn fft_sharded(shards: &mut [G], shard_len: usize, k: u8, beta: G);
+    fn fft_sharded_radix2_first(shards: &mut [G], shard_len: usize, k: u8, beta: G);
 
     /// Inverse transform.
     fn ifft_sharded(shards: &mut [G], shard_len: usize, k: u8, beta: G);
@@ -190,9 +190,10 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
-    /// FFT with the radix-2 last traversal order. It performs differently to `fft_shared_dit4_with`
-    /// and is kept here for further study.
-    fn fft_sharded_dit4_radix2_last_with(
+    /// FFT with the radix-2 last traversal order. FFT with this traversal order also runs faster than
+    /// radix-2 first FFT on some benchmarks, which is the main reason for making this function the
+    /// common FFT driver.
+    fn fft_sharded_dit4_with(
         shards: &mut [G],
         shard_len: usize,
         k: u8,
@@ -227,11 +228,9 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
     }
 
     /// FFT that mirrors the `ifft_sharded_dit4_with` radix-2 first traversal order and thus reuses
-    /// IFFT body and tail Multiplier schedules. FFT with this traversal order also runs faster than
-    /// radix-2 last FFT on some benchmarks, which is the main reason for making this function the
-    /// common FFT driver. However the performance comparison is not definitive and it needs further
-    /// study.
-    fn fft_sharded_dit4_with(
+    /// IFFT body and tail Multiplier schedules. The performance comparison with the radix-2 last
+    /// driver is not definitive and needs further study.
+    fn fft_sharded_dit4_radix2_first_with(
         shards: &mut [G],
         shard_len: usize,
         k: u8,

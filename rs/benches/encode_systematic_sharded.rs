@@ -6,6 +6,10 @@ use additive_fft_reed_solomon::kernel::avx2_kernel::Avx2Kernel;
 use additive_fft_reed_solomon::kernel::gfni_kernel::GfniKernel;
 #[cfg(native_neon)]
 use additive_fft_reed_solomon::kernel::neon_kernel::NeonKernel;
+#[cfg(native_sse2)]
+use additive_fft_reed_solomon::kernel::sse2_kernel::Sse2Kernel;
+#[cfg(native_ssse3)]
+use additive_fft_reed_solomon::kernel::ssse3_kernel::Ssse3Kernel;
 use additive_fft_reed_solomon::{
     codec::{Codec, ParityFirst, ShardLayout},
     gf2p8lut::SubspaceBasisLut,
@@ -85,12 +89,13 @@ fn bench_encode_systematic_sharded(c: &mut Criterion) {
     let mut rng = SmallRng::seed_from_u64(42);
 
     for shard_len in [64, 1024, 65536] {
+        #[cfg(native_gfni)]
         bench_params!(
             group,
             shard_len,
             &mut rng,
-            LutKernel<Gf2p8_11d, CantorBasisLut11d>,
-            "lut_cantor",
+            GfniKernel<Gf2p8_11d, CantorBasisLut11d>,
+            "gfni_cantor",
             ParityFirst,
             [
                 (2, 1),
@@ -111,12 +116,13 @@ fn bench_encode_systematic_sharded(c: &mut Criterion) {
             ]
         );
 
+        #[cfg(native_gfni)]
         bench_params!(
             group,
             shard_len,
             &mut rng,
-            LutKernel<Gf2p8_11d, StandardBasisLut11d>,
-            "lut_standard",
+            GfniKernel<Gf2p8_11d, StandardBasisLut11d>,
+            "gfni_standard",
             ParityFirst,
             [
                 (2, 1),
@@ -191,13 +197,13 @@ fn bench_encode_systematic_sharded(c: &mut Criterion) {
             ]
         );
 
-        #[cfg(native_gfni)]
+        #[cfg(native_ssse3)]
         bench_params!(
             group,
             shard_len,
             &mut rng,
-            GfniKernel<Gf2p8_11d, CantorBasisLut11d>,
-            "gfni_cantor",
+            Ssse3Kernel<Gf2p8_11d, CantorBasisLut11d>,
+            "ssse3_cantor",
             ParityFirst,
             [
                 (2, 1),
@@ -218,13 +224,67 @@ fn bench_encode_systematic_sharded(c: &mut Criterion) {
             ]
         );
 
-        #[cfg(native_gfni)]
+        #[cfg(native_ssse3)]
         bench_params!(
             group,
             shard_len,
             &mut rng,
-            GfniKernel<Gf2p8_11d, StandardBasisLut11d>,
-            "gfni_standard",
+            Ssse3Kernel<Gf2p8_11d, StandardBasisLut11d>,
+            "ssse3_standard",
+            ParityFirst,
+            [
+                (2, 1),
+                (4, 1),
+                (4, 2),
+                (8, 2),
+                (8, 4),
+                (16, 4),
+                (16, 8),
+                (32, 8),
+                (32, 16),
+                (64, 16),
+                (64, 32),
+                (128, 32),
+                (128, 64),
+                (256, 64),
+                (256, 128),
+            ]
+        );
+
+        #[cfg(native_sse2)]
+        bench_params!(
+            group,
+            shard_len,
+            &mut rng,
+            Sse2Kernel<Gf2p8_11d, CantorBasisLut11d>,
+            "sse2_cantor",
+            ParityFirst,
+            [
+                (2, 1),
+                (4, 1),
+                (4, 2),
+                (8, 2),
+                (8, 4),
+                (16, 4),
+                (16, 8),
+                (32, 8),
+                (32, 16),
+                (64, 16),
+                (64, 32),
+                (128, 32),
+                (128, 64),
+                (256, 64),
+                (256, 128),
+            ]
+        );
+
+        #[cfg(native_sse2)]
+        bench_params!(
+            group,
+            shard_len,
+            &mut rng,
+            Sse2Kernel<Gf2p8_11d, StandardBasisLut11d>,
+            "sse2_standard",
             ParityFirst,
             [
                 (2, 1),
@@ -279,6 +339,58 @@ fn bench_encode_systematic_sharded(c: &mut Criterion) {
             &mut rng,
             NeonKernel<Gf2p8_11d, StandardBasisLut11d>,
             "neon_standard",
+            ParityFirst,
+            [
+                (2, 1),
+                (4, 1),
+                (4, 2),
+                (8, 2),
+                (8, 4),
+                (16, 4),
+                (16, 8),
+                (32, 8),
+                (32, 16),
+                (64, 16),
+                (64, 32),
+                (128, 32),
+                (128, 64),
+                (256, 64),
+                (256, 128),
+            ]
+        );
+
+        bench_params!(
+            group,
+            shard_len,
+            &mut rng,
+            LutKernel<Gf2p8_11d, CantorBasisLut11d>,
+            "lut_cantor",
+            ParityFirst,
+            [
+                (2, 1),
+                (4, 1),
+                (4, 2),
+                (8, 2),
+                (8, 4),
+                (16, 4),
+                (16, 8),
+                (32, 8),
+                (32, 16),
+                (64, 16),
+                (64, 32),
+                (128, 32),
+                (128, 64),
+                (256, 64),
+                (256, 128),
+            ]
+        );
+
+        bench_params!(
+            group,
+            shard_len,
+            &mut rng,
+            LutKernel<Gf2p8_11d, StandardBasisLut11d>,
+            "lut_standard",
             ParityFirst,
             [
                 (2, 1),

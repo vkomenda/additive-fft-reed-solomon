@@ -31,7 +31,7 @@ fn ifft_then_fft_is_identity() {
 }
 
 #[test]
-fn fft_sharded_radix2_last_matches_fft_sharded_rec() {
+fn fft_sharded_radix2_first_matches_fft_sharded_rec() {
     for shard_len in [1, 31, 32, 33, 64] {
         for k in 1u8..=8 {
             let n = 1 << k;
@@ -44,7 +44,7 @@ fn fft_sharded_radix2_last_matches_fft_sharded_rec() {
                 k,
                 Gf2p8_11d::zero(),
             );
-            Avx2Kernel::<_, B>::fft_sharded_radix2_last(
+            Avx2Kernel::<_, B>::fft_sharded_radix2_first(
                 &mut actual,
                 shard_len,
                 k,

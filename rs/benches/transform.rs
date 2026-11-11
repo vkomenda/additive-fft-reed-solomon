@@ -1,5 +1,9 @@
 mod common;
 
+#[cfg(native_sse2)]
+use additive_fft_reed_solomon::Sse2Kernel;
+#[cfg(native_ssse3)]
+use additive_fft_reed_solomon::Ssse3Kernel;
 #[cfg(native_avx2)]
 use additive_fft_reed_solomon::kernel::avx2_kernel::Avx2Kernel;
 #[cfg(native_gfni)]
@@ -32,8 +36,8 @@ where
         ("ifft_sharded", |s, l, k| {
             K::ifft_sharded(s, l, k, Gf2p8_11d::zero())
         }),
-        ("fft_sharded_radix2_last", |s, l, k| {
-            K::fft_sharded_radix2_last(s, l, k, Gf2p8_11d::zero())
+        ("fft_sharded_radix2_first", |s, l, k| {
+            K::fft_sharded_radix2_first(s, l, k, Gf2p8_11d::zero())
         }),
         ("fft_sharded_dit2", |s, l, k| {
             K::fft_sharded_dit2(s, l, k, Gf2p8_11d::zero())
@@ -94,13 +98,14 @@ fn bench_transform(c: &mut Criterion) {
     let mut rng = SmallRng::seed_from_u64(42);
     let mut group = c.benchmark_group("transform");
 
-    for (name, f) in transforms::<CantorBasisLut11d, LutKernel<Gf2p8_11d, CantorBasisLut11d>>() {
+    #[cfg(native_gfni)]
+    for (name, f) in transforms::<CantorBasisLut11d, GfniKernel<Gf2p8_11d, CantorBasisLut11d>>() {
         for shard_len in [64, 1024, 65536] {
             bench_params!(
                 group,
                 shard_len,
                 &mut rng,
-                "lut_cantor",
+                "gfni_cantor",
                 f,
                 name,
                 [1, 2, 3, 4, 5, 6, 7, 8]
@@ -108,14 +113,15 @@ fn bench_transform(c: &mut Criterion) {
         }
     }
 
-    for (name, f) in transforms::<StandardBasisLut11d, LutKernel<Gf2p8_11d, StandardBasisLut11d>>()
+    #[cfg(native_gfni)]
+    for (name, f) in transforms::<StandardBasisLut11d, GfniKernel<Gf2p8_11d, StandardBasisLut11d>>()
     {
         for shard_len in [64, 1024, 65536] {
             bench_params!(
                 group,
                 shard_len,
                 &mut rng,
-                "lut_standard",
+                "gfni_standard",
                 f,
                 name,
                 [1, 2, 3, 4, 5, 6, 7, 8]
@@ -154,14 +160,14 @@ fn bench_transform(c: &mut Criterion) {
         }
     }
 
-    #[cfg(native_gfni)]
-    for (name, f) in transforms::<CantorBasisLut11d, GfniKernel<Gf2p8_11d, CantorBasisLut11d>>() {
+    #[cfg(native_ssse3)]
+    for (name, f) in transforms::<CantorBasisLut11d, Ssse3Kernel<Gf2p8_11d, CantorBasisLut11d>>() {
         for shard_len in [64, 1024, 65536] {
             bench_params!(
                 group,
                 shard_len,
                 &mut rng,
-                "gfni_cantor",
+                "ssse3_cantor",
                 f,
                 name,
                 [1, 2, 3, 4, 5, 6, 7, 8]
@@ -169,15 +175,47 @@ fn bench_transform(c: &mut Criterion) {
         }
     }
 
-    #[cfg(native_gfni)]
-    for (name, f) in transforms::<StandardBasisLut11d, GfniKernel<Gf2p8_11d, StandardBasisLut11d>>()
+    #[cfg(native_ssse3)]
+    for (name, f) in
+        transforms::<StandardBasisLut11d, Ssse3Kernel<Gf2p8_11d, StandardBasisLut11d>>()
     {
         for shard_len in [64, 1024, 65536] {
             bench_params!(
                 group,
                 shard_len,
                 &mut rng,
-                "gfni_standard",
+                "ssse3_standard",
+                f,
+                name,
+                [1, 2, 3, 4, 5, 6, 7, 8]
+            );
+        }
+    }
+
+    #[cfg(native_sse2)]
+    for (name, f) in transforms::<CantorBasisLut11d, Sse2Kernel<Gf2p8_11d, CantorBasisLut11d>>() {
+        for shard_len in [64, 1024, 65536] {
+            bench_params!(
+                group,
+                shard_len,
+                &mut rng,
+                "sse2_cantor",
+                f,
+                name,
+                [1, 2, 3, 4, 5, 6, 7, 8]
+            );
+        }
+    }
+
+    #[cfg(native_sse2)]
+    for (name, f) in transforms::<StandardBasisLut11d, Sse2Kernel<Gf2p8_11d, StandardBasisLut11d>>()
+    {
+        for shard_len in [64, 1024, 65536] {
+            bench_params!(
+                group,
+                shard_len,
+                &mut rng,
+                "sse2_standard",
                 f,
                 name,
                 [1, 2, 3, 4, 5, 6, 7, 8]
@@ -209,6 +247,35 @@ fn bench_transform(c: &mut Criterion) {
                 shard_len,
                 &mut rng,
                 "neon_standard",
+                f,
+                name,
+                [1, 2, 3, 4, 5, 6, 7, 8]
+            );
+        }
+    }
+
+    for (name, f) in transforms::<CantorBasisLut11d, LutKernel<Gf2p8_11d, CantorBasisLut11d>>() {
+        for shard_len in [64, 1024, 65536] {
+            bench_params!(
+                group,
+                shard_len,
+                &mut rng,
+                "lut_cantor",
+                f,
+                name,
+                [1, 2, 3, 4, 5, 6, 7, 8]
+            );
+        }
+    }
+
+    for (name, f) in transforms::<StandardBasisLut11d, LutKernel<Gf2p8_11d, StandardBasisLut11d>>()
+    {
+        for shard_len in [64, 1024, 65536] {
+            bench_params!(
+                group,
+                shard_len,
+                &mut rng,
+                "lut_standard",
                 f,
                 name,
                 [1, 2, 3, 4, 5, 6, 7, 8]

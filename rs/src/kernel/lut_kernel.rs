@@ -472,64 +472,69 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for LutKernel<Gf2p8_11d, CantorBasisLu
         }
     }
 
-    fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+    fn fft_sharded_radix2_first(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        beta: Gf2p8_11d,
+    ) {
         if beta == Gf2p8_11d::zero() {
             match k {
-                1 => Self::fft_sharded_dit4_radix2_last_with(
+                1 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &cantor::FFT_DIT4_LUT_K1_O0,
-                    &cantor::FFT_DIT4_LUT_K1_O0_TAIL,
+                    &cantor::IFFT_DIT4_LUT_K1_O0,
+                    cantor::IFFT_DIT4_LUT_K1_O0_TAIL.as_ref(),
                 ),
-                2 => Self::fft_sharded_dit4_radix2_last_with(
+                2 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &cantor::FFT_DIT4_LUT_K2_O0,
-                    &cantor::FFT_DIT4_LUT_K2_O0_TAIL,
+                    &cantor::IFFT_DIT4_LUT_K2_O0,
+                    cantor::IFFT_DIT4_LUT_K2_O0_TAIL.as_ref(),
                 ),
-                3 => Self::fft_sharded_dit4_radix2_last_with(
+                3 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &cantor::FFT_DIT4_LUT_K3_O0,
-                    &cantor::FFT_DIT4_LUT_K3_O0_TAIL,
+                    &cantor::IFFT_DIT4_LUT_K3_O0,
+                    cantor::IFFT_DIT4_LUT_K3_O0_TAIL.as_ref(),
                 ),
-                4 => Self::fft_sharded_dit4_radix2_last_with(
+                4 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &cantor::FFT_DIT4_LUT_K4_O0,
-                    &cantor::FFT_DIT4_LUT_K4_O0_TAIL,
+                    &cantor::IFFT_DIT4_LUT_K4_O0,
+                    cantor::IFFT_DIT4_LUT_K4_O0_TAIL.as_ref(),
                 ),
-                5 => Self::fft_sharded_dit4_radix2_last_with(
+                5 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &cantor::FFT_DIT4_LUT_K5_O0,
-                    &cantor::FFT_DIT4_LUT_K5_O0_TAIL,
+                    &cantor::IFFT_DIT4_LUT_K5_O0,
+                    cantor::IFFT_DIT4_LUT_K5_O0_TAIL.as_ref(),
                 ),
-                6 => Self::fft_sharded_dit4_radix2_last_with(
+                6 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &cantor::FFT_DIT4_LUT_K6_O0,
-                    &cantor::FFT_DIT4_LUT_K6_O0_TAIL,
+                    &cantor::IFFT_DIT4_LUT_K6_O0,
+                    cantor::IFFT_DIT4_LUT_K6_O0_TAIL.as_ref(),
                 ),
-                7 => Self::fft_sharded_dit4_radix2_last_with(
+                7 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &cantor::FFT_DIT4_LUT_K7_O0,
-                    &cantor::FFT_DIT4_LUT_K7_O0_TAIL,
+                    &cantor::IFFT_DIT4_LUT_K7_O0,
+                    cantor::IFFT_DIT4_LUT_K7_O0_TAIL.as_ref(),
                 ),
-                8 => Self::fft_sharded_dit4_radix2_last_with(
+                8 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &cantor::FFT_DIT4_LUT_K8_O0,
-                    &cantor::FFT_DIT4_LUT_K8_O0_TAIL,
+                    &cantor::IFFT_DIT4_LUT_K8_O0,
+                    cantor::IFFT_DIT4_LUT_K8_O0_TAIL.as_ref(),
                 ),
                 _ => unreachable!("k={k} must be in 1..=8"),
             }
@@ -755,64 +760,69 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for LutKernel<Gf2p8_11d, StandardBas
         }
     }
 
-    fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+    fn fft_sharded_radix2_first(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        beta: Gf2p8_11d,
+    ) {
         if beta == Gf2p8_11d::zero() {
             match k {
-                1 => Self::fft_sharded_dit4_radix2_last_with(
+                1 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &standard::FFT_DIT4_LUT_K1_O0,
-                    &standard::FFT_DIT4_LUT_K1_O0_TAIL,
+                    &standard::IFFT_DIT4_LUT_K1_O0,
+                    standard::IFFT_DIT4_LUT_K1_O0_TAIL.as_ref(),
                 ),
-                2 => Self::fft_sharded_dit4_radix2_last_with(
+                2 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &standard::FFT_DIT4_LUT_K2_O0,
-                    &standard::FFT_DIT4_LUT_K2_O0_TAIL,
+                    &standard::IFFT_DIT4_LUT_K2_O0,
+                    standard::IFFT_DIT4_LUT_K2_O0_TAIL.as_ref(),
                 ),
-                3 => Self::fft_sharded_dit4_radix2_last_with(
+                3 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &standard::FFT_DIT4_LUT_K3_O0,
-                    &standard::FFT_DIT4_LUT_K3_O0_TAIL,
+                    &standard::IFFT_DIT4_LUT_K3_O0,
+                    standard::IFFT_DIT4_LUT_K3_O0_TAIL.as_ref(),
                 ),
-                4 => Self::fft_sharded_dit4_radix2_last_with(
+                4 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &standard::FFT_DIT4_LUT_K4_O0,
-                    &standard::FFT_DIT4_LUT_K4_O0_TAIL,
+                    &standard::IFFT_DIT4_LUT_K4_O0,
+                    standard::IFFT_DIT4_LUT_K4_O0_TAIL.as_ref(),
                 ),
-                5 => Self::fft_sharded_dit4_radix2_last_with(
+                5 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &standard::FFT_DIT4_LUT_K5_O0,
-                    &standard::FFT_DIT4_LUT_K5_O0_TAIL,
+                    &standard::IFFT_DIT4_LUT_K5_O0,
+                    standard::IFFT_DIT4_LUT_K5_O0_TAIL.as_ref(),
                 ),
-                6 => Self::fft_sharded_dit4_radix2_last_with(
+                6 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &standard::FFT_DIT4_LUT_K6_O0,
-                    &standard::FFT_DIT4_LUT_K6_O0_TAIL,
+                    &standard::IFFT_DIT4_LUT_K6_O0,
+                    standard::IFFT_DIT4_LUT_K6_O0_TAIL.as_ref(),
                 ),
-                7 => Self::fft_sharded_dit4_radix2_last_with(
+                7 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &standard::FFT_DIT4_LUT_K7_O0,
-                    &standard::FFT_DIT4_LUT_K7_O0_TAIL,
+                    &standard::IFFT_DIT4_LUT_K7_O0,
+                    standard::IFFT_DIT4_LUT_K7_O0_TAIL.as_ref(),
                 ),
-                8 => Self::fft_sharded_dit4_radix2_last_with(
+                8 => Self::fft_sharded_dit4_radix2_first_with(
                     shards,
                     shard_len,
                     k,
-                    &standard::FFT_DIT4_LUT_K8_O0,
-                    &standard::FFT_DIT4_LUT_K8_O0_TAIL,
+                    &standard::IFFT_DIT4_LUT_K8_O0,
+                    standard::IFFT_DIT4_LUT_K8_O0_TAIL.as_ref(),
                 ),
                 _ => unreachable!("k={k} must be in 1..=8"),
             }

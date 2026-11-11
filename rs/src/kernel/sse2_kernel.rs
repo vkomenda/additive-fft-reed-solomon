@@ -410,67 +410,62 @@ fn scale_in_place<G: Gf2p8Lut>(dst: &mut [G], len: usize, m: Multiplier) {
 }
 
 #[target_feature(enable = "sse2")]
-fn fft_sharded_radix2_last_cantor(
-    shards: &mut [Gf2p8_11d],
-    shard_len: usize,
-    k: u8,
-    beta: Gf2p8_11d,
-) {
+fn fft_sharded_cantor(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
     type K = Sse2Kernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
         match k {
             0 => {}
-            1 => K::fft_sharded_dit4_radix2_last_with(
+            1 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::FFT_DIT4_PEASANT_K1_O0,
                 &cantor::FFT_DIT4_PEASANT_K1_O0_TAIL,
             ),
-            2 => K::fft_sharded_dit4_radix2_last_with(
+            2 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::FFT_DIT4_PEASANT_K2_O0,
                 &cantor::FFT_DIT4_PEASANT_K2_O0_TAIL,
             ),
-            3 => K::fft_sharded_dit4_radix2_last_with(
+            3 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::FFT_DIT4_PEASANT_K3_O0,
                 &cantor::FFT_DIT4_PEASANT_K3_O0_TAIL,
             ),
-            4 => K::fft_sharded_dit4_radix2_last_with(
+            4 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::FFT_DIT4_PEASANT_K4_O0,
                 &cantor::FFT_DIT4_PEASANT_K4_O0_TAIL,
             ),
-            5 => K::fft_sharded_dit4_radix2_last_with(
+            5 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::FFT_DIT4_PEASANT_K5_O0,
                 &cantor::FFT_DIT4_PEASANT_K5_O0_TAIL,
             ),
-            6 => K::fft_sharded_dit4_radix2_last_with(
+            6 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::FFT_DIT4_PEASANT_K6_O0,
                 &cantor::FFT_DIT4_PEASANT_K6_O0_TAIL,
             ),
-            7 => K::fft_sharded_dit4_radix2_last_with(
+            7 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::FFT_DIT4_PEASANT_K7_O0,
                 &cantor::FFT_DIT4_PEASANT_K7_O0_TAIL,
             ),
-            8 => K::fft_sharded_dit4_radix2_last_with(
+            8 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
@@ -486,62 +481,67 @@ fn fft_sharded_radix2_last_cantor(
 }
 
 #[target_feature(enable = "sse2")]
-fn fft_sharded_cantor(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+fn fft_sharded_radix2_first_cantor(
+    shards: &mut [Gf2p8_11d],
+    shard_len: usize,
+    k: u8,
+    beta: Gf2p8_11d,
+) {
     type K = Sse2Kernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
         match k {
             0 => {}
-            1 => K::fft_sharded_dit4_with(
+            1 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_PEASANT_K1_O0,
                 cantor::IFFT_DIT4_PEASANT_K1_O0_TAIL.as_ref(),
             ),
-            2 => K::fft_sharded_dit4_with(
+            2 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_PEASANT_K2_O0,
                 cantor::IFFT_DIT4_PEASANT_K2_O0_TAIL.as_ref(),
             ),
-            3 => K::fft_sharded_dit4_with(
+            3 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_PEASANT_K3_O0,
                 cantor::IFFT_DIT4_PEASANT_K3_O0_TAIL.as_ref(),
             ),
-            4 => K::fft_sharded_dit4_with(
+            4 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_PEASANT_K4_O0,
                 cantor::IFFT_DIT4_PEASANT_K4_O0_TAIL.as_ref(),
             ),
-            5 => K::fft_sharded_dit4_with(
+            5 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_PEASANT_K5_O0,
                 cantor::IFFT_DIT4_PEASANT_K5_O0_TAIL.as_ref(),
             ),
-            6 => K::fft_sharded_dit4_with(
+            6 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_PEASANT_K6_O0,
                 cantor::IFFT_DIT4_PEASANT_K6_O0_TAIL.as_ref(),
             ),
-            7 => K::fft_sharded_dit4_with(
+            7 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_PEASANT_K7_O0,
                 cantor::IFFT_DIT4_PEASANT_K7_O0_TAIL.as_ref(),
             ),
-            8 => K::fft_sharded_dit4_with(
+            8 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
@@ -682,67 +682,62 @@ fn ifft_sharded_cantor(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: 
 }
 
 #[target_feature(enable = "sse2")]
-fn fft_sharded_radix2_last_standard(
-    shards: &mut [Gf2p8_11d],
-    shard_len: usize,
-    k: u8,
-    beta: Gf2p8_11d,
-) {
+fn fft_sharded_standard(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
     type K = Sse2Kernel<Gf2p8_11d, StandardBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
         match k {
             0 => {}
-            1 => K::fft_sharded_dit4_radix2_last_with(
+            1 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
                 &standard::FFT_DIT4_PEASANT_K1_O0,
                 &standard::FFT_DIT4_PEASANT_K1_O0_TAIL,
             ),
-            2 => K::fft_sharded_dit4_radix2_last_with(
+            2 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
                 &standard::FFT_DIT4_PEASANT_K2_O0,
                 &standard::FFT_DIT4_PEASANT_K2_O0_TAIL,
             ),
-            3 => K::fft_sharded_dit4_radix2_last_with(
+            3 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
                 &standard::FFT_DIT4_PEASANT_K3_O0,
                 &standard::FFT_DIT4_PEASANT_K3_O0_TAIL,
             ),
-            4 => K::fft_sharded_dit4_radix2_last_with(
+            4 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
                 &standard::FFT_DIT4_PEASANT_K4_O0,
                 &standard::FFT_DIT4_PEASANT_K4_O0_TAIL,
             ),
-            5 => K::fft_sharded_dit4_radix2_last_with(
+            5 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
                 &standard::FFT_DIT4_PEASANT_K5_O0,
                 &standard::FFT_DIT4_PEASANT_K5_O0_TAIL,
             ),
-            6 => K::fft_sharded_dit4_radix2_last_with(
+            6 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
                 &standard::FFT_DIT4_PEASANT_K6_O0,
                 &standard::FFT_DIT4_PEASANT_K6_O0_TAIL,
             ),
-            7 => K::fft_sharded_dit4_radix2_last_with(
+            7 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
                 &standard::FFT_DIT4_PEASANT_K7_O0,
                 &standard::FFT_DIT4_PEASANT_K7_O0_TAIL,
             ),
-            8 => K::fft_sharded_dit4_radix2_last_with(
+            8 => K::fft_sharded_dit4_with(
                 shards,
                 shard_len,
                 k,
@@ -758,62 +753,67 @@ fn fft_sharded_radix2_last_standard(
 }
 
 #[target_feature(enable = "sse2")]
-fn fft_sharded_standard(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+fn fft_sharded_radix2_first_standard(
+    shards: &mut [Gf2p8_11d],
+    shard_len: usize,
+    k: u8,
+    beta: Gf2p8_11d,
+) {
     type K = Sse2Kernel<Gf2p8_11d, StandardBasisLut11d>;
 
     if beta == Gf2p8_11d::zero() {
         match k {
             0 => {}
-            1 => K::fft_sharded_dit4_with(
+            1 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_PEASANT_K1_O0,
                 standard::IFFT_DIT4_PEASANT_K1_O0_TAIL.as_ref(),
             ),
-            2 => K::fft_sharded_dit4_with(
+            2 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_PEASANT_K2_O0,
                 standard::IFFT_DIT4_PEASANT_K2_O0_TAIL.as_ref(),
             ),
-            3 => K::fft_sharded_dit4_with(
+            3 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_PEASANT_K3_O0,
                 standard::IFFT_DIT4_PEASANT_K3_O0_TAIL.as_ref(),
             ),
-            4 => K::fft_sharded_dit4_with(
+            4 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_PEASANT_K4_O0,
                 standard::IFFT_DIT4_PEASANT_K4_O0_TAIL.as_ref(),
             ),
-            5 => K::fft_sharded_dit4_with(
+            5 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_PEASANT_K5_O0,
                 standard::IFFT_DIT4_PEASANT_K5_O0_TAIL.as_ref(),
             ),
-            6 => K::fft_sharded_dit4_with(
+            6 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_PEASANT_K6_O0,
                 standard::IFFT_DIT4_PEASANT_K6_O0_TAIL.as_ref(),
             ),
-            7 => K::fft_sharded_dit4_with(
+            7 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_PEASANT_K7_O0,
                 standard::IFFT_DIT4_PEASANT_K7_O0_TAIL.as_ref(),
             ),
-            8 => K::fft_sharded_dit4_with(
+            8 => K::fft_sharded_dit4_radix2_first_with(
                 shards,
                 shard_len,
                 k,
@@ -1052,15 +1052,20 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for Sse2Kernel<Gf2p8_11d, CantorBasisL
         }
     }
 
-    fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        unsafe {
-            fft_sharded_radix2_last_cantor(shards, shard_len, k, beta);
-        }
-    }
-
     fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
         unsafe {
             fft_sharded_cantor(shards, shard_len, k, beta);
+        }
+    }
+
+    fn fft_sharded_radix2_first(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        beta: Gf2p8_11d,
+    ) {
+        unsafe {
+            fft_sharded_radix2_first_cantor(shards, shard_len, k, beta);
         }
     }
 
@@ -1196,15 +1201,20 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for Sse2Kernel<Gf2p8_11d, StandardBa
         }
     }
 
-    fn fft_sharded_radix2_last(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        unsafe {
-            fft_sharded_radix2_last_standard(shards, shard_len, k, beta);
-        }
-    }
-
     fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
         unsafe {
             fft_sharded_standard(shards, shard_len, k, beta);
+        }
+    }
+
+    fn fft_sharded_radix2_first(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        beta: Gf2p8_11d,
+    ) {
+        unsafe {
+            fft_sharded_radix2_first_standard(shards, shard_len, k, beta);
         }
     }
 
