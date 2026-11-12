@@ -110,13 +110,31 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
-    fn fft_sharded(shards: &mut [G], shard_len: usize, k: u8, beta: G);
+    /// FFT method selector.
+    #[inline]
+    fn fft_sharded(shards: &mut [G], shard_len: usize, k: u8, beta: G) {
+        let coords = B::coords(beta);
+        Self::fft_sharded_dit4_outer_tail(shards, shard_len, k, coords);
+    }
 
-    /// Forward transform.
-    fn fft_sharded_radix2_first(shards: &mut [G], shard_len: usize, k: u8, beta: G);
+    /// IFFT method selector.
+    #[inline]
+    fn ifft_sharded(shards: &mut [G], shard_len: usize, k: u8, beta: G) {
+        let coords = B::coords(beta);
+        Self::ifft_sharded_dit4_outer_tail(shards, shard_len, k, coords);
+    }
 
-    /// Inverse transform.
-    fn ifft_sharded(shards: &mut [G], shard_len: usize, k: u8, beta: G);
+    /// Forward transform that calls DIT4 transform on the outermost pairs of levels and DIT2
+    /// transform on the innermost level if k is odd.
+    fn fft_sharded_dit4_inner_tail(shards: &mut [G], shard_len: usize, k: u8, coords: usize);
+
+    /// Forward transform that calls DIT2 transform on the innermost level if k is odd, and DIT4
+    /// transform on the innermost pairs of levels.
+    fn fft_sharded_dit4_outer_tail(shards: &mut [G], shard_len: usize, k: u8, coords: usize);
+
+    /// Inverse transform. Comparison with the innermost DIT2 tail IFFT version is a research question
+    /// which hasn't been settled yet.
+    fn ifft_sharded_dit4_outer_tail(shards: &mut [G], shard_len: usize, k: u8, coords: usize);
 
     fn scale(src: &[G], dst: &mut [G], scalar: G);
 
@@ -192,11 +210,9 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
-    /// FFT with the radix-2 last traversal order. FFT with this traversal order also runs faster than
-    /// radix-2 first FFT on some benchmarks, which is the main reason for making this function the
-    /// common FFT driver.
+    /// FFT with the radix-2 last traversal order.
     #[inline]
-    fn fft_sharded_dit4_with(
+    fn fft_sharded_dit4_inner_tail_with(
         shards: &mut [G],
         shard_len: usize,
         k: u8,
@@ -230,11 +246,10 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
-    /// FFT that mirrors the `ifft_sharded_dit4_with` radix-2 first traversal order and thus reuses
-    /// IFFT body and tail Multiplier schedules. The performance comparison with the radix-2 last
-    /// driver is not definitive and needs further study.
+    /// FFT that mirrors the `ifft_sharded_dit4_with` outermost level radix-2 first traversal order
+    /// and thus reuses IFFT body and tail Multiplier schedules.
     #[inline]
-    fn fft_sharded_dit4_radix2_first_with(
+    fn fft_sharded_dit4_outer_tail_with(
         shards: &mut [G],
         shard_len: usize,
         k: u8,
@@ -329,7 +344,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
 
     /// Common IFFT driver for Multiplier schedules that match the radix-2 first traversal order.
     #[inline]
-    fn ifft_sharded_dit4_with(
+    fn ifft_sharded_dit4_outer_tail_with(
         shards: &mut [G],
         shard_len: usize,
         k: u8,
@@ -363,18 +378,19 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
+    /// Outer-tail indexed FFT - using basis coordinates instead of a subspace point.
     #[inline]
-    fn fft_sharded_dit4_indexed(shards: &mut [G], shard_len: usize, k: u8, t: usize) {
+    fn fft_sharded_dit4_indexed(shards: &mut [G], shard_len: usize, k: u8, coords: usize) {
         let n = 1 << k;
         let m = |l: u8, x: usize| &Self::NODE_MUL[node_mul_index(l, x)];
 
         if k % 2 == 1 {
             let hi = k - 1;
             let d = n / 2;
-            if t < (1 << hi) {
+            if coords < (1 << hi) {
                 Self::butterfly_fwd_dit2_zero(shards, shard_len, 0, d);
             } else {
-                Self::butterfly_fwd_dit2(shards, shard_len, 0, d, *m(hi, t));
+                Self::butterfly_fwd_dit2(shards, shard_len, 0, d, *m(hi, coords));
             }
         }
 
@@ -383,7 +399,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
             for lo in (0..=top).rev().step_by(2) {
                 let d = 1usize << lo;
                 for start in (0..n).step_by(4 * d) {
-                    let x = t ^ start;
+                    let x = coords ^ start;
                     if x < d {
                         Self::butterfly_fwd_dit4_zero(
                             shards,
@@ -401,8 +417,9 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
+    /// Outer-tail indexed IFFT - using basis coordinates instead of a subspace point.
     #[inline]
-    fn ifft_sharded_dit4_indexed(shards: &mut [G], shard_len: usize, k: u8, t: usize) {
+    fn ifft_sharded_dit4_indexed(shards: &mut [G], shard_len: usize, k: u8, coords: usize) {
         let n = 1usize << k;
         let m = |l: u8, x: usize| &Self::NODE_MUL[node_mul_index(l, x)];
 
@@ -410,7 +427,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         while lo + 1 < k {
             let d = 1usize << lo;
             for start in (0..n).step_by(4 * d) {
-                let x = t ^ start;
+                let x = coords ^ start;
                 if x < d {
                     Self::butterfly_inv_dit4_zero(shards, shard_len, start, d, *m(lo, x ^ (2 * d)));
                 } else {
@@ -421,17 +438,17 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
             lo += 2;
         }
         if lo + 1 == k {
-            Self::butterfly_inv_dit2(shards, shard_len, 0, n / 2, *m(lo, t));
+            Self::butterfly_inv_dit2(shards, shard_len, 0, n / 2, *m(lo, coords));
         }
     }
 
     #[inline]
-    fn fft_sharded_dit2_indexed(shards: &mut [G], shard_len: usize, k: u8, t: usize) {
+    fn fft_sharded_dit2_indexed(shards: &mut [G], shard_len: usize, k: u8, coords: usize) {
         let n = 1 << k;
         for l in (0..k).rev() {
             let d = 1 << l;
             for start in (0..n).step_by(2 * d) {
-                let x = t ^ start;
+                let x = coords ^ start;
                 Self::butterfly_fwd_dit2(
                     shards,
                     shard_len,
@@ -444,12 +461,12 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
     }
 
     #[inline]
-    fn ifft_sharded_dit2_indexed(shards: &mut [G], shard_len: usize, k: u8, t: usize) {
+    fn ifft_sharded_dit2_indexed(shards: &mut [G], shard_len: usize, k: u8, coords: usize) {
         let n = 1usize << k;
         for l in 0..k {
             let d = 1usize << l;
             for start in (0..n).step_by(2 * d) {
-                let x = t ^ start;
+                let x = coords ^ start;
                 Self::butterfly_inv_dit2(
                     shards,
                     shard_len,

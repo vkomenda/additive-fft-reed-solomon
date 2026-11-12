@@ -754,13 +754,13 @@ fn write_basis_gens(
     write!(f, "\npub static SUBSPACE: [u8; {}] = [", num_points)?;
     write_points(&mut f, subspace_points.into_iter(), false);
 
-    // The inverse of SUBSPACE
-    let mut subspace_index = [0u8; FIELD_SIZE];
+    // The inverse of SUBSPACE: indices of points in the subspace array
+    let mut coords = [0u8; FIELD_SIZE];
     for (i, &w) in subspace_points.iter().enumerate() {
-        subspace_index[w.into_usize()] = i as u8;
+        coords[w.into_usize()] = i as u8;
     }
-    write!(f, "\npub static SUBSPACE_INDEX: [u8; {}] = [", num_points)?;
-    write_bytes(&mut f, subspace_index.into_iter(), false);
+    write!(f, "\npub static COORDS: [u8; {}] = [", num_points)?;
+    write_bytes(&mut f, coords.into_iter(), false);
 
     let sub_poly_luts = basis.gen_all_norm_subspace_poly_luts(inv_table);
 

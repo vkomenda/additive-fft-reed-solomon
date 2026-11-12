@@ -64,6 +64,10 @@ impl SubspaceBasisLut<Gf2p8_11d> for CantorBasisLut11d {
     fn subspace_poly_deriv_lut() -> &'static [Gf2p8_11d; 8] {
         unsafe { &*(&generated::cantor::SUBSPACE_POLY_DERIVS as *const _ as *const [Gf2p8_11d; 8]) }
     }
+
+    fn coords(beta: Gf2p8_11d) -> usize {
+        usize::from(generated::cantor::COORDS[beta.into_usize()])
+    }
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
@@ -96,6 +100,10 @@ impl SubspaceBasisLut<Gf2p8_11d> for StandardBasisLut11d {
         unsafe {
             &*(&generated::standard::SUBSPACE_POLY_DERIVS as *const _ as *const [Gf2p8_11d; 8])
         }
+    }
+
+    fn coords(beta: Gf2p8_11d) -> usize {
+        usize::from(generated::standard::COORDS[beta.into_usize()])
     }
 }
 

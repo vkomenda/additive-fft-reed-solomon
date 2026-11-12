@@ -93,4 +93,9 @@ pub trait SubspaceBasisLut<G: Gf2p8Lut> {
     fn log_walsh_lut() -> &'static [Z255; FIELD_SIZE];
 
     fn subspace_poly_deriv_lut() -> &'static [G; 8];
+
+    /// The index t with ω_t = β. Bits of the index are the coordinates of β in the basis
+    /// v_0,...,v_7. It is typed `usize` because of its purpose to be an index into the subspace
+    /// array.
+    fn coords(beta: G) -> usize;
 }
