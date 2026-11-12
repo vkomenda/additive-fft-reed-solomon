@@ -137,6 +137,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
+    #[inline]
     fn fft_sharded_dit2(shards: &mut [G], shard_len: usize, k: u8, beta: G) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
@@ -156,6 +157,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
+    #[inline]
     fn fft_sharded_dit4(shards: &mut [G], shard_len: usize, k: u8, beta: G) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
@@ -193,6 +195,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
     /// FFT with the radix-2 last traversal order. FFT with this traversal order also runs faster than
     /// radix-2 first FFT on some benchmarks, which is the main reason for making this function the
     /// common FFT driver.
+    #[inline]
     fn fft_sharded_dit4_with(
         shards: &mut [G],
         shard_len: usize,
@@ -230,6 +233,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
     /// FFT that mirrors the `ifft_sharded_dit4_with` radix-2 first traversal order and thus reuses
     /// IFFT body and tail Multiplier schedules. The performance comparison with the radix-2 last
     /// driver is not definitive and needs further study.
+    #[inline]
     fn fft_sharded_dit4_radix2_first_with(
         shards: &mut [G],
         shard_len: usize,
@@ -271,6 +275,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         debug_assert_eq!(end, 0);
     }
 
+    #[inline]
     fn ifft_sharded_dit2(shards: &mut [G], shard_len: usize, k: u8, beta: G) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
@@ -290,6 +295,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
+    #[inline]
     fn ifft_sharded_dit4(shards: &mut [G], shard_len: usize, k: u8, beta: G) {
         debug_assert_eq!(shards.len(), (1 << k) * shard_len);
         let n = 1 << k;
@@ -322,6 +328,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
     }
 
     /// Common IFFT driver for Multiplier schedules that match the radix-2 first traversal order.
+    #[inline]
     fn ifft_sharded_dit4_with(
         shards: &mut [G],
         shard_len: usize,
@@ -356,6 +363,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
+    #[inline]
     fn fft_sharded_dit4_indexed(shards: &mut [G], shard_len: usize, k: u8, t: usize) {
         let n = 1 << k;
         let m = |l: u8, x: usize| &Self::NODE_MUL[node_mul_index(l, x)];
@@ -393,6 +401,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
+    #[inline]
     fn ifft_sharded_dit4_indexed(shards: &mut [G], shard_len: usize, k: u8, t: usize) {
         let n = 1usize << k;
         let m = |l: u8, x: usize| &Self::NODE_MUL[node_mul_index(l, x)];
@@ -416,6 +425,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
+    #[inline]
     fn fft_sharded_dit2_indexed(shards: &mut [G], shard_len: usize, k: u8, t: usize) {
         let n = 1 << k;
         for l in (0..k).rev() {
@@ -433,6 +443,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         }
     }
 
+    #[inline]
     fn ifft_sharded_dit2_indexed(shards: &mut [G], shard_len: usize, k: u8, t: usize) {
         let n = 1usize << k;
         for l in 0..k {
