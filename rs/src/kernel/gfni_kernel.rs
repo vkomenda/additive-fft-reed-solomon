@@ -625,7 +625,12 @@ fn fft_sharded_dit4_outer_tail_cantor(
 }
 
 #[target_feature(enable = "avx512f,avx512bw,gfni")]
-fn ifft_sharded_cantor(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, coords: usize) {
+fn ifft_sharded_dit4_outer_tail_cantor(
+    shards: &mut [Gf2p8_11d],
+    shard_len: usize,
+    k: u8,
+    coords: usize,
+) {
     type K = GfniKernel<Gf2p8_11d, CantorBasisLut11d>;
 
     if coords == 0 {
@@ -1048,7 +1053,7 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for GfniKernel<Gf2p8_11d, CantorBasisL
         coords: usize,
     ) {
         unsafe {
-            ifft_sharded_cantor(shards, shard_len, k, coords);
+            ifft_sharded_dit4_outer_tail_cantor(shards, shard_len, k, coords);
         }
     }
 

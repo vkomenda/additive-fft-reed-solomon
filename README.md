@@ -12,6 +12,10 @@ The library provides SIMD acceleration on the following targets:
 
 - x86-64 with AVX2 extensions
 
+- x86-64 with SSSE3
+
+- x86-64 with SSE2
+
 - Aarch64
 
 The general interface is the `Codec` struct which allows to select the accelerated kernel, parity shard layout and the set of _evaluation points_ which define the encoding and decoding algorithm and hence the contents of the parity shards. Two sets of evaluation points are provisioned, called `CantorBasis` and `StandardBasis`. The former leads to an optimal construction highlighted in [LNH][lnh]. The latter provides wire compatibility with `reed-solomon-erasure`. Helper interfaces to those two are `RsCantor<N, T>` and `RsStandard<N, T>` which resolve to the best available kernel based on the compilation environment.
