@@ -649,7 +649,7 @@ where
         true
     }
 
-    pub(crate) fn locator_log_evals(
+    pub fn locator_log_evals(
         &self,
         erasure_positions: &[u8],
         support: usize,

@@ -103,7 +103,7 @@ impl SubspaceBasisLut<Gf2p8_11d> for StandardBasisLut11d {
     }
 
     fn coords(beta: Gf2p8_11d) -> usize {
-        usize::from(generated::standard::COORDS[beta.into_usize()])
+        beta.into_usize()
     }
 }
 
