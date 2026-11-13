@@ -421,13 +421,13 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for LutKernel<Gf2p8_11d, CantorBasisLu
                 _ => unreachable!("k={k} must be in 0..=8"),
             }
         } else {
-            let t = cantor::SUBSPACE_INDEX[beta.into_usize()] as usize;
-            Self::fft_sharded_dit2_indexed(shards, shard_len, k, t);
+            Self::fft_sharded_dit2_indexed(shards, shard_len, k, CantorBasisLut11d::coords(beta));
         }
     }
 
     fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        if beta == Gf2p8::zero() {
+        let coords = CantorBasisLut11d::coords(beta);
+        if coords == 0 {
             match k {
                 0 => {}
                 1 => unrolled_11d_cantor::ifft_sharded_k1(shards, shard_len),
@@ -441,95 +441,151 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for LutKernel<Gf2p8_11d, CantorBasisLu
                 _ => unreachable!("k={k} must be in 0..=8"),
             }
         } else {
-            match (k, u8::from(beta)) {
+            match (k, coords) {
                 (0, _) => {}
-                (1, b) if b == cantor::SUBSPACE[2] => {
-                    unrolled_11d_cantor::ifft_sharded_k1_od6(shards, shard_len)
-                }
-                (2, b) if b == cantor::SUBSPACE[4] => {
-                    unrolled_11d_cantor::ifft_sharded_k2_o98(shards, shard_len)
-                }
-                (3, b) if b == cantor::SUBSPACE[8] => {
-                    unrolled_11d_cantor::ifft_sharded_k3_o92(shards, shard_len)
-                }
-                (4, b) if b == cantor::SUBSPACE[16] => {
-                    unrolled_11d_cantor::ifft_sharded_k4_o56(shards, shard_len)
-                }
-                (5, b) if b == cantor::SUBSPACE[32] => {
-                    unrolled_11d_cantor::ifft_sharded_k5_oc8(shards, shard_len)
-                }
-                (6, b) if b == cantor::SUBSPACE[64] => {
-                    unrolled_11d_cantor::ifft_sharded_k6_o58(shards, shard_len)
-                }
-                (7, b) if b == cantor::SUBSPACE[128] => {
-                    unrolled_11d_cantor::ifft_sharded_k7_oe7(shards, shard_len)
-                }
+                (1, 2) => unrolled_11d_cantor::ifft_sharded_k1_od6(shards, shard_len),
+                (2, 4) => unrolled_11d_cantor::ifft_sharded_k2_o98(shards, shard_len),
+                (3, 8) => unrolled_11d_cantor::ifft_sharded_k3_o92(shards, shard_len),
+                (4, 16) => unrolled_11d_cantor::ifft_sharded_k4_o56(shards, shard_len),
+                (5, 32) => unrolled_11d_cantor::ifft_sharded_k5_oc8(shards, shard_len),
+                (6, 64) => unrolled_11d_cantor::ifft_sharded_k6_o58(shards, shard_len),
+                (7, 128) => unrolled_11d_cantor::ifft_sharded_k7_oe7(shards, shard_len),
                 _ => {
-                    let t = cantor::SUBSPACE_INDEX[beta.into_usize()] as usize;
-                    Self::ifft_sharded_dit2_indexed(shards, shard_len, k, t);
+                    Self::ifft_sharded_dit2_indexed(shards, shard_len, k, coords);
                 }
             }
         }
     }
 
-    fn fft_sharded_radix2_first(
+    fn fft_sharded_dit4_inner_tail(
         shards: &mut [Gf2p8_11d],
         shard_len: usize,
         k: u8,
-        beta: Gf2p8_11d,
+        coords: usize,
     ) {
-        if beta == Gf2p8_11d::zero() {
+        if coords == 0 {
             match k {
-                1 => Self::fft_sharded_dit4_radix2_first_with(
+                1 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::FFT_DIT4_LUT_K1_O0,
+                    &cantor::FFT_DIT4_LUT_K1_O0_TAIL,
+                ),
+                2 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::FFT_DIT4_LUT_K2_O0,
+                    &cantor::FFT_DIT4_LUT_K2_O0_TAIL,
+                ),
+                3 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::FFT_DIT4_LUT_K3_O0,
+                    &cantor::FFT_DIT4_LUT_K3_O0_TAIL,
+                ),
+                4 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::FFT_DIT4_LUT_K4_O0,
+                    &cantor::FFT_DIT4_LUT_K4_O0_TAIL,
+                ),
+                5 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::FFT_DIT4_LUT_K5_O0,
+                    &cantor::FFT_DIT4_LUT_K5_O0_TAIL,
+                ),
+                6 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::FFT_DIT4_LUT_K6_O0,
+                    &cantor::FFT_DIT4_LUT_K6_O0_TAIL,
+                ),
+                7 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::FFT_DIT4_LUT_K7_O0,
+                    &cantor::FFT_DIT4_LUT_K7_O0_TAIL,
+                ),
+                8 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::FFT_DIT4_LUT_K8_O0,
+                    &cantor::FFT_DIT4_LUT_K8_O0_TAIL,
+                ),
+                _ => unreachable!("k={k} must be in 1..=8"),
+            }
+        } else {
+            Self::fft_sharded_dit4_indexed(shards, shard_len, k, coords);
+        }
+    }
+
+    fn fft_sharded_dit4_outer_tail(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        coords: usize,
+    ) {
+        if coords == 0 {
+            match k {
+                1 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
                     &cantor::IFFT_DIT4_LUT_K1_O0,
                     cantor::IFFT_DIT4_LUT_K1_O0_TAIL.as_ref(),
                 ),
-                2 => Self::fft_sharded_dit4_radix2_first_with(
+                2 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
                     &cantor::IFFT_DIT4_LUT_K2_O0,
                     cantor::IFFT_DIT4_LUT_K2_O0_TAIL.as_ref(),
                 ),
-                3 => Self::fft_sharded_dit4_radix2_first_with(
+                3 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
                     &cantor::IFFT_DIT4_LUT_K3_O0,
                     cantor::IFFT_DIT4_LUT_K3_O0_TAIL.as_ref(),
                 ),
-                4 => Self::fft_sharded_dit4_radix2_first_with(
+                4 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
                     &cantor::IFFT_DIT4_LUT_K4_O0,
                     cantor::IFFT_DIT4_LUT_K4_O0_TAIL.as_ref(),
                 ),
-                5 => Self::fft_sharded_dit4_radix2_first_with(
+                5 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
                     &cantor::IFFT_DIT4_LUT_K5_O0,
                     cantor::IFFT_DIT4_LUT_K5_O0_TAIL.as_ref(),
                 ),
-                6 => Self::fft_sharded_dit4_radix2_first_with(
+                6 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
                     &cantor::IFFT_DIT4_LUT_K6_O0,
                     cantor::IFFT_DIT4_LUT_K6_O0_TAIL.as_ref(),
                 ),
-                7 => Self::fft_sharded_dit4_radix2_first_with(
+                7 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
                     &cantor::IFFT_DIT4_LUT_K7_O0,
                     cantor::IFFT_DIT4_LUT_K7_O0_TAIL.as_ref(),
                 ),
-                8 => Self::fft_sharded_dit4_radix2_first_with(
+                8 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
@@ -539,8 +595,78 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for LutKernel<Gf2p8_11d, CantorBasisLu
                 _ => unreachable!("k={k} must be in 1..=8"),
             }
         } else {
-            let t = cantor::SUBSPACE_INDEX[beta.into_usize()] as usize;
-            Self::fft_sharded_dit2_indexed(shards, shard_len, k, t);
+            Self::fft_sharded_dit2_indexed(shards, shard_len, k, coords);
+        }
+    }
+
+    fn ifft_sharded_dit4_outer_tail(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        coords: usize,
+    ) {
+        if coords == 0 {
+            match k {
+                1 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::IFFT_DIT4_LUT_K1_O0,
+                    cantor::IFFT_DIT4_LUT_K1_O0_TAIL.as_ref(),
+                ),
+                2 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::IFFT_DIT4_LUT_K2_O0,
+                    cantor::IFFT_DIT4_LUT_K2_O0_TAIL.as_ref(),
+                ),
+                3 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::IFFT_DIT4_LUT_K3_O0,
+                    cantor::IFFT_DIT4_LUT_K3_O0_TAIL.as_ref(),
+                ),
+                4 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::IFFT_DIT4_LUT_K4_O0,
+                    cantor::IFFT_DIT4_LUT_K4_O0_TAIL.as_ref(),
+                ),
+                5 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::IFFT_DIT4_LUT_K5_O0,
+                    cantor::IFFT_DIT4_LUT_K5_O0_TAIL.as_ref(),
+                ),
+                6 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::IFFT_DIT4_LUT_K6_O0,
+                    cantor::IFFT_DIT4_LUT_K6_O0_TAIL.as_ref(),
+                ),
+                7 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::IFFT_DIT4_LUT_K7_O0,
+                    cantor::IFFT_DIT4_LUT_K7_O0_TAIL.as_ref(),
+                ),
+                8 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &cantor::IFFT_DIT4_LUT_K8_O0,
+                    cantor::IFFT_DIT4_LUT_K8_O0_TAIL.as_ref(),
+                ),
+                _ => unreachable!("k={k} must be in 1..=8"),
+            }
+        } else {
+            Self::fft_sharded_dit4_indexed(shards, shard_len, k, coords);
         }
     }
 
@@ -709,12 +835,12 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for LutKernel<Gf2p8_11d, StandardBas
                 _ => unreachable!("k={k} must be in 0..=8"),
             }
         } else {
-            let t = standard::SUBSPACE_INDEX[beta.into_usize()] as usize;
-            Self::fft_sharded_dit2_indexed(shards, shard_len, k, t);
+            Self::fft_sharded_dit2_indexed(shards, shard_len, k, StandardBasisLut11d::coords(beta));
         }
     }
 
     fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+        let coords = StandardBasisLut11d::coords(beta);
         if beta == Gf2p8::zero() {
             match k {
                 0 => {}
@@ -729,95 +855,151 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for LutKernel<Gf2p8_11d, StandardBas
                 _ => unreachable!("k={k} must be in 0..=8"),
             }
         } else {
-            match (k, u8::from(beta)) {
+            match (k, coords) {
                 (0, _) => {}
-                (1, b) if b == standard::SUBSPACE[2] => {
-                    unrolled_11d_standard::ifft_sharded_k1_o02(shards, shard_len)
-                }
-                (2, b) if b == standard::SUBSPACE[4] => {
-                    unrolled_11d_standard::ifft_sharded_k2_o04(shards, shard_len)
-                }
-                (3, b) if b == standard::SUBSPACE[8] => {
-                    unrolled_11d_standard::ifft_sharded_k3_o08(shards, shard_len)
-                }
-                (4, b) if b == standard::SUBSPACE[16] => {
-                    unrolled_11d_standard::ifft_sharded_k4_o10(shards, shard_len)
-                }
-                (5, b) if b == standard::SUBSPACE[32] => {
-                    unrolled_11d_standard::ifft_sharded_k5_o20(shards, shard_len)
-                }
-                (6, b) if b == standard::SUBSPACE[64] => {
-                    unrolled_11d_standard::ifft_sharded_k6_o40(shards, shard_len)
-                }
-                (7, b) if b == standard::SUBSPACE[128] => {
-                    unrolled_11d_standard::ifft_sharded_k7_o80(shards, shard_len)
-                }
+                (1, 2) => unrolled_11d_standard::ifft_sharded_k1_o02(shards, shard_len),
+                (2, 4) => unrolled_11d_standard::ifft_sharded_k2_o04(shards, shard_len),
+                (3, 8) => unrolled_11d_standard::ifft_sharded_k3_o08(shards, shard_len),
+                (4, 16) => unrolled_11d_standard::ifft_sharded_k4_o10(shards, shard_len),
+                (5, 32) => unrolled_11d_standard::ifft_sharded_k5_o20(shards, shard_len),
+                (6, 64) => unrolled_11d_standard::ifft_sharded_k6_o40(shards, shard_len),
+                (7, 128) => unrolled_11d_standard::ifft_sharded_k7_o80(shards, shard_len),
                 _ => {
-                    let t = standard::SUBSPACE_INDEX[beta.into_usize()] as usize;
-                    Self::ifft_sharded_dit2_indexed(shards, shard_len, k, t);
+                    Self::ifft_sharded_dit2_indexed(shards, shard_len, k, coords);
                 }
             }
         }
     }
 
-    fn fft_sharded_radix2_first(
+    fn fft_sharded_dit4_inner_tail(
         shards: &mut [Gf2p8_11d],
         shard_len: usize,
         k: u8,
-        beta: Gf2p8_11d,
+        coords: usize,
     ) {
-        if beta == Gf2p8_11d::zero() {
+        if coords == 0 {
             match k {
-                1 => Self::fft_sharded_dit4_radix2_first_with(
+                1 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::FFT_DIT4_LUT_K1_O0,
+                    &standard::FFT_DIT4_LUT_K1_O0_TAIL,
+                ),
+                2 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::FFT_DIT4_LUT_K2_O0,
+                    &standard::FFT_DIT4_LUT_K2_O0_TAIL,
+                ),
+                3 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::FFT_DIT4_LUT_K3_O0,
+                    &standard::FFT_DIT4_LUT_K3_O0_TAIL,
+                ),
+                4 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::FFT_DIT4_LUT_K4_O0,
+                    &standard::FFT_DIT4_LUT_K4_O0_TAIL,
+                ),
+                5 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::FFT_DIT4_LUT_K5_O0,
+                    &standard::FFT_DIT4_LUT_K5_O0_TAIL,
+                ),
+                6 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::FFT_DIT4_LUT_K6_O0,
+                    &standard::FFT_DIT4_LUT_K6_O0_TAIL,
+                ),
+                7 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::FFT_DIT4_LUT_K7_O0,
+                    &standard::FFT_DIT4_LUT_K7_O0_TAIL,
+                ),
+                8 => Self::fft_sharded_dit4_inner_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::FFT_DIT4_LUT_K8_O0,
+                    &standard::FFT_DIT4_LUT_K8_O0_TAIL,
+                ),
+                _ => unreachable!("k={k} must be in 1..=8"),
+            }
+        } else {
+            Self::fft_sharded_dit4_indexed(shards, shard_len, k, coords);
+        }
+    }
+
+    fn fft_sharded_dit4_outer_tail(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        coords: usize,
+    ) {
+        if coords == 0 {
+            match k {
+                1 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
                     &standard::IFFT_DIT4_LUT_K1_O0,
                     standard::IFFT_DIT4_LUT_K1_O0_TAIL.as_ref(),
                 ),
-                2 => Self::fft_sharded_dit4_radix2_first_with(
+                2 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
                     &standard::IFFT_DIT4_LUT_K2_O0,
                     standard::IFFT_DIT4_LUT_K2_O0_TAIL.as_ref(),
                 ),
-                3 => Self::fft_sharded_dit4_radix2_first_with(
+                3 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
                     &standard::IFFT_DIT4_LUT_K3_O0,
                     standard::IFFT_DIT4_LUT_K3_O0_TAIL.as_ref(),
                 ),
-                4 => Self::fft_sharded_dit4_radix2_first_with(
+                4 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
                     &standard::IFFT_DIT4_LUT_K4_O0,
                     standard::IFFT_DIT4_LUT_K4_O0_TAIL.as_ref(),
                 ),
-                5 => Self::fft_sharded_dit4_radix2_first_with(
+                5 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
                     &standard::IFFT_DIT4_LUT_K5_O0,
                     standard::IFFT_DIT4_LUT_K5_O0_TAIL.as_ref(),
                 ),
-                6 => Self::fft_sharded_dit4_radix2_first_with(
+                6 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
                     &standard::IFFT_DIT4_LUT_K6_O0,
                     standard::IFFT_DIT4_LUT_K6_O0_TAIL.as_ref(),
                 ),
-                7 => Self::fft_sharded_dit4_radix2_first_with(
+                7 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
                     &standard::IFFT_DIT4_LUT_K7_O0,
                     standard::IFFT_DIT4_LUT_K7_O0_TAIL.as_ref(),
                 ),
-                8 => Self::fft_sharded_dit4_radix2_first_with(
+                8 => Self::fft_sharded_dit4_outer_tail_with(
                     shards,
                     shard_len,
                     k,
@@ -827,8 +1009,78 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for LutKernel<Gf2p8_11d, StandardBas
                 _ => unreachable!("k={k} must be in 1..=8"),
             }
         } else {
-            let t = standard::SUBSPACE_INDEX[beta.into_usize()] as usize;
-            Self::fft_sharded_dit2_indexed(shards, shard_len, k, t);
+            Self::fft_sharded_dit2_indexed(shards, shard_len, k, coords);
+        }
+    }
+
+    fn ifft_sharded_dit4_outer_tail(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        coords: usize,
+    ) {
+        if coords == 0 {
+            match k {
+                1 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::IFFT_DIT4_LUT_K1_O0,
+                    standard::IFFT_DIT4_LUT_K1_O0_TAIL.as_ref(),
+                ),
+                2 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::IFFT_DIT4_LUT_K2_O0,
+                    standard::IFFT_DIT4_LUT_K2_O0_TAIL.as_ref(),
+                ),
+                3 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::IFFT_DIT4_LUT_K3_O0,
+                    standard::IFFT_DIT4_LUT_K3_O0_TAIL.as_ref(),
+                ),
+                4 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::IFFT_DIT4_LUT_K4_O0,
+                    standard::IFFT_DIT4_LUT_K4_O0_TAIL.as_ref(),
+                ),
+                5 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::IFFT_DIT4_LUT_K5_O0,
+                    standard::IFFT_DIT4_LUT_K5_O0_TAIL.as_ref(),
+                ),
+                6 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::IFFT_DIT4_LUT_K6_O0,
+                    standard::IFFT_DIT4_LUT_K6_O0_TAIL.as_ref(),
+                ),
+                7 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::IFFT_DIT4_LUT_K7_O0,
+                    standard::IFFT_DIT4_LUT_K7_O0_TAIL.as_ref(),
+                ),
+                8 => Self::ifft_sharded_dit4_outer_tail_with(
+                    shards,
+                    shard_len,
+                    k,
+                    &standard::IFFT_DIT4_LUT_K8_O0,
+                    standard::IFFT_DIT4_LUT_K8_O0_TAIL.as_ref(),
+                ),
+                _ => unreachable!("k={k} must be in 1..=8"),
+            }
+        } else {
+            Self::fft_sharded_dit4_indexed(shards, shard_len, k, coords);
         }
     }
 
