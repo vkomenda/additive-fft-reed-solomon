@@ -224,14 +224,14 @@ impl Z255 {
         Self(((u32::from(self.0) * u32::from(other.0)) % 255) as u8)
     }
 
-    /// Fast Walsh-Hadamard transform over Z/255. `support` is the number of non-zero entries at the
-    /// front. Entries beyond it are known zeros. Their butterflies are skipped in early levels.
-    pub fn fwht(data: &mut [Self; FIELD_SIZE], support: usize) {
-        let mut dist: usize = 1;
-        while dist < FIELD_SIZE {
+    /// Fast Walsh-Hadamard transform over Z/255. The slice length must be a power of two.
+    pub fn fwht(data: &mut [Self]) {
+        let n = data.len();
+        debug_assert!(n.is_power_of_two());
+        let mut dist = 1;
+        while dist < n {
             let step = dist << 1;
-            let limit = if step <= support { support } else { FIELD_SIZE };
-            for r in (0..limit).step_by(step) {
+            for r in (0..n).step_by(step) {
                 for i in r..r + dist {
                     let (a, b) = (data[i], data[i + dist]);
                     data[i] = a.add(b);
@@ -437,13 +437,29 @@ pub trait SubspaceBasis<G: Gf2p8>:
         derivs
     }
 
-    fn iter_log_walsh(&self, log: &[u8; FIELD_SIZE]) -> impl Iterator<Item = u8> {
-        let mut w = [Z255(0); FIELD_SIZE];
-        for i in 1..FIELD_SIZE {
-            w[i] = Z255(log[self.get_subspace_point(i as u8).into_usize()]);
+    /// LOG_WALSH tables for every transform log size k = 1..=8. Level k sits at offset 2^k - 2.
+    fn gen_log_walsh_lut(&self, log: &[u8; FIELD_SIZE]) -> [u8; 510] {
+        let mut out = [0u8; 510];
+        for k in 1..=8u32 {
+            let n = 1usize << k;
+            // ℓ[i] = log(ω_i), with ℓ[0] = 0 so the convolution drops the i == j term.
+            let mut w: Vec<Z255> = (0..n)
+                .map(|i| {
+                    Z255(if i == 0 {
+                        0
+                    } else {
+                        log[self.get_subspace_point(i as u8).into_usize()]
+                    })
+                })
+                .collect();
+            Z255::fwht(&mut w);
+            // N^{-1} = 2^{8-k} mod 255
+            let n_inv = Z255(1 << (8 - k));
+            for (o, x) in out[n - 2..2 * n - 2].iter_mut().zip(&w) {
+                *o = x.mul(n_inv).0;
+            }
         }
-        Z255::fwht(&mut w, FIELD_SIZE);
-        w.into_iter().map(|z| z.0)
+        out
     }
 
     /// Generates the derivatives of normalised subspace polynomials norm(s_i)(x) = s_i(x)/s_i(v_i)

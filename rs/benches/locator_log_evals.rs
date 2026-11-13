@@ -26,8 +26,9 @@ macro_rules! bench_locator {
             type Rs = Codec<Gf2p8_11d, $basis, LutKernel<Gf2p8_11d, $basis>, ParityFirst, $n, $t>;
             let rs = Rs::new();
             let positions = erasures($n, $t, $rng);
+            let log_n = ($n as usize).trailing_zeros() as u8;
             $group.bench_function(format!("{}_N{}_T{}", $basis_name, $n, $t), |b| {
-                b.iter(|| rs.locator_log_evals(black_box(&positions), black_box($n)))
+                b.iter(|| rs.locator_log_evals(black_box(&positions), black_box(log_n)))
             });
         })*
     };
@@ -48,7 +49,9 @@ fn bench_locator_log_evals(c: &mut Criterion) {
             (32, 16),
             (64, 16),
             (64, 32),
+            (128, 32),
             (128, 64),
+            (256, 64),
             (256, 128)
         ]
     );
@@ -63,7 +66,9 @@ fn bench_locator_log_evals(c: &mut Criterion) {
             (32, 16),
             (64, 16),
             (64, 32),
+            (128, 32),
             (128, 64),
+            (256, 64),
             (256, 128)
         ]
     );

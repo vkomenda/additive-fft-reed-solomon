@@ -90,7 +90,7 @@ pub trait SubspaceBasisLut<G: Gf2p8Lut> {
         result
     }
 
-    fn log_walsh_lut() -> &'static [Z255; FIELD_SIZE];
+    fn log_walsh_lut(k: u8) -> &'static [Z255];
 
     fn subspace_poly_deriv_lut() -> &'static [G; 8];
 

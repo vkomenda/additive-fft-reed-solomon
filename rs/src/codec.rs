@@ -649,21 +649,19 @@ where
         true
     }
 
-    pub fn locator_log_evals(
-        &self,
-        erasure_positions: &[u8],
-        support: usize,
-    ) -> [Z255; FIELD_SIZE] {
+    pub fn locator_log_evals(&self, erasure_positions: &[u8], n_log: u8) -> [Z255; FIELD_SIZE] {
+        let n = 1usize << n_log;
         let mut ev = [Z255(0); FIELD_SIZE];
         for &pos in erasure_positions {
             ev[pos as usize] = Z255(1);
         }
+        let ev_n = &mut ev[..n];
 
-        Z255::fwht(&mut ev, support);
-        for (e, &w) in ev.iter_mut().zip(B::log_walsh_lut().iter()) {
+        Z255::fwht(ev_n);
+        for (e, &w) in ev_n.iter_mut().zip(B::log_walsh_lut(n_log)) {
             *e = e.mul(w);
         }
-        Z255::fwht(&mut ev, FIELD_SIZE);
+        Z255::fwht(ev_n);
 
         ev
     }
@@ -700,7 +698,7 @@ where
         let n_log = N.trailing_zeros() as u8;
 
         // Logarighms of evaluations of the locator polynomial.
-        let ev = self.locator_log_evals(erasure_positions, N);
+        let ev = self.locator_log_evals(erasure_positions, n_log);
         let mut p = 0;
         for i in 0..N {
             if p < e && (erasure_positions[p] as usize) == i {
@@ -747,7 +745,7 @@ mod test {
         let ssp = |k: u8| CantorBasisLut11d::get_subspace_point_lut(k);
 
         for p in 0..=255 {
-            let ev = rs.locator_log_evals(&[p], FIELD_SIZE);
+            let ev = rs.locator_log_evals(&[p], 8);
             for j in 0..FIELD_SIZE {
                 if j == usize::from(p) {
                     continue;

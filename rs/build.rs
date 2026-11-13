@@ -743,9 +743,13 @@ fn write_basis_gens(
     write!(f, "\npub const BASIS: [u8; 8] = [")?;
     write_points(&mut f, basis.into_iter(), false);
 
-    let log_walsh_iter = basis.iter_log_walsh(&log_table);
-    write!(f, "\npub static LOG_WALSH_TABLE: [u8; {}] = [", FIELD_SIZE)?;
-    write_points(&mut f, log_walsh_iter, false);
+    let log_walsh = basis.gen_log_walsh_lut(&log_table);
+    write!(
+        f,
+        "\npub static LOG_WALSH_TABLE: [u8; {}] = [",
+        EXP_TABLE_SIZE
+    )?;
+    write_bytes(&mut f, log_walsh.into_iter(), false);
 
     let (num_points, points_iter) = basis.iter_subspace_points();
     let subspace_points: [Gf2p8_11d; FIELD_SIZE] =
