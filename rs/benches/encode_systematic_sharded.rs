@@ -23,6 +23,7 @@ use criterion::{
 };
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
+use std::hint::black_box;
 
 macro_rules! bench_params {
     ($group:expr,
@@ -74,9 +75,9 @@ fn bench_encode_systematic_sharded_inner<B, K, L, const N: usize, const T: usize
         },
         |(mut parity_backing, parity_start, mut workspace)| {
             rs.encode_systematic_sharded(
-                &message,
-                &mut parity_backing[parity_start..][..T * shard_len],
-                &mut workspace,
+                black_box(&message),
+                black_box(&mut parity_backing[parity_start..][..T * shard_len]),
+                black_box(&mut workspace),
                 shard_len,
             );
         },
@@ -88,7 +89,7 @@ fn bench_encode_systematic_sharded(c: &mut Criterion) {
     let mut group = c.benchmark_group("encode_systematic_sharded");
     let mut rng = SmallRng::seed_from_u64(42);
 
-    for shard_len in [64, 1024, 65536] {
+    for shard_len in [64, 1024, 65600] {
         #[cfg(native_gfni)]
         bench_params!(
             group,

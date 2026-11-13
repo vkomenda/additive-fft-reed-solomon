@@ -1,7 +1,5 @@
 mod common;
 
-use std::hint::black_box;
-
 #[cfg(native_avx2)]
 use additive_fft_reed_solomon::kernel::avx2_kernel::Avx2Kernel;
 #[cfg(native_gfni)]
@@ -20,12 +18,12 @@ use additive_fft_reed_solomon::{
 };
 use additive_fft_reed_solomon_gf2p8::{Gf2p8, Gf2p8_11d};
 use common::*;
-use criterion::{
-    BatchSize, Bencher, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main,
-};
+use criterion::{Bencher, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use rand::distr::{Distribution, Uniform};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
+use std::hint::black_box;
+use std::time::{Duration, Instant};
 
 macro_rules! bench_params {
     ($group:expr,
@@ -67,51 +65,52 @@ fn bench_recover_erasures_sharded_clobber_inner<B, K, L, const N: usize, const T
     K: Kernel<Gf2p8_11d, B>,
     L: ShardLayout,
 {
-    b.iter_batched(
-        || {
-            let (mut codeword_backing, codeword_start) =
-                generate_random_codeword(rs, shard_len, rng, is_aligned);
-            // Choose T random distinct positions to erase
-            let mut positions: Vec<usize> = (0..N).collect();
-            // partial Fisher-Yates shuffle for T elements
-            for i in 0..T {
-                let j = Uniform::new(i, N).unwrap().sample(rng);
-                positions.swap(i, j);
-            }
-            let mut erasure_positions = positions[..T].to_vec();
-            erasure_positions.sort_unstable();
+    let (pristine_backing, start) = generate_random_codeword(rs, shard_len, rng, is_aligned);
+    let pristine = &pristine_backing[start..][..N * shard_len];
 
+    // Allocated once, so every iteration runs on the same addresses rather than on a freshly
+    // mapped buffer whose physical placement differs from iteration to iteration.
+    let (mut work_backing, work_start) =
+        create_buffer(N, shard_len, None::<&mut SmallRng>, is_aligned);
+    let work = &mut work_backing[work_start..][..N * shard_len];
+
+    // Choose T random distinct positions to erase
+    let mut positions: Vec<usize> = (0..N).collect();
+    // partial Fisher-Yates shuffle for T elements
+    for i in 0..T {
+        let j = Uniform::new(i, N).unwrap().sample(rng);
+        positions.swap(i, j);
+    }
+    let mut erasure_positions: Vec<u8> = positions[..T].iter().map(|&p| p as u8).collect();
+    erasure_positions.sort_unstable();
+
+    b.iter_custom(|iters| {
+        let mut total = Duration::ZERO;
+        for _ in 0..iters {
+            // Untimed: clobber recovery overwrites the buffer, so restore it each iteration.
+            work.copy_from_slice(pristine);
             for &pos in &erasure_positions {
-                codeword_backing
-                    [codeword_start + pos * shard_len..codeword_start + (pos + 1) * shard_len]
-                    .fill(Gf2p8_11d::zero());
+                work[pos as usize * shard_len..][..shard_len].fill(Gf2p8_11d::zero());
             }
-
-            (
-                codeword_backing,
-                codeword_start,
-                erasure_positions
-                    .iter()
-                    .map(|&p| p as u8)
-                    .collect::<Vec<u8>>(),
-            )
-        },
-        |(mut codeword_backing, codeword_start, erasure_positions)| {
+            let t0 = Instant::now();
             rs.recover_erasures_sharded_clobber(
-                black_box(&mut codeword_backing[codeword_start..][..N * shard_len]),
+                black_box(&mut *work),
                 shard_len,
                 black_box(&erasure_positions),
             );
-        },
-        BatchSize::LargeInput,
-    );
+            total += t0.elapsed();
+        }
+        total
+    });
 }
 
 fn bench_recover_erasures_sharded_clobber(c: &mut Criterion) {
     let mut group = c.benchmark_group("recover_erasures_sharded_clobber");
     let mut rng = SmallRng::seed_from_u64(42);
 
-    for shard_len in [64, 1024, 65536] {
+    // 65600 = 64 x 1025 rather than 2^16: a power-of-two stride makes shards share cache sets
+    // and 4K-alias, so timings depend on page placement instead of on the code.
+    for shard_len in [64, 1024, 65600] {
         #[cfg(native_gfni)]
         bench_params!(
             group,

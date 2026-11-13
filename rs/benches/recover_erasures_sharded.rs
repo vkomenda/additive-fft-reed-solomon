@@ -1,7 +1,5 @@
 mod common;
 
-use std::hint::black_box;
-
 #[cfg(native_avx2)]
 use additive_fft_reed_solomon::kernel::avx2_kernel::Avx2Kernel;
 #[cfg(native_gfni)]
@@ -26,6 +24,7 @@ use criterion::{
 use rand::distr::{Distribution, Uniform};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
+use std::hint::black_box;
 
 macro_rules! bench_params {
     ($group:expr,
@@ -115,7 +114,7 @@ fn bench_recover_erasures_sharded(c: &mut Criterion) {
     let mut group = c.benchmark_group("recover_erasures_sharded");
     let mut rng = SmallRng::seed_from_u64(42);
 
-    for shard_len in [64, 1024, 65536] {
+    for shard_len in [64, 1024, 65600] {
         #[cfg(native_gfni)]
         bench_params!(
             group,
