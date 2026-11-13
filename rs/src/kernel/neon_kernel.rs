@@ -442,62 +442,67 @@ fn scale_in_place<G: Gf2p8>(dst: &mut [G], len: usize, m: Multiplier) {
     }
 }
 
-fn fft_sharded_cantor(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+fn fft_sharded_dit4_inner_tail_cantor(
+    shards: &mut [Gf2p8_11d],
+    shard_len: usize,
+    k: u8,
+    coords: usize,
+) {
     type K = NeonKernel<Gf2p8_11d, CantorBasisLut11d>;
 
-    if beta == Gf2p8_11d::zero() {
+    if coords == 0 {
         match k {
             0 => {}
-            1 => K::fft_sharded_dit4_with(
+            1 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::FFT_DIT4_NIBBLE_K1_O0,
                 &cantor::FFT_DIT4_NIBBLE_K1_O0_TAIL,
             ),
-            2 => K::fft_sharded_dit4_with(
+            2 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::FFT_DIT4_NIBBLE_K2_O0,
                 &cantor::FFT_DIT4_NIBBLE_K2_O0_TAIL,
             ),
-            3 => K::fft_sharded_dit4_with(
+            3 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::FFT_DIT4_NIBBLE_K3_O0,
                 &cantor::FFT_DIT4_NIBBLE_K3_O0_TAIL,
             ),
-            4 => K::fft_sharded_dit4_with(
+            4 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::FFT_DIT4_NIBBLE_K4_O0,
                 &cantor::FFT_DIT4_NIBBLE_K4_O0_TAIL,
             ),
-            5 => K::fft_sharded_dit4_with(
+            5 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::FFT_DIT4_NIBBLE_K5_O0,
                 &cantor::FFT_DIT4_NIBBLE_K5_O0_TAIL,
             ),
-            6 => K::fft_sharded_dit4_with(
+            6 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::FFT_DIT4_NIBBLE_K6_O0,
                 &cantor::FFT_DIT4_NIBBLE_K6_O0_TAIL,
             ),
-            7 => K::fft_sharded_dit4_with(
+            7 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::FFT_DIT4_NIBBLE_K7_O0,
                 &cantor::FFT_DIT4_NIBBLE_K7_O0_TAIL,
             ),
-            8 => K::fft_sharded_dit4_with(
+            8 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
@@ -507,72 +512,71 @@ fn fft_sharded_cantor(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: G
             _ => unreachable!("k={k} must be in 0..=8"),
         }
     } else {
-        let t = cantor::SUBSPACE_INDEX[beta.into_usize()] as usize;
-        K::fft_sharded_dit4_indexed(shards, shard_len, k, t);
+        K::fft_sharded_dit4_indexed(shards, shard_len, k, coords);
     }
 }
 
-fn fft_sharded_radix2_first_cantor(
+fn fft_sharded_dit4_outer_tail_cantor(
     shards: &mut [Gf2p8_11d],
     shard_len: usize,
     k: u8,
-    beta: Gf2p8_11d,
+    coords: usize,
 ) {
     type K = NeonKernel<Gf2p8_11d, CantorBasisLut11d>;
 
-    if beta == Gf2p8_11d::zero() {
+    if coords == 0 {
         match k {
             0 => {}
-            1 => K::fft_sharded_dit4_radix2_first_with(
+            1 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K1_O0,
                 cantor::IFFT_DIT4_NIBBLE_K1_O0_TAIL.as_ref(),
             ),
-            2 => K::fft_sharded_dit4_radix2_first_with(
+            2 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K2_O0,
                 cantor::IFFT_DIT4_NIBBLE_K2_O0_TAIL.as_ref(),
             ),
-            3 => K::fft_sharded_dit4_radix2_first_with(
+            3 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K3_O0,
                 cantor::IFFT_DIT4_NIBBLE_K3_O0_TAIL.as_ref(),
             ),
-            4 => K::fft_sharded_dit4_radix2_first_with(
+            4 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K4_O0,
                 cantor::IFFT_DIT4_NIBBLE_K4_O0_TAIL.as_ref(),
             ),
-            5 => K::fft_sharded_dit4_radix2_first_with(
+            5 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K5_O0,
                 cantor::IFFT_DIT4_NIBBLE_K5_O0_TAIL.as_ref(),
             ),
-            6 => K::fft_sharded_dit4_radix2_first_with(
+            6 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K6_O0,
                 cantor::IFFT_DIT4_NIBBLE_K6_O0_TAIL.as_ref(),
             ),
-            7 => K::fft_sharded_dit4_radix2_first_with(
+            7 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K7_O0,
                 cantor::IFFT_DIT4_NIBBLE_K7_O0_TAIL.as_ref(),
             ),
-            8 => K::fft_sharded_dit4_radix2_first_with(
+            8 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
@@ -582,67 +586,71 @@ fn fft_sharded_radix2_first_cantor(
             _ => unreachable!("k={k} must be in 0..=8"),
         }
     } else {
-        let t = cantor::SUBSPACE_INDEX[beta.into_usize()] as usize;
-        K::fft_sharded_dit4_indexed(shards, shard_len, k, t);
+        K::fft_sharded_dit4_indexed(shards, shard_len, k, coords);
     }
 }
 
-fn ifft_sharded_cantor(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+fn ifft_sharded_dit4_outer_tail_cantor(
+    shards: &mut [Gf2p8_11d],
+    shard_len: usize,
+    k: u8,
+    coords: usize,
+) {
     type K = NeonKernel<Gf2p8_11d, CantorBasisLut11d>;
 
-    if beta == Gf2p8_11d::zero() {
+    if coords == 0 {
         match k {
             0 => {}
-            1 => K::ifft_sharded_dit4_with(
+            1 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K1_O0,
                 cantor::IFFT_DIT4_NIBBLE_K1_O0_TAIL.as_ref(),
             ),
-            2 => K::ifft_sharded_dit4_with(
+            2 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K2_O0,
                 cantor::IFFT_DIT4_NIBBLE_K2_O0_TAIL.as_ref(),
             ),
-            3 => K::ifft_sharded_dit4_with(
+            3 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K3_O0,
                 cantor::IFFT_DIT4_NIBBLE_K3_O0_TAIL.as_ref(),
             ),
-            4 => K::ifft_sharded_dit4_with(
+            4 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K4_O0,
                 cantor::IFFT_DIT4_NIBBLE_K4_O0_TAIL.as_ref(),
             ),
-            5 => K::ifft_sharded_dit4_with(
+            5 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K5_O0,
                 cantor::IFFT_DIT4_NIBBLE_K5_O0_TAIL.as_ref(),
             ),
-            6 => K::ifft_sharded_dit4_with(
+            6 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K6_O0,
                 cantor::IFFT_DIT4_NIBBLE_K6_O0_TAIL.as_ref(),
             ),
-            7 => K::ifft_sharded_dit4_with(
+            7 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K7_O0,
                 cantor::IFFT_DIT4_NIBBLE_K7_O0_TAIL.as_ref(),
             ),
-            8 => K::ifft_sharded_dit4_with(
+            8 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
@@ -652,51 +660,51 @@ fn ifft_sharded_cantor(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: 
             _ => unreachable!("k={k} must be in 0..=8"),
         }
     } else {
-        match (k, u8::from(beta)) {
+        match (k, coords) {
             (0, _) => {}
-            (1, b) if b == cantor::SUBSPACE[2] => K::ifft_sharded_dit4_with(
+            (1, 2) => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K1_O2,
                 cantor::IFFT_DIT4_NIBBLE_K1_O2_TAIL.as_ref(),
             ),
-            (2, b) if b == cantor::SUBSPACE[4] => K::ifft_sharded_dit4_with(
+            (2, 4) => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K2_O4,
                 cantor::IFFT_DIT4_NIBBLE_K2_O4_TAIL.as_ref(),
             ),
-            (3, b) if b == cantor::SUBSPACE[8] => K::ifft_sharded_dit4_with(
+            (3, 8) => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K3_O8,
                 cantor::IFFT_DIT4_NIBBLE_K3_O8_TAIL.as_ref(),
             ),
-            (4, b) if b == cantor::SUBSPACE[16] => K::ifft_sharded_dit4_with(
+            (4, 16) => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K4_O16,
                 cantor::IFFT_DIT4_NIBBLE_K4_O16_TAIL.as_ref(),
             ),
-            (5, b) if b == cantor::SUBSPACE[32] => K::ifft_sharded_dit4_with(
+            (5, 32) => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K5_O32,
                 cantor::IFFT_DIT4_NIBBLE_K5_O32_TAIL.as_ref(),
             ),
-            (6, b) if b == cantor::SUBSPACE[64] => K::ifft_sharded_dit4_with(
+            (6, 64) => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &cantor::IFFT_DIT4_NIBBLE_K6_O64,
                 cantor::IFFT_DIT4_NIBBLE_K6_O64_TAIL.as_ref(),
             ),
-            (7, b) if b == cantor::SUBSPACE[128] => K::ifft_sharded_dit4_with(
+            (7, 128) => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
@@ -704,69 +712,73 @@ fn ifft_sharded_cantor(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: 
                 cantor::IFFT_DIT4_NIBBLE_K7_O128_TAIL.as_ref(),
             ),
             _ => {
-                let t = cantor::SUBSPACE_INDEX[beta.into_usize()] as usize;
-                K::ifft_sharded_dit4_indexed(shards, shard_len, k, t);
+                K::ifft_sharded_dit4_indexed(shards, shard_len, k, coords);
             }
         }
     }
 }
 
-fn fft_sharded_standard(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+fn fft_sharded_dit4_inner_tail_standard(
+    shards: &mut [Gf2p8_11d],
+    shard_len: usize,
+    k: u8,
+    coords: usize,
+) {
     type K = NeonKernel<Gf2p8_11d, StandardBasisLut11d>;
 
-    if beta == Gf2p8_11d::zero() {
+    if coords == 0 {
         match k {
             0 => {}
-            1 => K::fft_sharded_dit4_with(
+            1 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::FFT_DIT4_NIBBLE_K1_O0,
                 &standard::FFT_DIT4_NIBBLE_K1_O0_TAIL,
             ),
-            2 => K::fft_sharded_dit4_with(
+            2 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::FFT_DIT4_NIBBLE_K2_O0,
                 &standard::FFT_DIT4_NIBBLE_K2_O0_TAIL,
             ),
-            3 => K::fft_sharded_dit4_with(
+            3 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::FFT_DIT4_NIBBLE_K3_O0,
                 &standard::FFT_DIT4_NIBBLE_K3_O0_TAIL,
             ),
-            4 => K::fft_sharded_dit4_with(
+            4 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::FFT_DIT4_NIBBLE_K4_O0,
                 &standard::FFT_DIT4_NIBBLE_K4_O0_TAIL,
             ),
-            5 => K::fft_sharded_dit4_with(
+            5 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::FFT_DIT4_NIBBLE_K5_O0,
                 &standard::FFT_DIT4_NIBBLE_K5_O0_TAIL,
             ),
-            6 => K::fft_sharded_dit4_with(
+            6 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::FFT_DIT4_NIBBLE_K6_O0,
                 &standard::FFT_DIT4_NIBBLE_K6_O0_TAIL,
             ),
-            7 => K::fft_sharded_dit4_with(
+            7 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::FFT_DIT4_NIBBLE_K7_O0,
                 &standard::FFT_DIT4_NIBBLE_K7_O0_TAIL,
             ),
-            8 => K::fft_sharded_dit4_with(
+            8 => K::fft_sharded_dit4_inner_tail_with(
                 shards,
                 shard_len,
                 k,
@@ -776,72 +788,71 @@ fn fft_sharded_standard(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta:
             _ => unreachable!("k={k} must be in 0..=8"),
         }
     } else {
-        let t = standard::SUBSPACE_INDEX[beta.into_usize()] as usize;
-        K::fft_sharded_dit4_indexed(shards, shard_len, k, t);
+        K::fft_sharded_dit4_indexed(shards, shard_len, k, coords);
     }
 }
 
-fn fft_sharded_radix2_first_standard(
+fn fft_sharded_dit4_outer_tail_standard(
     shards: &mut [Gf2p8_11d],
     shard_len: usize,
     k: u8,
-    beta: Gf2p8_11d,
+    coords: usize,
 ) {
     type K = NeonKernel<Gf2p8_11d, StandardBasisLut11d>;
 
-    if beta == Gf2p8_11d::zero() {
+    if coords == 0 {
         match k {
             0 => {}
-            1 => K::fft_sharded_dit4_radix2_first_with(
+            1 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K1_O0,
                 standard::IFFT_DIT4_NIBBLE_K1_O0_TAIL.as_ref(),
             ),
-            2 => K::fft_sharded_dit4_radix2_first_with(
+            2 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K2_O0,
                 standard::IFFT_DIT4_NIBBLE_K2_O0_TAIL.as_ref(),
             ),
-            3 => K::fft_sharded_dit4_radix2_first_with(
+            3 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K3_O0,
                 standard::IFFT_DIT4_NIBBLE_K3_O0_TAIL.as_ref(),
             ),
-            4 => K::fft_sharded_dit4_radix2_first_with(
+            4 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K4_O0,
                 standard::IFFT_DIT4_NIBBLE_K4_O0_TAIL.as_ref(),
             ),
-            5 => K::fft_sharded_dit4_radix2_first_with(
+            5 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K5_O0,
                 standard::IFFT_DIT4_NIBBLE_K5_O0_TAIL.as_ref(),
             ),
-            6 => K::fft_sharded_dit4_radix2_first_with(
+            6 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K6_O0,
                 standard::IFFT_DIT4_NIBBLE_K6_O0_TAIL.as_ref(),
             ),
-            7 => K::fft_sharded_dit4_radix2_first_with(
+            7 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K7_O0,
                 standard::IFFT_DIT4_NIBBLE_K7_O0_TAIL.as_ref(),
             ),
-            8 => K::fft_sharded_dit4_radix2_first_with(
+            8 => K::fft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
@@ -851,67 +862,71 @@ fn fft_sharded_radix2_first_standard(
             _ => unreachable!("k={k} must be in 0..=8"),
         }
     } else {
-        let t = standard::SUBSPACE_INDEX[beta.into_usize()] as usize;
-        K::fft_sharded_dit4_indexed(shards, shard_len, k, t);
+        K::fft_sharded_dit4_indexed(shards, shard_len, k, coords);
     }
 }
 
-fn ifft_sharded_standard(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
+fn ifft_sharded_dit4_outer_tail_standard(
+    shards: &mut [Gf2p8_11d],
+    shard_len: usize,
+    k: u8,
+    coords: usize,
+) {
     type K = NeonKernel<Gf2p8_11d, StandardBasisLut11d>;
 
-    if beta == Gf2p8_11d::zero() {
+    if coords == 0 {
         match k {
             0 => {}
-            1 => K::ifft_sharded_dit4_with(
+            1 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K1_O0,
                 standard::IFFT_DIT4_NIBBLE_K1_O0_TAIL.as_ref(),
             ),
-            2 => K::ifft_sharded_dit4_with(
+            2 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K2_O0,
                 standard::IFFT_DIT4_NIBBLE_K2_O0_TAIL.as_ref(),
             ),
-            3 => K::ifft_sharded_dit4_with(
+            3 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K3_O0,
                 standard::IFFT_DIT4_NIBBLE_K3_O0_TAIL.as_ref(),
             ),
-            4 => K::ifft_sharded_dit4_with(
+            4 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K4_O0,
                 standard::IFFT_DIT4_NIBBLE_K4_O0_TAIL.as_ref(),
             ),
-            5 => K::ifft_sharded_dit4_with(
+            5 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K5_O0,
                 standard::IFFT_DIT4_NIBBLE_K5_O0_TAIL.as_ref(),
             ),
-            6 => K::ifft_sharded_dit4_with(
+            6 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K6_O0,
                 standard::IFFT_DIT4_NIBBLE_K6_O0_TAIL.as_ref(),
             ),
-            7 => K::ifft_sharded_dit4_with(
+            7 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K7_O0,
                 standard::IFFT_DIT4_NIBBLE_K7_O0_TAIL.as_ref(),
             ),
-            8 => K::ifft_sharded_dit4_with(
+            8 => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
@@ -921,51 +936,51 @@ fn ifft_sharded_standard(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta
             _ => unreachable!("k={k} must be in 0..=8"),
         }
     } else {
-        match (k, u8::from(beta)) {
+        match (k, coords) {
             (0, _) => {}
-            (1, b) if b == standard::SUBSPACE[2] => K::ifft_sharded_dit4_with(
+            (1, 2) => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K1_O2,
                 standard::IFFT_DIT4_NIBBLE_K1_O2_TAIL.as_ref(),
             ),
-            (2, b) if b == standard::SUBSPACE[4] => K::ifft_sharded_dit4_with(
+            (2, 4) => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K2_O4,
                 standard::IFFT_DIT4_NIBBLE_K2_O4_TAIL.as_ref(),
             ),
-            (3, b) if b == standard::SUBSPACE[8] => K::ifft_sharded_dit4_with(
+            (3, 8) => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K3_O8,
                 standard::IFFT_DIT4_NIBBLE_K3_O8_TAIL.as_ref(),
             ),
-            (4, b) if b == standard::SUBSPACE[16] => K::ifft_sharded_dit4_with(
+            (4, 16) => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K4_O16,
                 standard::IFFT_DIT4_NIBBLE_K4_O16_TAIL.as_ref(),
             ),
-            (5, b) if b == standard::SUBSPACE[32] => K::ifft_sharded_dit4_with(
+            (5, 32) => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K5_O32,
                 standard::IFFT_DIT4_NIBBLE_K5_O32_TAIL.as_ref(),
             ),
-            (6, b) if b == standard::SUBSPACE[64] => K::ifft_sharded_dit4_with(
+            (6, 64) => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
                 &standard::IFFT_DIT4_NIBBLE_K6_O64,
                 standard::IFFT_DIT4_NIBBLE_K6_O64_TAIL.as_ref(),
             ),
-            (7, b) if b == standard::SUBSPACE[128] => K::ifft_sharded_dit4_with(
+            (7, 128) => K::ifft_sharded_dit4_outer_tail_with(
                 shards,
                 shard_len,
                 k,
@@ -973,8 +988,7 @@ fn ifft_sharded_standard(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta
                 standard::IFFT_DIT4_NIBBLE_K7_O128_TAIL.as_ref(),
             ),
             _ => {
-                let t = standard::SUBSPACE_INDEX[beta.into_usize()] as usize;
-                K::ifft_sharded_dit4_indexed(shards, shard_len, k, t);
+                K::ifft_sharded_dit4_indexed(shards, shard_len, k, coords);
             }
         }
     }
@@ -1066,21 +1080,31 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for NeonKernel<Gf2p8_11d, CantorBasisL
         butterfly_inv_dit4_zero(shards, shard_len, base, d, m23);
     }
 
-    fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        fft_sharded_cantor(shards, shard_len, k, beta);
-    }
-
-    fn fft_sharded_radix2_first(
+    fn fft_sharded_dit4_inner_tail(
         shards: &mut [Gf2p8_11d],
         shard_len: usize,
         k: u8,
-        beta: Gf2p8_11d,
+        coords: usize,
     ) {
-        fft_sharded_radix2_first_cantor(shards, shard_len, k, beta);
+        fft_sharded_dit4_inner_tail_cantor(shards, shard_len, k, coords);
     }
 
-    fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        ifft_sharded_cantor(shards, shard_len, k, beta);
+    fn fft_sharded_dit4_outer_tail(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        coords: usize,
+    ) {
+        fft_sharded_dit4_outer_tail_cantor(shards, shard_len, k, coords);
+    }
+
+    fn ifft_sharded_dit4_outer_tail(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        coords: usize,
+    ) {
+        ifft_sharded_dit4_outer_tail_cantor(shards, shard_len, k, coords);
     }
 
     fn scale(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {
@@ -1192,21 +1216,31 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for NeonKernel<Gf2p8_11d, StandardBa
         butterfly_inv_dit4_zero(shards, shard_len, base, d, m23);
     }
 
-    fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        fft_sharded_standard(shards, shard_len, k, beta);
-    }
-
-    fn fft_sharded_radix2_first(
+    fn fft_sharded_dit4_inner_tail(
         shards: &mut [Gf2p8_11d],
         shard_len: usize,
         k: u8,
-        beta: Gf2p8_11d,
+        coords: usize,
     ) {
-        fft_sharded_radix2_first_standard(shards, shard_len, k, beta);
+        fft_sharded_dit4_inner_tail_standard(shards, shard_len, k, coords);
     }
 
-    fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        ifft_sharded_standard(shards, shard_len, k, beta);
+    fn fft_sharded_dit4_outer_tail(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        coords: usize,
+    ) {
+        fft_sharded_dit4_outer_tail_standard(shards, shard_len, k, coords);
+    }
+
+    fn ifft_sharded_dit4_outer_tail(
+        shards: &mut [Gf2p8_11d],
+        shard_len: usize,
+        k: u8,
+        coords: usize,
+    ) {
+        ifft_sharded_dit4_outer_tail_standard(shards, shard_len, k, coords);
     }
 
     fn scale(src: &[Gf2p8_11d], dst: &mut [Gf2p8_11d], scalar: Gf2p8_11d) {

@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CRITERION = ROOT / "target" / "criterion"
 OUT = ROOT / "docs" / "charts"
 
-FEATURES = ["gfni", "avx2", "neon"]    # plotted features, in legend and colour order
+FEATURES = ["gfni", "avx2", "ssse3", "sse2", "neon"]    # plotted features, in legend and colour order
 SPECIES = ["cantor", "standard"]       # one chart per species
 ALIGNMENTS = ["aligned", "unaligned"]  # one chart per alignment
 
@@ -82,7 +82,7 @@ def collect():
 
 
 def plot(title, subtitle, series, x_label, path):
-    fig, ax = plt.subplots(figsize=(8, 5), facecolor="white")
+    fig, ax = plt.subplots(figsize=(8, 8), facecolor="white")
     ax2 = ax.twinx()
     lines = []
     for feature, color in zip(FEATURES, plt.cm.tab10.colors):
