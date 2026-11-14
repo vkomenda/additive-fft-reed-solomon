@@ -21,7 +21,7 @@
 ### `Codec::recover_erasures_sharded`
 
 ![recovery of random T erased shards (LNH original), T=n/2, shard length 64 B](charts/recover_erasures_sharded_cantor_aligned_64.svg)
-![recovery of random T erased shards (LNH original), T=n/2, shard length 1 KiB](charts/recover_erasures_shardedcantor_aligned_1024.svg)
+![recovery of random T erased shards (LNH original), T=n/2, shard length 1 KiB](charts/recover_erasures_sharded_cantor_aligned_1024.svg)
 ![recovery of random T erased shards (LNH original), T=n/2, shard length 64 KiB](charts/recover_erasures_sharded_cantor_aligned_65600.svg)
 
 
