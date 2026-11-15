@@ -406,8 +406,8 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for LutKernel<Gf2p8_11d, CantorBasisLu
         }
     }
 
-    fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        if beta == Gf2p8_11d::zero() {
+    fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, coords: usize) {
+        if coords == 0 {
             match k {
                 0 => {}
                 1 => unrolled_11d_cantor::fft_sharded_k1(shards, shard_len),
@@ -421,12 +421,11 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for LutKernel<Gf2p8_11d, CantorBasisLu
                 _ => unreachable!("k={k} must be in 0..=8"),
             }
         } else {
-            Self::fft_sharded_dit2_indexed(shards, shard_len, k, CantorBasisLut11d::coords(beta));
+            Self::fft_sharded_dit2_indexed(shards, shard_len, k, coords);
         }
     }
 
-    fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        let coords = CantorBasisLut11d::coords(beta);
+    fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, coords: usize) {
         if coords == 0 {
             match k {
                 0 => {}
@@ -820,8 +819,8 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for LutKernel<Gf2p8_11d, StandardBas
         }
     }
 
-    fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        if beta == Gf2p8_11d::zero() {
+    fn fft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, coords: usize) {
+        if coords == 0 {
             match k {
                 0 => {}
                 1 => unrolled_11d_standard::fft_sharded_k1(shards, shard_len),
@@ -835,13 +834,12 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for LutKernel<Gf2p8_11d, StandardBas
                 _ => unreachable!("k={k} must be in 0..=8"),
             }
         } else {
-            Self::fft_sharded_dit2_indexed(shards, shard_len, k, StandardBasisLut11d::coords(beta));
+            Self::fft_sharded_dit2_indexed(shards, shard_len, k, coords);
         }
     }
 
-    fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, beta: Gf2p8_11d) {
-        let coords = StandardBasisLut11d::coords(beta);
-        if beta == Gf2p8::zero() {
+    fn ifft_sharded(shards: &mut [Gf2p8_11d], shard_len: usize, k: u8, coords: usize) {
+        if coords == 0 {
             match k {
                 0 => {}
                 1 => unrolled_11d_standard::ifft_sharded_k1(shards, shard_len),

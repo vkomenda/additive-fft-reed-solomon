@@ -112,15 +112,13 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
 
     /// FFT method selector.
     #[inline]
-    fn fft_sharded(shards: &mut [G], shard_len: usize, k: u8, beta: G) {
-        let coords = B::coords(beta);
+    fn fft_sharded(shards: &mut [G], shard_len: usize, k: u8, coords: usize) {
         Self::fft_sharded_dit4_outer_tail(shards, shard_len, k, coords);
     }
 
     /// IFFT method selector.
     #[inline]
-    fn ifft_sharded(shards: &mut [G], shard_len: usize, k: u8, beta: G) {
-        let coords = B::coords(beta);
+    fn ifft_sharded(shards: &mut [G], shard_len: usize, k: u8, coords: usize) {
         Self::ifft_sharded_dit4_outer_tail(shards, shard_len, k, coords);
     }
 

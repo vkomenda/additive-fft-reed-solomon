@@ -32,7 +32,7 @@ fn fft_neon_matches_rec() {
             let mut actual = expected.clone();
 
             lut_kernel::fft_sharded_recursive::<_, B>(&mut expected, shard_len, k, beta);
-            NeonKernel::<_, B>::fft_sharded(&mut actual, shard_len, k, beta);
+            NeonKernel::<_, B>::fft_sharded(&mut actual, shard_len, k, n);
 
             assert_eq!(expected, actual, "k={k} shard_len={shard_len}");
         }
@@ -50,7 +50,7 @@ fn ifft_neon_matches_rec() {
             let mut actual = expected.clone();
 
             lut_kernel::ifft_sharded_recursive::<_, B>(&mut expected, shard_len, k, beta);
-            NeonKernel::<_, B>::ifft_sharded(&mut actual, shard_len, k, beta);
+            NeonKernel::<_, B>::ifft_sharded(&mut actual, shard_len, k, n);
 
             assert_eq!(expected, actual, "k={k} shard_len={shard_len}");
         }
@@ -63,12 +63,11 @@ fn ifft_then_fft_neon_is_identity() {
     for shard_len in [1, 15, 16, 17] {
         for k in 1u8..=4 {
             let n = 1 << k;
-            let beta = B::get_subspace_point_lut(n as u8);
             let original = make_shards(n, shard_len);
             let mut data = original.clone();
 
-            NeonKernel::<_, B>::ifft_sharded(&mut data, shard_len, k, beta);
-            NeonKernel::<_, B>::fft_sharded(&mut data, shard_len, k, beta);
+            NeonKernel::<_, B>::ifft_sharded(&mut data, shard_len, k, n);
+            NeonKernel::<_, B>::fft_sharded(&mut data, shard_len, k, n);
 
             assert_eq!(data, original, "k={k} shard_len={shard_len}");
         }

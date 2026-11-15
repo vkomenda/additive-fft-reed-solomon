@@ -82,11 +82,11 @@ impl SubspaceBasisLut<Gf2p8_11d> for StandardBasisLut11d {
     const UNIT_CARRY: bool = false;
 
     fn get_basis_point_lut(i: u8) -> Gf2p8_11d {
-        generated::standard::BASIS[i as usize].into()
+        (1u8 << i).into()
     }
 
     fn get_subspace_point_lut(i: u8) -> Gf2p8_11d {
-        generated::standard::SUBSPACE[i as usize].into()
+        i.into()
     }
 
     fn eval_subspace_poly_lut(k: u8, x: Gf2p8_11d) -> Gf2p8_11d {

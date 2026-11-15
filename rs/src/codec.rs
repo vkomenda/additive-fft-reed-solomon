@@ -306,7 +306,7 @@ where
 
         debug_assert!(k / T >= 1);
 
-        let chunk_shift = |c: usize| B::get_subspace_point_lut(L::message_offset(c, T) as u8);
+        let chunk_shift = |c: usize| L::message_offset(c, T);
 
         // The first chunk seeds the accumulator, so parity needs no zeroing.
         parity.copy_from_slice(&message[..parity_len]);
@@ -318,13 +318,8 @@ where
             parity.poly_add_in_place(workspace);
         }
 
-        let parity_offset = L::parity_offset(k) as u8;
-        let beta = if parity_offset == 0 {
-            G::zero()
-        } else {
-            B::get_subspace_point_lut(parity_offset)
-        };
-        K::fft_sharded(parity, shard_len, t_log, beta);
+        let parity_offset = L::parity_offset(k);
+        K::fft_sharded(parity, shard_len, t_log, parity_offset);
     }
 
     /// Syndrome calculation (scalar).
@@ -390,9 +385,8 @@ where
 
         // Copy parity shards into workspace, then recover polynomial coefficients
         workspace[0..T * shard_len].copy_from_slice(&received[0..T * shard_len]);
-        K::ifft_sharded(workspace, shard_len, t_log, G::zero());
-        let omega = B::get_subspace_point_lut(T as u8);
-        K::fft_sharded(workspace, shard_len, t_log, omega);
+        K::ifft_sharded(workspace, shard_len, t_log, 0);
+        K::fft_sharded(workspace, shard_len, t_log, T);
 
         received[T * shard_len..].copy_from_slice(&workspace[..T * shard_len]);
     }
@@ -578,15 +572,14 @@ where
 
         // Chunk 0: parity block at ω_0
         workspace[..T * shard_len].copy_from_slice(&received[..T * shard_len]);
-        K::ifft_sharded(&mut workspace[..T * shard_len], shard_len, t_log, G::zero());
+        K::ifft_sharded(&mut workspace[..T * shard_len], shard_len, t_log, 0);
 
         // Message chunks/shards, each shifted by one more ωT
         for chunk in 1..(N / T) {
-            let omega = B::get_subspace_point_lut((chunk * T) as u8);
             let (acc, rest) = workspace.split_at_mut(T * shard_len);
             let tmp = &mut rest[..T * shard_len];
             tmp.copy_from_slice(&received[chunk * T * shard_len..(chunk + 1) * T * shard_len]);
-            K::ifft_sharded(tmp, shard_len, t_log, omega);
+            K::ifft_sharded(tmp, shard_len, t_log, chunk * T);
             for (w, t) in acc.iter_mut().zip(tmp.iter()) {
                 *w = w.add(*t);
             }
@@ -615,7 +608,7 @@ where
         }
 
         // X-basis coefficients of (s·λ); q is in work[T .. T+e]
-        K::ifft_sharded(workspace, shard_len, n_log, G::zero());
+        K::ifft_sharded(workspace, shard_len, n_log, 0);
 
         // Shift q from work[T..T+e] down to work[0..e], zero work shards from e to next pow2
         workspace.copy_within(T * shard_len..(T + e) * shard_len, 0);
@@ -709,9 +702,9 @@ where
         }
         debug_assert_eq!(p, e);
 
-        K::ifft_sharded(received, shard_len, n_log, G::zero());
+        K::ifft_sharded(received, shard_len, n_log, 0);
         K::formal_derivative(&mut received[..], shard_len, n_log);
-        K::fft_sharded(received, shard_len, n_log, G::zero());
+        K::fft_sharded(received, shard_len, n_log, 0);
 
         // Forney (similar to Eq 78): u(ω_j) = q(ω_j) / λ'(ω_j)
         // q(ω_j) = (λ·f)'(ω_j) = λ'(ω_j) · f(ω_j) + λ(ω_j) · f'(ω_j) = λ'(ω_j) · f(ω_j)

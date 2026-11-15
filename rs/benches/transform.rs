@@ -30,12 +30,8 @@ where
     K: Kernel<Gf2p8_11d, B>,
 {
     [
-        ("fft_sharded", |s, l, k| {
-            K::fft_sharded(s, l, k, Gf2p8_11d::zero())
-        }),
-        ("ifft_sharded", |s, l, k| {
-            K::ifft_sharded(s, l, k, Gf2p8_11d::zero())
-        }),
+        ("fft_sharded", |s, l, k| K::fft_sharded(s, l, k, 0)),
+        ("ifft_sharded", |s, l, k| K::ifft_sharded(s, l, k, 0)),
         ("fft_sharded_dit4_inner_tail", |s, l, k| {
             K::fft_sharded_dit4_inner_tail(s, l, k, 0)
         }),
