@@ -5,6 +5,7 @@ pub mod gfni_kernel;
 pub mod lut_kernel;
 #[cfg(native_neon)]
 pub mod neon_kernel;
+pub mod node;
 #[cfg(any(native_sse2, feature = "compile_sse2"))]
 pub mod sse2_kernel;
 #[cfg(any(native_ssse3, feature = "compile_ssse3"))]
@@ -13,6 +14,7 @@ pub mod ssse3_kernel;
 use crate::gf2p8lut::{Gf2p8Lut, SubspaceBasisLut};
 use crate::poly_arith::PolyMutSliceArith;
 use additive_fft_reed_solomon_gf2p8::Z255;
+use node::{Dit2Node, Dit4Node, Node, ShardTuple};
 
 pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
     /// Shard buffer byte alignment multiple to maximize SIMD performance. Every buffer must start
@@ -513,24 +515,6 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
             }
         }
     }
-}
-
-/// Splits the node of `R * d` shards starting at shard `base` into `R` equal
-/// parts and yields the `d` groups. Group `i` holds shard `i` of each part,
-/// i.e. shards `base + i + j * d` for `j` in `0..R`.
-pub(crate) fn shard_groups<G, const R: usize>(
-    shards: &mut [G],
-    shard_len: usize,
-    base: usize,
-    d: usize,
-) -> impl Iterator<Item = [&mut [G]; R]> {
-    let q = d * shard_len;
-    let node = &mut shards[base * shard_len..][..R * q];
-    let mut parts = node
-        .chunks_exact_mut(q)
-        .map(|p| p.chunks_exact_mut(shard_len));
-    let mut parts: [_; R] = std::array::from_fn(|_| parts.next().unwrap());
-    (0..d).map(move |_| parts.each_mut().map(|p| p.next().unwrap()))
 }
 
 /// Multiplier for level l node whose first shard has Cantor subspace index x. W_l(ω_x) depends only

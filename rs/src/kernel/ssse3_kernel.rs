@@ -1,4 +1,4 @@
-use super::{Kernel, shard_groups};
+use super::{Dit2Node, Dit4Node, Kernel, ShardTuple};
 use crate::poly_11d_lut::{CantorBasisLut11d, StandardBasisLut11d};
 use crate::{
     gf2p8lut::{Gf2p8Lut, SubspaceBasisLut},
@@ -12,6 +12,22 @@ type Multiplier = &'static NibbleMulTable;
 
 #[inline]
 #[target_feature(enable = "ssse3")]
+fn load<T: Copy>(chunk: &[T; 16]) -> __m128i {
+    // Panic at compile time if the element type is not a byte.
+    const { assert!(size_of::<T>() == 1) };
+    // SAFETY: `chunk` is a valid reference to 16 bytes. loadu has no alignment requirement.
+    unsafe { _mm_loadu_si128(chunk.as_ptr().cast()) }
+}
+
+#[inline]
+#[target_feature(enable = "ssse3")]
+fn store<G: Gf2p8>(chunk: &mut [G; 16], v: __m128i) {
+    // SAFETY: `chunk` is a valid reference to 16 bytes. storeu has no alignment requirement.
+    unsafe { _mm_storeu_si128(chunk.as_mut_ptr().cast(), v) }
+}
+
+#[inline]
+#[target_feature(enable = "ssse3")]
 fn mul_vec_inner(v: __m128i, m_lo: __m128i, m_hi: __m128i) -> __m128i {
     let mask = _mm_set1_epi8(0x0f);
     let lo = _mm_shuffle_epi8(m_lo, _mm_and_si128(v, mask));
@@ -22,39 +38,23 @@ fn mul_vec_inner(v: __m128i, m_lo: __m128i, m_hi: __m128i) -> __m128i {
 #[inline]
 #[target_feature(enable = "ssse3")]
 fn load_mul_table(m: Multiplier) -> (__m128i, __m128i) {
-    unsafe {
-        (
-            _mm_loadu_si128(m[0].as_ptr() as *const __m128i),
-            _mm_loadu_si128(m[1].as_ptr() as *const __m128i),
-        )
-    }
+    (load(&m[0]), load(&m[1]))
 }
 
 #[target_feature(enable = "ssse3")]
-fn butterfly_fwd_dit2<G: Gf2p8>(
-    shards: &mut [G],
-    shard_len: usize,
-    start: usize,
-    d: usize,
-    m: Multiplier,
-) {
+fn butterfly_fwd_dit2<G: Gf2p8>(node: Dit2Node<'_, G>, m: Multiplier) {
     let (m_lo, m_hi) = load_mul_table(m);
 
-    for [a, b] in shard_groups::<_, 2>(shards, shard_len, start, d) {
-        let mut i = 0;
-        let (pa, pb) = (a.as_mut_ptr() as *mut u8, b.as_mut_ptr() as *mut u8);
-        while i + 16 <= shard_len {
-            unsafe {
-                let va = _mm_loadu_si128(pa.add(i) as *const __m128i);
-                let vb = _mm_loadu_si128(pb.add(i) as *const __m128i);
-                let va = _mm_xor_si128(va, mul_vec_inner(vb, m_lo, m_hi)); // g0 = a + T·b
-                let vb = _mm_xor_si128(vb, va); // g1 = b + g0
-                _mm_storeu_si128(pa.add(i) as *mut __m128i, va);
-                _mm_storeu_si128(pb.add(i) as *mut __m128i, vb);
-            }
-            i += 16;
+    for tup in node.split() {
+        let (chunks, [tail0, tail1]) = tup.into_chunks::<16>();
+        for [p0, p1] in chunks {
+            let mut w1 = load(p1);
+            let w0 = _mm_xor_si128(load(p0), mul_vec_inner(w1, m_lo, m_hi));
+            w1 = _mm_xor_si128(w1, w0);
+            store(p0, w0);
+            store(p1, w1);
         }
-        for (x, y) in a[i..].iter_mut().zip(&mut b[i..]) {
+        for (x, y) in tail0.iter_mut().zip(tail1) {
             let g0 = x.add(y.nibble_mul(m));
             *x = g0;
             *y = y.add(g0);
@@ -63,51 +63,33 @@ fn butterfly_fwd_dit2<G: Gf2p8>(
 }
 
 #[target_feature(enable = "ssse3")]
-fn butterfly_fwd_dit2_zero<G: Gf2p8>(shards: &mut [G], shard_len: usize, start: usize, d: usize) {
-    for [a, b] in shard_groups::<_, 2>(shards, shard_len, start, d) {
-        let mut i = 0;
-        let (pa, pb) = (a.as_mut_ptr() as *mut u8, b.as_mut_ptr() as *mut u8);
-        while i + 16 <= shard_len {
-            unsafe {
-                let va = _mm_loadu_si128(pa.add(i) as *const __m128i);
-                let vb = _mm_loadu_si128(pb.add(i) as *const __m128i);
-                let vb = _mm_xor_si128(vb, va); // g1 = b + g0
-                _mm_storeu_si128(pb.add(i) as *mut __m128i, vb);
-            }
-            i += 16;
+fn butterfly_fwd_dit2_zero<G: Gf2p8>(node: Dit2Node<'_, G>) {
+    for tup in node.split() {
+        let (chunks, [tail0, tail1]) = tup.into_chunks::<16>();
+        for [p0, p1] in chunks {
+            let w1 = _mm_xor_si128(load(p1), load(p0));
+            store(p1, w1);
         }
-        for (x, y) in a[i..].iter().zip(&mut b[i..]) {
+        for (x, y) in tail0.iter_mut().zip(tail1) {
             *y = y.add(*x);
         }
     }
 }
 
 #[target_feature(enable = "ssse3")]
-fn butterfly_inv_dit2<G: Gf2p8>(
-    shards: &mut [G],
-    shard_len: usize,
-    base: usize,
-    d: usize,
-    m: Multiplier,
-) {
+fn butterfly_inv_dit2<G: Gf2p8>(node: Dit2Node<'_, G>, m: Multiplier) {
     let (m_lo, m_hi) = load_mul_table(m);
 
-    for [a, b] in shard_groups::<_, 2>(shards, shard_len, base, d) {
-        let mut i = 0;
-        let pa = a.as_mut_ptr() as *mut u8;
-        let pb = b.as_mut_ptr() as *mut u8;
-        while i + 16 <= shard_len {
-            unsafe {
-                let va = _mm_loadu_si128(pa.add(i) as *const __m128i);
-                let vb = _mm_loadu_si128(pb.add(i) as *const __m128i);
-                let vb = _mm_xor_si128(vb, va); // d' = g0 + g1
-                let va = _mm_xor_si128(va, mul_vec_inner(vb, m_lo, m_hi)); // d = g0 + T·d'
-                _mm_storeu_si128(pa.add(i) as *mut __m128i, va);
-                _mm_storeu_si128(pb.add(i) as *mut __m128i, vb);
-            }
-            i += 16;
+    for tup in node.split() {
+        let (chunks, [tail0, tail1]) = tup.into_chunks::<16>();
+        for [p0, p1] in chunks {
+            let mut w0 = load(p0);
+            let w1 = _mm_xor_si128(load(p1), w0);
+            w0 = _mm_xor_si128(w0, mul_vec_inner(w1, m_lo, m_hi));
+            store(p0, w0);
+            store(p1, w1);
         }
-        for (x, y) in a[i..].iter_mut().zip(&mut b[i..]) {
+        for (x, y) in tail0.iter_mut().zip(tail1) {
             *y = x.add(*y);
             *x = x.add(y.nibble_mul(m));
         }
@@ -116,10 +98,7 @@ fn butterfly_inv_dit2<G: Gf2p8>(
 
 #[target_feature(enable = "ssse3")]
 fn butterfly_fwd_dit4<G: Gf2p8>(
-    shards: &mut [G],
-    shard_len: usize,
-    base: usize,
-    d: usize,
+    node: Dit4Node<'_, G>,
     m01: Multiplier,
     m23: Multiplier,
     m02: Multiplier,
@@ -128,39 +107,34 @@ fn butterfly_fwd_dit4<G: Gf2p8>(
     let (m01_lo, m01_hi) = load_mul_table(m01);
     let (m23_lo, m23_hi) = load_mul_table(m23);
 
-    for [s0, s1, s2, s3] in shard_groups::<_, 4>(shards, shard_len, base, d) {
-        let p = [&mut *s0, &mut *s1, &mut *s2, &mut *s3].map(|s| s.as_mut_ptr() as *mut u8);
+    for tup in node.split() {
+        let (chunks, [tail0, tail1, tail2, tail3]) = tup.into_chunks::<16>();
+        for [p0, p1, p2, p3] in chunks {
+            let mut w0 = load(p0);
+            let mut w1 = load(p1);
+            let mut w2 = load(p2);
+            let mut w3 = load(p3);
 
-        let mut i = 0;
-        while i + 16 <= shard_len {
-            unsafe {
-                let mut w0 = _mm_loadu_si128(p[0].add(i) as *const __m128i);
-                let mut w1 = _mm_loadu_si128(p[1].add(i) as *const __m128i);
-                let mut w2 = _mm_loadu_si128(p[2].add(i) as *const __m128i);
-                let mut w3 = _mm_loadu_si128(p[3].add(i) as *const __m128i);
+            // Wide level: (w0, w2) and (w1, w3), both with m02.
+            w0 = _mm_xor_si128(w0, mul_vec_inner(w2, m02_lo, m02_hi));
+            w1 = _mm_xor_si128(w1, mul_vec_inner(w3, m02_lo, m02_hi));
+            w2 = _mm_xor_si128(w2, w0);
+            w3 = _mm_xor_si128(w3, w1);
 
-                // Wide level: (w0, w2) and (w1, w3), both with m02.
-                w0 = _mm_xor_si128(w0, mul_vec_inner(w2, m02_lo, m02_hi));
-                w1 = _mm_xor_si128(w1, mul_vec_inner(w3, m02_lo, m02_hi));
-                w2 = _mm_xor_si128(w2, w0);
-                w3 = _mm_xor_si128(w3, w1);
+            // Narrow level: (w0, w1) with m01, (w2, w3) with m23.
+            w0 = _mm_xor_si128(w0, mul_vec_inner(w1, m01_lo, m01_hi));
+            w2 = _mm_xor_si128(w2, mul_vec_inner(w3, m23_lo, m23_hi));
+            w1 = _mm_xor_si128(w1, w0);
+            w3 = _mm_xor_si128(w3, w2);
 
-                // Narrow level: (w0, w1) with m01, (w2, w3) with m23.
-                w0 = _mm_xor_si128(w0, mul_vec_inner(w1, m01_lo, m01_hi));
-                w2 = _mm_xor_si128(w2, mul_vec_inner(w3, m23_lo, m23_hi));
-                w1 = _mm_xor_si128(w1, w0);
-                w3 = _mm_xor_si128(w3, w2);
-
-                _mm_storeu_si128(p[0].add(i) as *mut __m128i, w0);
-                _mm_storeu_si128(p[1].add(i) as *mut __m128i, w1);
-                _mm_storeu_si128(p[2].add(i) as *mut __m128i, w2);
-                _mm_storeu_si128(p[3].add(i) as *mut __m128i, w3);
-            }
-            i += 16;
+            store(p0, w0);
+            store(p1, w1);
+            store(p2, w2);
+            store(p3, w3);
         }
 
-        for j in i..shard_len {
-            let (mut w0, mut w1, mut w2, mut w3) = (s0[j], s1[j], s2[j], s3[j]);
+        for (((x0, x1), x2), x3) in tail0.iter_mut().zip(tail1).zip(tail2).zip(tail3) {
+            let (mut w0, mut w1, mut w2, mut w3) = (*x0, *x1, *x2, *x3);
             w0 = w0.add(w2.nibble_mul(m02));
             w1 = w1.add(w3.nibble_mul(m02));
             w2 = w2.add(w0);
@@ -169,66 +143,52 @@ fn butterfly_fwd_dit4<G: Gf2p8>(
             w2 = w2.add(w3.nibble_mul(m23));
             w1 = w1.add(w0);
             w3 = w3.add(w2);
-            (s0[j], s1[j], s2[j], s3[j]) = (w0, w1, w2, w3);
+            (*x0, *x1, *x2, *x3) = (w0, w1, w2, w3);
         }
     }
 }
 
 #[target_feature(enable = "ssse3")]
-fn butterfly_fwd_dit4_zero<G: Gf2p8>(
-    shards: &mut [G],
-    shard_len: usize,
-    base: usize,
-    d: usize,
-    m23: Multiplier,
-) {
+fn butterfly_fwd_dit4_zero<G: Gf2p8>(node: Dit4Node<'_, G>, m23: Multiplier) {
     let (m23_lo, m23_hi) = load_mul_table(m23);
 
-    for [s0, s1, s2, s3] in shard_groups::<_, 4>(shards, shard_len, base, d) {
-        let p = [&mut *s0, &mut *s1, &mut *s2, &mut *s3].map(|s| s.as_mut_ptr() as *mut u8);
+    for tup in node.split() {
+        let (chunks, [tail0, tail1, tail2, tail3]) = tup.into_chunks::<16>();
+        for [p0, p1, p2, p3] in chunks {
+            let w0 = load(p0);
+            let mut w1 = load(p1);
+            let mut w2 = load(p2);
+            let mut w3 = load(p3);
 
-        let mut i = 0;
-        while i + 16 <= shard_len {
-            unsafe {
-                let w0 = _mm_loadu_si128(p[0].add(i) as *const __m128i);
-                let mut w1 = _mm_loadu_si128(p[1].add(i) as *const __m128i);
-                let mut w2 = _mm_loadu_si128(p[2].add(i) as *const __m128i);
-                let mut w3 = _mm_loadu_si128(p[3].add(i) as *const __m128i);
+            // Wide level: (w0, w2) and (w1, w3), both with m02.
+            w2 = _mm_xor_si128(w2, w0);
+            w3 = _mm_xor_si128(w3, w1);
 
-                // Wide level: (w0, w2) and (w1, w3), both with m02.
-                w2 = _mm_xor_si128(w2, w0);
-                w3 = _mm_xor_si128(w3, w1);
+            // Narrow level: (w0, w1) with m01, (w2, w3) with m23.
+            w2 = _mm_xor_si128(w2, mul_vec_inner(w3, m23_lo, m23_hi));
+            w1 = _mm_xor_si128(w1, w0);
+            w3 = _mm_xor_si128(w3, w2);
 
-                // Narrow level: (w0, w1) with m01, (w2, w3) with m23.
-                w2 = _mm_xor_si128(w2, mul_vec_inner(w3, m23_lo, m23_hi));
-                w1 = _mm_xor_si128(w1, w0);
-                w3 = _mm_xor_si128(w3, w2);
-
-                _mm_storeu_si128(p[1].add(i) as *mut __m128i, w1);
-                _mm_storeu_si128(p[2].add(i) as *mut __m128i, w2);
-                _mm_storeu_si128(p[3].add(i) as *mut __m128i, w3);
-            }
-            i += 16;
+            store(p1, w1);
+            store(p2, w2);
+            store(p3, w3);
         }
 
-        for j in i..shard_len {
-            let (w0, mut w1, mut w2, mut w3) = (s0[j], s1[j], s2[j], s3[j]);
+        for (((x0, x1), x2), x3) in tail0.iter_mut().zip(tail1).zip(tail2).zip(tail3) {
+            let (w0, mut w1, mut w2, mut w3) = (*x0, *x1, *x2, *x3);
             w2 = w2.add(w0);
             w3 = w3.add(w1);
             w2 = w2.add(w3.nibble_mul(m23));
             w1 = w1.add(w0);
             w3 = w3.add(w2);
-            (s1[j], s2[j], s3[j]) = (w1, w2, w3);
+            (*x1, *x2, *x3) = (w1, w2, w3);
         }
     }
 }
 
 #[target_feature(enable = "ssse3")]
 fn butterfly_inv_dit4<G: Gf2p8>(
-    shards: &mut [G],
-    shard_len: usize,
-    base: usize,
-    d: usize,
+    node: Dit4Node<'_, G>,
     m01: Multiplier,
     m23: Multiplier,
     m02: Multiplier,
@@ -237,39 +197,34 @@ fn butterfly_inv_dit4<G: Gf2p8>(
     let (m01_lo, m01_hi) = load_mul_table(m01);
     let (m23_lo, m23_hi) = load_mul_table(m23);
 
-    for [s0, s1, s2, s3] in shard_groups::<_, 4>(shards, shard_len, base, d) {
-        let p = [&mut *s0, &mut *s1, &mut *s2, &mut *s3].map(|s| s.as_mut_ptr() as *mut u8);
+    for tup in node.split() {
+        let (chunks, [tail0, tail1, tail2, tail3]) = tup.into_chunks::<16>();
+        for [p0, p1, p2, p3] in chunks {
+            let mut w0 = load(p0);
+            let mut w1 = load(p1);
+            let mut w2 = load(p2);
+            let mut w3 = load(p3);
 
-        let mut i = 0;
-        while i + 16 <= shard_len {
-            unsafe {
-                let mut w0 = _mm_loadu_si128(p[0].add(i) as *const __m128i);
-                let mut w1 = _mm_loadu_si128(p[1].add(i) as *const __m128i);
-                let mut w2 = _mm_loadu_si128(p[2].add(i) as *const __m128i);
-                let mut w3 = _mm_loadu_si128(p[3].add(i) as *const __m128i);
+            // Narrow level: (w0, w1) with m01, (w2, w3) with m23.
+            w3 = _mm_xor_si128(w3, w2);
+            w1 = _mm_xor_si128(w1, w0);
+            w2 = _mm_xor_si128(w2, mul_vec_inner(w3, m23_lo, m23_hi));
+            w0 = _mm_xor_si128(w0, mul_vec_inner(w1, m01_lo, m01_hi));
 
-                // Narrow level: (w0, w1) with m01, (w2, w3) with m23.
-                w3 = _mm_xor_si128(w3, w2);
-                w1 = _mm_xor_si128(w1, w0);
-                w2 = _mm_xor_si128(w2, mul_vec_inner(w3, m23_lo, m23_hi));
-                w0 = _mm_xor_si128(w0, mul_vec_inner(w1, m01_lo, m01_hi));
+            // Wide level: (w0, w2) and (w1, w3), both with m02.
+            w3 = _mm_xor_si128(w3, w1);
+            w2 = _mm_xor_si128(w2, w0);
+            w1 = _mm_xor_si128(w1, mul_vec_inner(w3, m02_lo, m02_hi));
+            w0 = _mm_xor_si128(w0, mul_vec_inner(w2, m02_lo, m02_hi));
 
-                // Wide level: (w0, w2) and (w1, w3), both with m02.
-                w3 = _mm_xor_si128(w3, w1);
-                w2 = _mm_xor_si128(w2, w0);
-                w1 = _mm_xor_si128(w1, mul_vec_inner(w3, m02_lo, m02_hi));
-                w0 = _mm_xor_si128(w0, mul_vec_inner(w2, m02_lo, m02_hi));
-
-                _mm_storeu_si128(p[0].add(i) as *mut __m128i, w0);
-                _mm_storeu_si128(p[1].add(i) as *mut __m128i, w1);
-                _mm_storeu_si128(p[2].add(i) as *mut __m128i, w2);
-                _mm_storeu_si128(p[3].add(i) as *mut __m128i, w3);
-            }
-            i += 16;
+            store(p0, w0);
+            store(p1, w1);
+            store(p2, w2);
+            store(p3, w3);
         }
 
-        for j in i..shard_len {
-            let (mut w0, mut w1, mut w2, mut w3) = (s0[j], s1[j], s2[j], s3[j]);
+        for (((x0, x1), x2), x3) in tail0.iter_mut().zip(tail1).zip(tail2).zip(tail3) {
+            let (mut w0, mut w1, mut w2, mut w3) = (*x0, *x1, *x2, *x3);
             w3 = w3.add(w2);
             w1 = w1.add(w0);
             w2 = w2.add(w3.nibble_mul(m23));
@@ -278,56 +233,45 @@ fn butterfly_inv_dit4<G: Gf2p8>(
             w2 = w2.add(w0);
             w1 = w1.add(w3.nibble_mul(m02));
             w0 = w0.add(w2.nibble_mul(m02));
-            (s0[j], s1[j], s2[j], s3[j]) = (w0, w1, w2, w3);
+            (*x0, *x1, *x2, *x3) = (w0, w1, w2, w3);
         }
     }
 }
 
 #[target_feature(enable = "ssse3")]
-fn butterfly_inv_dit4_zero<G: Gf2p8>(
-    shards: &mut [G],
-    shard_len: usize,
-    base: usize,
-    d: usize,
-    m23: Multiplier,
-) {
+fn butterfly_inv_dit4_zero<G: Gf2p8>(node: Dit4Node<'_, G>, m23: Multiplier) {
     let (m23_lo, m23_hi) = load_mul_table(m23);
 
-    for [s0, s1, s2, s3] in shard_groups::<_, 4>(shards, shard_len, base, d) {
-        let p = [&mut *s0, &mut *s1, &mut *s2, &mut *s3].map(|s| s.as_mut_ptr() as *mut u8);
+    for tup in node.split() {
+        let (chunks, [tail0, tail1, tail2, tail3]) = tup.into_chunks::<16>();
+        for [p0, p1, p2, p3] in chunks {
+            let w0 = load(p0);
+            let mut w1 = load(p1);
+            let mut w2 = load(p2);
+            let mut w3 = load(p3);
 
-        let mut i = 0;
-        while i + 16 <= shard_len {
-            unsafe {
-                let w0 = _mm_loadu_si128(p[0].add(i) as *const __m128i);
-                let mut w1 = _mm_loadu_si128(p[1].add(i) as *const __m128i);
-                let mut w2 = _mm_loadu_si128(p[2].add(i) as *const __m128i);
-                let mut w3 = _mm_loadu_si128(p[3].add(i) as *const __m128i);
+            // Narrow level: (w0, w1) with m01, (w2, w3) with m23.
+            w3 = _mm_xor_si128(w3, w2);
+            w1 = _mm_xor_si128(w1, w0);
+            w2 = _mm_xor_si128(w2, mul_vec_inner(w3, m23_lo, m23_hi));
 
-                // Narrow level: (w0, w1) with m01, (w2, w3) with m23.
-                w3 = _mm_xor_si128(w3, w2);
-                w1 = _mm_xor_si128(w1, w0);
-                w2 = _mm_xor_si128(w2, mul_vec_inner(w3, m23_lo, m23_hi));
+            // Wide level: (w0, w2) and (w1, w3), both with m02.
+            w3 = _mm_xor_si128(w3, w1);
+            w2 = _mm_xor_si128(w2, w0);
 
-                // Wide level: (w0, w2) and (w1, w3), both with m02.
-                w3 = _mm_xor_si128(w3, w1);
-                w2 = _mm_xor_si128(w2, w0);
-
-                _mm_storeu_si128(p[1].add(i) as *mut __m128i, w1);
-                _mm_storeu_si128(p[2].add(i) as *mut __m128i, w2);
-                _mm_storeu_si128(p[3].add(i) as *mut __m128i, w3);
-            }
-            i += 16;
+            store(p1, w1);
+            store(p2, w2);
+            store(p3, w3);
         }
 
-        for j in i..shard_len {
-            let (w0, mut w1, mut w2, mut w3) = (s0[j], s1[j], s2[j], s3[j]);
+        for (((x0, x1), x2), x3) in tail0.iter_mut().zip(tail1).zip(tail2).zip(tail3) {
+            let (w0, mut w1, mut w2, mut w3) = (*x0, *x1, *x2, *x3);
             w3 = w3.add(w2);
             w1 = w1.add(w0);
             w2 = w2.add(w3.nibble_mul(m23));
             w3 = w3.add(w1);
             w2 = w2.add(w0);
-            (s1[j], s2[j], s3[j]) = (w1, w2, w3);
+            (*x1, *x2, *x3) = (w1, w2, w3);
         }
     }
 }
