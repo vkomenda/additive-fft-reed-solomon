@@ -13,7 +13,7 @@ pub use kernel::gfni_kernel::GfniKernel;
 pub use kernel::lut_kernel::LutKernel;
 #[cfg(native_neon)]
 pub use kernel::neon_kernel::NeonKernel;
-#[cfg(any(native_sse2, feature = "compile_ssse3"))]
+#[cfg(any(native_sse2, feature = "compile_sse2"))]
 pub use kernel::sse2_kernel::Sse2Kernel;
 #[cfg(any(native_ssse3, feature = "compile_ssse3"))]
 pub use kernel::ssse3_kernel::Ssse3Kernel;
@@ -74,11 +74,11 @@ pub type RsSsse3Standard<const N: usize, const T: usize> =
 
 #[cfg(any(native_sse2, feature = "compile_sse2"))]
 pub type RsSse2Cantor<const N: usize, const T: usize> =
-    CodecCantor<Ssse3Kernel<Gf2p8_11d, CantorBasisLut11d>, N, T>;
+    CodecCantor<Sse2Kernel<Gf2p8_11d, CantorBasisLut11d>, N, T>;
 
 #[cfg(any(native_sse2, feature = "compile_sse2"))]
 pub type RsSse2Standard<const N: usize, const T: usize> =
-    CodecStandard<Ssse3Kernel<Gf2p8_11d, StandardBasisLut11d>, N, T>;
+    CodecStandard<Sse2Kernel<Gf2p8_11d, StandardBasisLut11d>, N, T>;
 
 #[cfg(native_neon)]
 pub type RsNeonCantor<const N: usize, const T: usize> =
