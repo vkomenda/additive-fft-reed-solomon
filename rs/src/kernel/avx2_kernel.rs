@@ -1377,21 +1377,3 @@ mod test {
         }
     }
 }
-
-#[cfg(test)]
-#[cfg(native_avx2)]
-mod test_cantor {
-    use crate::poly_11d_lut::CantorBasisLut11d;
-
-    type B = CantorBasisLut11d;
-    include!("avx2_kernel_tests.rs");
-}
-
-#[cfg(test)]
-#[cfg(native_avx2)]
-mod test_standard {
-    use crate::poly_11d_lut::StandardBasisLut11d;
-
-    type B = StandardBasisLut11d;
-    include!("avx2_kernel_tests.rs");
-}

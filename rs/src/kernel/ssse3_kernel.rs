@@ -916,85 +916,55 @@ impl Kernel<Gf2p8_11d, CantorBasisLut11d> for Ssse3Kernel<Gf2p8_11d, CantorBasis
         m[0][1] == 0
     }
 
-    fn butterfly_fwd_dit2(
-        shards: &mut [Gf2p8_11d],
-        shard_len: usize,
-        base: usize,
-        d: usize,
-        m: Self::Multiplier,
-    ) {
+    fn butterfly_fwd_dit2(node: Dit2Node<'_, Gf2p8_11d>, m: Self::Multiplier) {
         unsafe {
-            butterfly_fwd_dit2(shards, shard_len, base, d, m);
+            butterfly_fwd_dit2(node, m);
         }
     }
 
-    fn butterfly_fwd_dit2_zero(shards: &mut [Gf2p8_11d], shard_len: usize, base: usize, d: usize) {
+    fn butterfly_fwd_dit2_zero(node: Dit2Node<'_, Gf2p8_11d>) {
         unsafe {
-            butterfly_fwd_dit2_zero(shards, shard_len, base, d);
+            butterfly_fwd_dit2_zero(node);
         }
     }
 
     fn butterfly_fwd_dit4(
-        shards: &mut [Gf2p8_11d],
-        shard_len: usize,
-        base: usize,
-        d: usize,
+        node: Dit4Node<'_, Gf2p8_11d>,
         m01: Self::Multiplier,
         m23: Self::Multiplier,
         m02: Self::Multiplier,
     ) {
         unsafe {
-            butterfly_fwd_dit4(shards, shard_len, base, d, m01, m23, m02);
+            butterfly_fwd_dit4(node, m01, m23, m02);
         }
     }
 
-    fn butterfly_fwd_dit4_zero(
-        shards: &mut [Gf2p8_11d],
-        shard_len: usize,
-        base: usize,
-        d: usize,
-        m23: Self::Multiplier,
-    ) {
+    fn butterfly_fwd_dit4_zero(node: Dit4Node<'_, Gf2p8_11d>, m23: Self::Multiplier) {
         unsafe {
-            butterfly_fwd_dit4_zero(shards, shard_len, base, d, m23);
+            butterfly_fwd_dit4_zero(node, m23);
         }
     }
 
-    fn butterfly_inv_dit2(
-        shards: &mut [Gf2p8_11d],
-        shard_len: usize,
-        base: usize,
-        d: usize,
-        m: Self::Multiplier,
-    ) {
+    fn butterfly_inv_dit2(node: Dit2Node<'_, Gf2p8_11d>, m: Self::Multiplier) {
         unsafe {
-            butterfly_inv_dit2(shards, shard_len, base, d, m);
+            butterfly_inv_dit2(node, m);
         }
     }
 
     fn butterfly_inv_dit4(
-        shards: &mut [Gf2p8_11d],
-        shard_len: usize,
-        base: usize,
-        d: usize,
+        node: Dit4Node<'_, Gf2p8_11d>,
         m01: Self::Multiplier,
         m23: Self::Multiplier,
         m02: Self::Multiplier,
     ) {
         unsafe {
-            butterfly_inv_dit4(shards, shard_len, base, d, m01, m23, m02);
+            butterfly_inv_dit4(node, m01, m23, m02);
         }
     }
 
-    fn butterfly_inv_dit4_zero(
-        shards: &mut [Gf2p8_11d],
-        shard_len: usize,
-        base: usize,
-        d: usize,
-        m23: Self::Multiplier,
-    ) {
+    fn butterfly_inv_dit4_zero(node: Dit4Node<'_, Gf2p8_11d>, m23: Self::Multiplier) {
         unsafe {
-            butterfly_inv_dit4_zero(shards, shard_len, base, d, m23);
+            butterfly_inv_dit4_zero(node, m23);
         }
     }
 
@@ -1078,85 +1048,55 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for Ssse3Kernel<Gf2p8_11d, StandardB
         m[0][1] == 0
     }
 
-    fn butterfly_fwd_dit2(
-        shards: &mut [Gf2p8_11d],
-        shard_len: usize,
-        base: usize,
-        d: usize,
-        m: Self::Multiplier,
-    ) {
+    fn butterfly_fwd_dit2(node: Dit2Node<'_, Gf2p8_11d>, m: Self::Multiplier) {
         unsafe {
-            butterfly_fwd_dit2(shards, shard_len, base, d, m);
+            butterfly_fwd_dit2(node, m);
         }
     }
 
-    fn butterfly_fwd_dit2_zero(shards: &mut [Gf2p8_11d], shard_len: usize, base: usize, d: usize) {
+    fn butterfly_fwd_dit2_zero(node: Dit2Node<'_, Gf2p8_11d>) {
         unsafe {
-            butterfly_fwd_dit2_zero(shards, shard_len, base, d);
+            butterfly_fwd_dit2_zero(node);
         }
     }
 
     fn butterfly_fwd_dit4(
-        shards: &mut [Gf2p8_11d],
-        shard_len: usize,
-        base: usize,
-        d: usize,
+        node: Dit4Node<'_, Gf2p8_11d>,
         m01: Self::Multiplier,
         m23: Self::Multiplier,
         m02: Self::Multiplier,
     ) {
         unsafe {
-            butterfly_fwd_dit4(shards, shard_len, base, d, m01, m23, m02);
+            butterfly_fwd_dit4(node, m01, m23, m02);
         }
     }
 
-    fn butterfly_fwd_dit4_zero(
-        shards: &mut [Gf2p8_11d],
-        shard_len: usize,
-        base: usize,
-        d: usize,
-        m23: Self::Multiplier,
-    ) {
+    fn butterfly_fwd_dit4_zero(node: Dit4Node<'_, Gf2p8_11d>, m23: Self::Multiplier) {
         unsafe {
-            butterfly_fwd_dit4_zero(shards, shard_len, base, d, m23);
+            butterfly_fwd_dit4_zero(node, m23);
         }
     }
 
-    fn butterfly_inv_dit2(
-        shards: &mut [Gf2p8_11d],
-        shard_len: usize,
-        base: usize,
-        d: usize,
-        m: Self::Multiplier,
-    ) {
+    fn butterfly_inv_dit2(node: Dit2Node<'_, Gf2p8_11d>, m: Self::Multiplier) {
         unsafe {
-            butterfly_inv_dit2(shards, shard_len, base, d, m);
+            butterfly_inv_dit2(node, m);
         }
     }
 
     fn butterfly_inv_dit4(
-        shards: &mut [Gf2p8_11d],
-        shard_len: usize,
-        base: usize,
-        d: usize,
+        node: Dit4Node<'_, Gf2p8_11d>,
         m01: Self::Multiplier,
         m23: Self::Multiplier,
         m02: Self::Multiplier,
     ) {
         unsafe {
-            butterfly_inv_dit4(shards, shard_len, base, d, m01, m23, m02);
+            butterfly_inv_dit4(node, m01, m23, m02);
         }
     }
 
-    fn butterfly_inv_dit4_zero(
-        shards: &mut [Gf2p8_11d],
-        shard_len: usize,
-        base: usize,
-        d: usize,
-        m23: Self::Multiplier,
-    ) {
+    fn butterfly_inv_dit4_zero(node: Dit4Node<'_, Gf2p8_11d>, m23: Self::Multiplier) {
         unsafe {
-            butterfly_inv_dit4_zero(shards, shard_len, base, d, m23);
+            butterfly_inv_dit4_zero(node, m23);
         }
     }
 
@@ -1258,22 +1198,4 @@ mod test {
             }
         }
     }
-}
-
-#[cfg(test)]
-#[cfg(native_ssse3)]
-mod test_cantor {
-    use crate::poly_11d_lut::CantorBasisLut11d;
-
-    type B = CantorBasisLut11d;
-    include!("ssse3_kernel_tests.rs");
-}
-
-#[cfg(test)]
-#[cfg(native_ssse3)]
-mod test_standard {
-    use crate::poly_11d_lut::StandardBasisLut11d;
-
-    type B = StandardBasisLut11d;
-    include!("ssse3_kernel_tests.rs");
 }

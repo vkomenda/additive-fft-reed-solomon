@@ -1238,38 +1238,3 @@ impl Kernel<Gf2p8_11d, StandardBasisLut11d> for GfniKernel<Gf2p8_11d, StandardBa
         unsafe { scale_in_place(dst, dst.len(), m) };
     }
 }
-
-#[cfg(test)]
-#[cfg(native_gfni)]
-mod test {
-    #[test]
-    fn debug_cfg() {
-        let target_arch_x86_64 = cfg!(target_arch = "x86_64");
-        let avx512f = is_x86_feature_detected!("avx512f");
-        let avx512bw = is_x86_feature_detected!("avx512bw");
-        let gfni = is_x86_feature_detected!("gfni");
-
-        assert!(target_arch_x86_64);
-        assert!(avx512f);
-        assert!(avx512bw);
-        assert!(gfni);
-    }
-}
-
-#[cfg(test)]
-#[cfg(native_gfni)]
-mod test_cantor {
-    use crate::poly_11d_lut::CantorBasisLut11d;
-
-    type B = CantorBasisLut11d;
-    include!("gfni_kernel_tests.rs");
-}
-
-#[cfg(test)]
-#[cfg(native_gfni)]
-mod test_standard {
-    use crate::poly_11d_lut::StandardBasisLut11d;
-
-    type B = StandardBasisLut11d;
-    include!("gfni_kernel_tests.rs");
-}

@@ -903,43 +903,20 @@ fn main() {
     let standard_basis = StandardBasis11d::new();
     write_basis_gens(&out_dir, "standard", standard_basis, &log_table, &inv_table).unwrap();
 
-    // CPU feature detection
-    let target = std::env::var("TARGET").unwrap();
-    let host = std::env::var("HOST").unwrap();
-    let native = target == host;
-
-    if target.starts_with("aarch64") {
-        // NEON is included as standard on Aarch64
-        println!("cargo:rustc-cfg=native_neon");
+    // CPU feature aliasing
+    let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let features = std::env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or_default();
+    let has = |f: &str| features.split(',').any(|x| x == f);
+    match arch.as_str() {
+        "x86_64" if has("avx512f") && has("avx512bw") && has("gfni") => {
+            println!("cargo:rustc-cfg=avx512_gfni")
+        }
+        "aarch64" if has("neon") => println!("cargo:rustc-cfg=neon"),
+        _ => (),
     }
-
-    // Feature detection only works when the build machine is the target machine. Cross builds must
-    // use the compile_* features to opt in.
-    #[cfg(target_arch = "x86_64")]
-    if native {
-        if is_x86_feature_detected!("avx512f")
-            && is_x86_feature_detected!("avx512bw")
-            && is_x86_feature_detected!("gfni")
-        {
-            println!("cargo:rustc-cfg=native_gfni");
-        }
-        if is_x86_feature_detected!("avx2") {
-            println!("cargo:rustc-cfg=native_avx2");
-        }
-        if is_x86_feature_detected!("ssse3") {
-            println!("cargo:rustc-cfg=native_ssse3");
-        }
-        if is_x86_feature_detected!("sse2") {
-            println!("cargo:rustc-cfg=native_sse2");
-        }
-    }
-
-    // Emit the lint checker tweaks on all platforms.
-    println!("cargo:rustc-check-cfg=cfg(native_sse2)");
-    println!("cargo:rustc-check-cfg=cfg(native_ssse3)");
-    println!("cargo:rustc-check-cfg=cfg(native_avx2)");
-    println!("cargo:rustc-check-cfg=cfg(native_gfni)");
-    println!("cargo:rustc-check-cfg=cfg(native_neon)");
+    // Tweak the lint checker.
+    println!("cargo:rustc-check-cfg=cfg(avx512_gfni)");
+    println!("cargo:rustc-check-cfg=cfg(neon)");
 
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=src/gf2p8lut.rs");

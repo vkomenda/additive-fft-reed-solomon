@@ -1,18 +1,28 @@
 /// The `R * d` shards of a radix-R FFT node starting at shard `base`.
-pub struct Node<'a, G, const R: usize> {
+pub(crate) struct Node<'a, G, const R: usize> {
     shards: &'a mut [G],
     shard_len: usize,
     base: usize,
     d: usize,
 }
 
-pub type Dit2Node<'a, G> = Node<'a, G, 2>;
-pub type Dit4Node<'a, G> = Node<'a, G, 4>;
+pub(crate) type Dit2Node<'a, G> = Node<'a, G, 2>;
+pub(crate) type Dit4Node<'a, G> = Node<'a, G, 4>;
 
 /// R-tuple shards of equal length by construction, ensured by `Node::split`.
 pub(crate) struct ShardTuple<'a, G, const R: usize>([&'a mut [G]; R]);
 
 impl<'a, G, const R: usize> Node<'a, G, R> {
+    pub(crate) fn new(shards: &'a mut [G], shard_len: usize, base: usize, d: usize) -> Self {
+        debug_assert!((base + R * d) * shard_len <= shards.len());
+        Self {
+            shards,
+            shard_len,
+            base,
+            d,
+        }
+    }
+
     /// The `R * d` shards of an FFT node starting at shard `base`.
     pub(crate) fn split(self) -> impl Iterator<Item = ShardTuple<'a, G, R>> {
         let q = self.d * self.shard_len;

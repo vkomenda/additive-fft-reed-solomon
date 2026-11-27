@@ -20,6 +20,10 @@ additive-fft-reed-solomon-gf2p8 = { path = "../gf2p8", version = "0.2.1" }
 criterion = "0.8"
 rand = "0.10"
 
+[[test]]
+name = "rse_compat"
+required-features = ["unstable-internals"]
+
 [profile.bench]
 inherits = "release"
 lto = "fat"
@@ -28,26 +32,29 @@ codegen-units = 1
 [[bench]]
 name = "encode_systematic_sharded"
 harness = false
+required-features = ["unstable-internals"]
 
 [[bench]]
 name = "locator_log_evals"
 harness = false
+required-features = ["unstable-internals"]
 
 [[bench]]
 name = "recover_erasures_sharded"
 harness = false
+required-features = ["unstable-internals"]
 
 [[bench]]
 name = "recover_erasures_sharded_clobber"
 harness = false
+required-features = ["unstable-internals"]
 
 [[bench]]
 name = "transform"
 harness = false
+required-features = ["unstable-internals"]
 
 [features]
 default = []
-compile_sse2 = []
-compile_ssse3 = []
-compile_avx2 = []
-compile_gfni = []
+# Exposes internal modules for benches. Not public API: no stability guarantees.
+unstable-internals = []

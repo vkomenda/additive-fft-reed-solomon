@@ -1,26 +1,26 @@
-#[cfg(any(native_avx2, feature = "compile_avx2"))]
+#[cfg(test)]
+#[macro_use]
+mod tests;
+
+#[cfg(target_feature = "avx2")]
 pub mod avx2_kernel;
-#[cfg(any(native_gfni, feature = "compile_gfni"))]
+#[cfg(avx512_gfni)]
 pub mod gfni_kernel;
 pub mod lut_kernel;
-#[cfg(native_neon)]
+#[cfg(target_feature = "neon")]
 pub mod neon_kernel;
 pub mod node;
-#[cfg(any(native_sse2, feature = "compile_sse2"))]
+#[cfg(target_feature = "sse2")]
 pub mod sse2_kernel;
-#[cfg(any(native_ssse3, feature = "compile_ssse3"))]
+#[cfg(target_feature = "ssse3")]
 pub mod ssse3_kernel;
 
 use crate::gf2p8lut::{Gf2p8Lut, SubspaceBasisLut};
 use crate::poly_arith::PolyMutSliceArith;
 use additive_fft_reed_solomon_gf2p8::Z255;
-use node::{Dit2Node, Dit4Node, Node, ShardTuple};
+use node::{Dit2Node, Dit4Node, Node};
 
 pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
-    /// Shard buffer byte alignment multiple to maximize SIMD performance. Every buffer must start
-    /// at an address which is a multiple of this constant. The length of every shard in the buffer
-    /// must be a multiple of this constant. Unaligned buffers will work but may be noticeably
-    /// slower.
     const ALIGN: usize;
 
     /// Multiplication by a fixed element of G. Plain, non-SIMD data type.
@@ -32,25 +32,16 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
 
     fn is_zero_mul(m: &Self::Multiplier) -> bool;
 
-    fn butterfly_fwd_dit2(
-        shards: &mut [G],
-        shard_len: usize,
-        base: usize,
-        d: usize,
-        m: Self::Multiplier,
-    );
+    fn butterfly_fwd_dit2(node: Dit2Node<'_, G>, m: Self::Multiplier);
 
-    fn butterfly_fwd_dit2_zero(shards: &mut [G], shard_len: usize, base: usize, d: usize);
+    fn butterfly_fwd_dit2_zero(node: Dit2Node<'_, G>);
 
     /// Applies two butterfly levels to the node of `4 * d` shards beginning at shard `base`. The
     /// node consists of `d` independent groups. Group `i` consists of shards `base + i`, `base + i
     /// + d`, `base + i + 2 * d` and `base + i + 3 * d`. All groups share the multiplication tables
     /// `m01`, `m23` and `m02`.
     fn butterfly_fwd_dit4(
-        shards: &mut [G],
-        shard_len: usize,
-        base: usize,
-        d: usize,
+        node: Dit4Node<'_, G>,
         m01: Self::Multiplier,
         m23: Self::Multiplier,
         m02: Self::Multiplier,
@@ -58,39 +49,18 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
 
     /// An optimization of `butterfly_fwd_dit4` for the common special case `m01 == m02 == 0` that
     /// requires only 1 out of 4 multiply operations as well as fewer respective loads and stores.
-    fn butterfly_fwd_dit4_zero(
-        shards: &mut [G],
-        shard_len: usize,
-        base: usize,
-        d: usize,
-        m23: Self::Multiplier,
-    );
+    fn butterfly_fwd_dit4_zero(node: Dit4Node<'_, G>, m23: Self::Multiplier);
 
-    fn butterfly_inv_dit2(
-        shards: &mut [G],
-        shard_len: usize,
-        base: usize,
-        d: usize,
-        m: Self::Multiplier,
-    );
+    fn butterfly_inv_dit2(node: Dit2Node<'_, G>, m: Self::Multiplier);
 
     fn butterfly_inv_dit4(
-        shards: &mut [G],
-        shard_len: usize,
-        base: usize,
-        d: usize,
+        node: Dit4Node<'_, G>,
         m01: Self::Multiplier,
         m23: Self::Multiplier,
         m02: Self::Multiplier,
     );
 
-    fn butterfly_inv_dit4_zero(
-        shards: &mut [G],
-        shard_len: usize,
-        base: usize,
-        d: usize,
-        m23: Self::Multiplier,
-    );
+    fn butterfly_inv_dit4_zero(node: Dit4Node<'_, G>, m23: Self::Multiplier);
 
     /// Forward transform of 2^k shards whose input is nonzero only in the
     /// first 2^log_support. Shards past the support are overwritten and need
@@ -162,13 +132,10 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
 
         for l in (0..k).rev() {
             let d = 1 << l;
-            for start in (0..n).step_by(2 * d) {
-                let node_beta = beta.add(B::get_subspace_point_lut(start as u8));
+            for base in (0..n).step_by(2 * d) {
+                let node_beta = beta.add(B::get_subspace_point_lut(base as u8));
                 Self::butterfly_fwd_dit2(
-                    shards,
-                    shard_len,
-                    start,
-                    d,
+                    Node::new(shards, shard_len, base, d),
                     Self::mul_table(Self::twiddle(l, node_beta)),
                 );
             }
@@ -187,25 +154,26 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
             let hi = l - 1; // wide level, stride 2d
             let lo = l - 2; // narrow level, stride d
             let d = 1 << lo;
-            for start in (0..n).step_by(4 * d) {
-                let beta_l = node_beta(start);
-                let beta_r = node_beta(start + 2 * d);
+            for base in (0..n).step_by(4 * d) {
+                let beta_l = node_beta(base);
+                let beta_r = node_beta(base + 2 * d);
                 let m01 = mt(lo, beta_l);
                 let m23 = mt(lo, beta_r);
                 let m02 = mt(hi, beta_l);
+                let node = Node::new(shards, shard_len, base, d);
                 if Self::is_zero_mul(&m01) && Self::is_zero_mul(&m02) {
-                    Self::butterfly_fwd_dit4_zero(shards, shard_len, start, d, m23);
+                    Self::butterfly_fwd_dit4_zero(node, m23);
                 } else {
-                    Self::butterfly_fwd_dit4(shards, shard_len, start, d, m01, m23, m02);
+                    Self::butterfly_fwd_dit4(node, m01, m23, m02);
                 }
             }
             l -= 2;
         }
 
         if l == 1 {
-            for start in (0..n).step_by(2) {
-                let m = mt(0, node_beta(start));
-                Self::butterfly_fwd_dit2(shards, shard_len, start, 1, m);
+            for base in (0..n).step_by(2) {
+                let m = mt(0, node_beta(base));
+                Self::butterfly_fwd_dit2(Node::new(shards, shard_len, base, 1), m);
             }
         }
     }
@@ -226,12 +194,13 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         let mut l = k;
         while l >= 2 {
             let d = 1 << (l - 2);
-            for start in (0..n).step_by(4 * d) {
+            for base in (0..n).step_by(4 * d) {
                 let [m01, m23, m02] = body_mul.next().unwrap();
+                let node = Node::new(shards, shard_len, base, d);
                 if Self::is_zero_mul(m01) && Self::is_zero_mul(m02) {
-                    Self::butterfly_fwd_dit4_zero(shards, shard_len, start, d, *m23);
+                    Self::butterfly_fwd_dit4_zero(node, *m23);
                 } else {
-                    Self::butterfly_fwd_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
+                    Self::butterfly_fwd_dit4(node, *m01, *m23, *m02);
                 }
             }
             l -= 2;
@@ -240,8 +209,8 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
 
         if l == 1 {
             debug_assert_eq!(tail_mul.len(), n / 2);
-            for (start, m) in (0..n).step_by(2).zip(tail_mul) {
-                Self::butterfly_fwd_dit2(shards, shard_len, start, 1, *m);
+            for (base, m) in (0..n).step_by(2).zip(tail_mul) {
+                Self::butterfly_fwd_dit2(Node::new(shards, shard_len, base, 1), *m);
             }
         }
     }
@@ -262,10 +231,11 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         if k % 2 == 1 {
             let m = tail_mul.expect("odd k needs a tail multiplier");
             let d = n / 2;
+            let node = Node::new(shards, shard_len, 0, d);
             if Self::is_zero_mul(m) {
-                Self::butterfly_fwd_dit2_zero(shards, shard_len, 0, d);
+                Self::butterfly_fwd_dit2_zero(node);
             } else {
-                Self::butterfly_fwd_dit2(shards, shard_len, 0, d, *m);
+                Self::butterfly_fwd_dit2(node, *m);
             }
         } else {
             debug_assert!(tail_mul.is_none());
@@ -277,11 +247,12 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
             let d = 1 << l;
             let count = n / (4 * d);
             let round = &body_mul[end - count..end];
-            for (start, [m01, m23, m02]) in (0..n).step_by(4 * d).zip(round) {
+            for (base, [m01, m23, m02]) in (0..n).step_by(4 * d).zip(round) {
+                let node = Node::new(shards, shard_len, base, d);
                 if Self::is_zero_mul(m01) && Self::is_zero_mul(m02) {
-                    Self::butterfly_fwd_dit4_zero(shards, shard_len, start, d, *m23);
+                    Self::butterfly_fwd_dit4_zero(node, *m23);
                 } else {
-                    Self::butterfly_fwd_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
+                    Self::butterfly_fwd_dit4(node, *m01, *m23, *m02);
                 }
             }
             end -= count;
@@ -297,13 +268,10 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
 
         for l in 0..k {
             let d = 1 << l;
-            for start in (0..n).step_by(2 * d) {
-                let node_beta = beta.add(B::get_subspace_point_lut(start as u8));
+            for base in (0..n).step_by(2 * d) {
+                let node_beta = beta.add(B::get_subspace_point_lut(base as u8));
                 Self::butterfly_inv_dit2(
-                    shards,
-                    shard_len,
-                    start,
-                    d,
+                    Node::new(shards, shard_len, base, d),
                     Self::mul_table(Self::twiddle(l, node_beta)),
                 );
             }
@@ -321,16 +289,17 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         while lo + 1 < k {
             let hi = lo + 1;
             let d = 1 << lo;
-            for start in (0..n).step_by(4 * d) {
-                let beta_l = node_beta(start);
-                let beta_r = node_beta(start + 2 * d);
+            for base in (0..n).step_by(4 * d) {
+                let beta_l = node_beta(base);
+                let beta_r = node_beta(base + 2 * d);
                 let m01 = mt(lo, beta_l);
                 let m23 = mt(lo, beta_r);
                 let m02 = mt(hi, beta_l);
+                let node = Node::new(shards, shard_len, base, d);
                 if Self::is_zero_mul(&m01) && Self::is_zero_mul(&m02) {
-                    Self::butterfly_inv_dit4_zero(shards, shard_len, start, d, m23);
+                    Self::butterfly_inv_dit4_zero(node, m23);
                 } else {
-                    Self::butterfly_inv_dit4(shards, shard_len, start, d, m01, m23, m02);
+                    Self::butterfly_inv_dit4(node, m01, m23, m02);
                 }
             }
             lo += 2;
@@ -338,7 +307,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
 
         if lo + 1 == k {
             let m = mt(lo, beta);
-            Self::butterfly_inv_dit2(shards, shard_len, 0, n / 2, m);
+            Self::butterfly_inv_dit2(Node::new(shards, shard_len, 0, n / 2), m);
         }
     }
 
@@ -358,13 +327,14 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         let mut lo = 0u8;
         while lo + 1 < k {
             let d = 1 << lo;
-            for start in (0..n).step_by(4 * d) {
+            for base in (0..n).step_by(4 * d) {
                 let [m01, m23, m02] = body_mul.next().unwrap();
+                let node = Node::new(shards, shard_len, base, d);
                 if Self::is_zero_mul(m01) && Self::is_zero_mul(m02) {
-                    Self::butterfly_inv_dit4_zero(shards, shard_len, start, d, *m23);
+                    Self::butterfly_inv_dit4_zero(node, *m23);
                 } else {
-                    Self::butterfly_inv_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
-                }
+                    Self::butterfly_inv_dit4(node, *m01, *m23, *m02);
+                };
             }
             lo += 2;
         }
@@ -372,7 +342,7 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
 
         if lo + 1 == k {
             let m = tail_mul.expect("odd k needs a tail multiplier");
-            Self::butterfly_inv_dit2(shards, shard_len, 0, n / 2, *m);
+            Self::butterfly_inv_dit2(Node::new(shards, shard_len, 0, n / 2), *m);
         } else {
             debug_assert!(tail_mul.is_none());
         }
@@ -387,10 +357,11 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         if k % 2 == 1 {
             let hi = k - 1;
             let d = n / 2;
+            let node = Node::new(shards, shard_len, 0, d);
             if coords < (1 << hi) {
-                Self::butterfly_fwd_dit2_zero(shards, shard_len, 0, d);
+                Self::butterfly_fwd_dit2_zero(node);
             } else {
-                Self::butterfly_fwd_dit2(shards, shard_len, 0, d, *m(hi, coords));
+                Self::butterfly_fwd_dit2(node, *m(hi, coords));
             }
         }
 
@@ -398,19 +369,14 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
             let top = k - 2 - (k % 2);
             for lo in (0..=top).rev().step_by(2) {
                 let d = 1usize << lo;
-                for start in (0..n).step_by(4 * d) {
-                    let x = coords ^ start;
+                for base in (0..n).step_by(4 * d) {
+                    let x = coords ^ base;
+                    let node = Node::new(shards, shard_len, base, d);
                     if x < d {
-                        Self::butterfly_fwd_dit4_zero(
-                            shards,
-                            shard_len,
-                            start,
-                            d,
-                            *m(lo, x ^ (2 * d)),
-                        );
+                        Self::butterfly_fwd_dit4_zero(node, *m(lo, x ^ (2 * d)));
                     } else {
                         let (m01, m23, m02) = (m(lo, x), m(lo, x ^ (2 * d)), m(lo + 1, x));
-                        Self::butterfly_fwd_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
+                        Self::butterfly_fwd_dit4(node, *m01, *m23, *m02);
                     }
                 }
             }
@@ -426,19 +392,20 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         let mut lo = 0u8;
         while lo + 1 < k {
             let d = 1usize << lo;
-            for start in (0..n).step_by(4 * d) {
-                let x = coords ^ start;
+            for base in (0..n).step_by(4 * d) {
+                let x = coords ^ base;
+                let node = Node::new(shards, shard_len, base, d);
                 if x < d {
-                    Self::butterfly_inv_dit4_zero(shards, shard_len, start, d, *m(lo, x ^ (2 * d)));
+                    Self::butterfly_inv_dit4_zero(node, *m(lo, x ^ (2 * d)));
                 } else {
                     let (m01, m23, m02) = (m(lo, x), m(lo, x ^ (2 * d)), m(lo + 1, x));
-                    Self::butterfly_inv_dit4(shards, shard_len, start, d, *m01, *m23, *m02);
-                }
+                    Self::butterfly_inv_dit4(node, *m01, *m23, *m02);
+                };
             }
             lo += 2;
         }
         if lo + 1 == k {
-            Self::butterfly_inv_dit2(shards, shard_len, 0, n / 2, *m(lo, coords));
+            Self::butterfly_inv_dit2(Node::new(shards, shard_len, 0, n / 2), *m(lo, coords));
         }
     }
 
@@ -447,13 +414,10 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         let n = 1 << k;
         for l in (0..k).rev() {
             let d = 1 << l;
-            for start in (0..n).step_by(2 * d) {
-                let x = coords ^ start;
+            for base in (0..n).step_by(2 * d) {
+                let x = coords ^ base;
                 Self::butterfly_fwd_dit2(
-                    shards,
-                    shard_len,
-                    start,
-                    d,
+                    Node::new(shards, shard_len, base, d),
                     Self::NODE_MUL[node_mul_index(l, x)],
                 );
             }
@@ -465,13 +429,10 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
         let n = 1usize << k;
         for l in 0..k {
             let d = 1usize << l;
-            for start in (0..n).step_by(2 * d) {
-                let x = coords ^ start;
+            for base in (0..n).step_by(2 * d) {
+                let x = coords ^ base;
                 Self::butterfly_inv_dit2(
-                    shards,
-                    shard_len,
-                    start,
-                    d,
+                    Node::new(shards, shard_len, base, d),
                     Self::NODE_MUL[node_mul_index(l, x)],
                 );
             }
@@ -522,28 +483,4 @@ pub trait Kernel<G: Gf2p8Lut, B: SubspaceBasisLut<G>> {
 #[inline]
 fn node_mul_index(l: u8, x: usize) -> usize {
     (512 - (512 >> l)) + (x >> l)
-}
-
-#[cfg(test)]
-mod test_cantor {
-    use super::lut_kernel;
-    use crate::poly_11d_lut::CantorBasisLut11d;
-    use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
-
-    type B = CantorBasisLut11d;
-    type K = lut_kernel::LutKernel<Gf2p8_11d, CantorBasisLut11d>;
-
-    include!("tests.rs");
-}
-
-#[cfg(test)]
-mod test_standard {
-    use super::lut_kernel;
-    use crate::poly_11d_lut::StandardBasisLut11d;
-    use additive_fft_reed_solomon_gf2p8::Gf2p8_11d;
-
-    type B = StandardBasisLut11d;
-    type K = lut_kernel::LutKernel<Gf2p8_11d, StandardBasisLut11d>;
-
-    include!("tests.rs");
 }

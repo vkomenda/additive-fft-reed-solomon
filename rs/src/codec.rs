@@ -54,6 +54,12 @@ where
     K: Kernel<G, B>,
     L: ShardLayout,
 {
+    /// Shard buffer byte alignment multiple to maximize SIMD performance. Every buffer must start
+    /// at an address which is a multiple of this constant. The length of every shard in the buffer
+    /// must be a multiple of this constant. Unaligned buffers will work but may be noticeably
+    /// slower.
+    pub const ALIGN: usize = K::ALIGN;
+
     pub fn new() -> Self {
         Self {
             basis: B::default(),
